@@ -21,6 +21,12 @@ public class ChangeFeedService {
         this.accessPolicy = accessPolicy;
     }
 
+    /**
+     * Allocates the next per-couple sequence under a lock on the couple's
+     * sync state row, inside the caller's transaction. Concurrent mutations
+     * for the same couple serialize, so the sequence order matches commit
+     * order and no committed change can be skipped by a paging client.
+     */
     @Transactional
     public long appendChange(UUID coupleId, String entityType, UUID entityId,
                              String operation, String payload) {
@@ -28,14 +34,25 @@ public class ChangeFeedService {
                 || entityId == null || operation == null || operation.isBlank()) {
             throw new SyncValidationException("change identity and operation are required");
         }
+        jdbcTemplate.update("""
+                INSERT INTO couple_sync_state(couple_id, last_space_sequence)
+                VALUES (?, 0)
+                ON CONFLICT (couple_id) DO NOTHING
+                """, coupleId);
         Long sequence = jdbcTemplate.queryForObject("""
-                INSERT INTO sync_change(couple_id, entity_type, entity_id, operation, payload, created_at)
-                VALUES (?, ?, ?, ?, ?::jsonb, now())
-                RETURNING change_seq
-                """, Long.class, coupleId, entityType, entityId, operation, payload);
+                UPDATE couple_sync_state
+                SET last_space_sequence = last_space_sequence + 1
+                WHERE couple_id = ?
+                RETURNING last_space_sequence
+                """, Long.class, coupleId);
         if (sequence == null) {
-            throw new IllegalStateException("database did not return change sequence");
+            throw new IllegalStateException("couple sync state row went missing");
         }
+        jdbcTemplate.update("""
+                INSERT INTO sync_change(couple_id, space_sequence, entity_type, entity_id,
+                                        operation, payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, now())
+                """, coupleId, sequence, entityType, entityId, operation, payload);
         return sequence;
     }
 
@@ -49,14 +66,14 @@ public class ChangeFeedService {
             throw new SyncValidationException("after must be non-negative and limit must be between 1 and 200");
         }
         List<ChangeView> raw = jdbcTemplate.query("""
-                SELECT change_seq, entity_type, entity_id, operation,
+                SELECT space_sequence, entity_type, entity_id, operation,
                        payload::text AS payload, created_at
                 FROM sync_change
-                WHERE couple_id = ? AND change_seq > ?
-                ORDER BY change_seq
+                WHERE couple_id = ? AND space_sequence > ?
+                ORDER BY space_sequence
                 LIMIT ?
                 """, (rs, rowNum) -> new ChangeView(
-                rs.getLong("change_seq"),
+                rs.getLong("space_sequence"),
                 rs.getString("entity_type"),
                 rs.getObject("entity_id", UUID.class),
                 rs.getString("operation"),

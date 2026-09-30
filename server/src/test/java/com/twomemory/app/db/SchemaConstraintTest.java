@@ -163,6 +163,34 @@ class SchemaConstraintTest {
                 .isInstanceOf(SQLException.class);
     }
 
+    @Test
+    void perCoupleChangeSequenceIsUnique() throws SQLException {
+        execute("""
+                INSERT INTO couple_space(id, status, created_at, updated_at)
+                VALUES ('00000000-0000-0000-0000-000000000060', 'ACTIVE', now(), now())
+                """);
+        execute("""
+                INSERT INTO sync_change(couple_id, space_sequence, entity_type, entity_id,
+                                        operation, payload, created_at)
+                VALUES ('00000000-0000-0000-0000-000000000060', 1, 'ENTRY',
+                        '00000000-0000-0000-0000-000000000061', 'CREATE', '{}', now())
+                """);
+        assertThatThrownBy(() -> execute("""
+                INSERT INTO sync_change(couple_id, space_sequence, entity_type, entity_id,
+                                        operation, payload, created_at)
+                VALUES ('00000000-0000-0000-0000-000000000060', 1, 'ENTRY',
+                        '00000000-0000-0000-0000-000000000062', 'CREATE', '{}', now())
+                """))
+                .isInstanceOf(SQLException.class);
+        assertThatThrownBy(() -> execute("""
+                INSERT INTO sync_change(couple_id, space_sequence, entity_type, entity_id,
+                                        operation, payload, created_at)
+                VALUES ('00000000-0000-0000-0000-000000000060', NULL, 'ENTRY',
+                        '00000000-0000-0000-0000-000000000063', 'CREATE', '{}', now())
+                """))
+                .isInstanceOf(SQLException.class);
+    }
+
     private static void execute(String sql) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.executeUpdate(sql);

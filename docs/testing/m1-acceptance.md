@@ -123,3 +123,11 @@
 - **测试**：新增 `TypedSyncOperationTest`（独立真库 moon_letter_sync_test + 真 HTTP + 手工种子设备会话）：类型化操作改变 entry/entry_block/sync_change 表、重复 (couple_id, operation_id) 回放且无第二效果（响应经 jsonb 归一化后语义相等）、同 ID 不同 payload 409、注入失败后幂然声明/业务数据/变更行三者全部回滚且同 ID 可重试成功、未知操作类型 400。
 - **结果**：`mvn test` → `Tests run: 45, Failures: 0, Errors: 0`，`EXIT=0`。
 - **TDD 红灯**：首跑暴露两处测试缺陷（payload() 双次调用产生不同随机 blockId 导致 hash 自不匹配；回放体键序差异需语义比较），实现本身无缺陷，修正后转绿。
+
+### 记录 6：Task 6 每空间有序变更流（2026-10-01）
+
+- **Commit**：`fix(sync): serialize per-couple change sequences`。
+- **实现**：迁移 V8（`couple_sync_state(couple_id, last_space_sequence)`；sync_change 增加 `space_sequence` 并建 `(couple_id, space_sequence)` 唯一索引；存量行按 change_seq 分区回填；列 NOT NULL）；`appendChange` 在变更事务内 `INSERT ... ON CONFLICT DO NOTHING` + `UPDATE ... RETURNING`（状态行 FOR UPDATE 级锁语义）分配序列，同空间并发变更按提交顺序串行化；readChanges 改按 `space_sequence` 排序/过滤，`nextSequence` 即已完整返回的最大 space_sequence，显式 `hasMore`；客户端游标不再依赖全局 identity。
+- **测试**：新增 `ChangeFeedOrderingTest`（独立真库 moon_letter_order_test）：事务 A 持锁未提交时 B 无法完成分配（400ms 内未完成+线程存活），A 提交后 B 获得下一个序列；分页 after=0/limit=1 先见 A 的变更且 hasMore=true，翻页得 B 的变更——游标推进不可能跳过已提交变更。SchemaConstraintTest 增加 (couple_id, space_sequence) 唯一性与 NOT NULL 断言。
+- **结果**：`mvn test` → `Tests run: 47, Failures: 0, Errors: 0`，`EXIT=0`。
+- **TDD 红灯**：并发测试首版错误地在工作线程外开启事务（Spring 事务线程绑定），重写为主线程持事务 + 工作线程阻塞的正确形态后转绿。
