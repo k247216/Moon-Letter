@@ -31,8 +31,15 @@ public class CoupleController {
     }
 
     @PostMapping("/pair")
-    public PairResult pair(@AuthenticationPrincipal AuthenticatedUser actor, @RequestBody PairRequest request) {
-        return coupleService.pair(actor.userId(), request.oneTimeCode());
+    public PairResult pair(@RequestBody PairRequest request) {
+        return coupleService.pair(request.token());
+    }
+
+    @PostMapping("/{coupleId}/pairing-token")
+    public CreateSpaceResult regeneratePairingToken(
+            @AuthenticationPrincipal AuthenticatedUser actor,
+            @PathVariable UUID coupleId) {
+        return coupleService.regeneratePairingToken(actor.userId(), coupleId);
     }
 
     @GetMapping("/{coupleId}")

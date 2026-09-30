@@ -33,7 +33,7 @@ public class DeviceSessionAuthenticationFilter extends OncePerRequestFilter {
     private static final List<String> PUBLIC_PATH_PREFIXES = List.of(
             "/actuator/health",
             "/api/v1/bootstrap",
-            "/api/v1/pair",
+            "/api/v1/couple/pair",
             // Boot's error dispatch must not be re-secured, otherwise the
             // original status (409/401/...) is replaced by a 403.
             "/error");

@@ -99,3 +99,11 @@
 - **结果**：`mvn test` → `Tests run: 31, Failures: 0, Errors: 0`，`EXIT=0`。
 - **修复的基线缺陷**：`CoupleService.mapCouple` 缺 `rs.next()`（readSpace 必崩，bootstrap 后首次暴露）；旧 MockMvc 测试迁移到 `TestAuth.deviceSession` 认证后处理器。
 - **TDD 红灯**：测试先于实现编写（当时编译失败/接口不存在即为红灯状态；首次运行 401→/error→403 的发现过程见 filter 注释）。
+
+### 记录 3：Task 3 一次性安全配对（2026-10-01）
+
+- **Commit**：`feat(couple): secure one-time partner pairing`。
+- **实现**：迁移 V7（`code_hash`→`token_hash`；废除 couple_id 全局唯一，改为"每空间仅一条未消费令牌"部分唯一索引）；配对令牌改为 256-bit SecureRandom base64url（43 字符），仅存哈希，15 分钟过期，单次消费；`pair` 改为免认证（凭令牌本身），事务内创建第二个成员 + user_profile + 首个 device_session，返回一次性 deviceToken 与 userId；新增 `POST /api/v1/couple/{id}/pairing-token` 换发（撤销未消费旧令牌）；删除 6 位数字枚举路径（normalizePairingCode/nextPairingCode 整体移除，无双机制并存）；SecurityConfig/filter 公开路径修正为 `/api/v1/couple/pair`。
+- **测试**：`PairingFlowTest`（独立真库 moon_letter_pair_test + 真 HTTP）：令牌 43 字符且两次生成不同、过期令牌 409、换发后仅一条未消费、配对后 2 成员 ACTIVE、伙伴 bearer 可读空间、读空间不泄露 pairingToken、复用 409；`CoupleApiTest` 8 个切片测试更新到新协议。
+- **结果**：`mvn -Dtest=CoupleApiTest,PairingFlowTest test` → `Tests run: 9, Failures: 0, Errors: 0`，`EXIT=0`。
+- **TDD 红灯**：先写 PairingFlowTest，首跑在配对响应 500（Instant→timestamptz 绑定失败）暴露问题，修复后转绿。

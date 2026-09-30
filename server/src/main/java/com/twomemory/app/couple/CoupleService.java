@@ -1,5 +1,6 @@
 package com.twomemory.app.couple;
 
+import com.twomemory.app.auth.DeviceSessionService;
 import com.twomemory.app.auth.SpaceAccessPolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -8,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -20,15 +20,17 @@ import java.util.UUID;
 @Service
 public class CoupleService {
 
-    private static final Duration PAIRING_CODE_LIFETIME = Duration.ofMinutes(15);
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Duration PAIRING_TOKEN_LIFETIME = Duration.ofMinutes(15);
 
     private final JdbcTemplate jdbcTemplate;
     private final SpaceAccessPolicy accessPolicy;
+    private final DeviceSessionService deviceSessionService;
 
-    public CoupleService(JdbcTemplate jdbcTemplate, SpaceAccessPolicy accessPolicy) {
+    public CoupleService(JdbcTemplate jdbcTemplate, SpaceAccessPolicy accessPolicy,
+                         DeviceSessionService deviceSessionService) {
         this.jdbcTemplate = jdbcTemplate;
         this.accessPolicy = accessPolicy;
+        this.deviceSessionService = deviceSessionService;
     }
 
     @Transactional
@@ -55,29 +57,28 @@ public class CoupleService {
                 """, coupleId, ownerId);
         ensureProfile(ownerId);
 
-        String pairingCode = nextPairingCode();
-        jdbcTemplate.update("""
-                INSERT INTO space_pairing_code(id, couple_id, code_hash, expires_at)
-                VALUES (?, ?, ?, ?)
-                """, UUID.randomUUID(), coupleId, sha256(pairingCode),
-                Instant.now().plus(PAIRING_CODE_LIFETIME));
-        return new CreateSpaceResult(readSpace(ownerId, coupleId), pairingCode);
+        String pairingToken = allocatePairingToken(coupleId);
+        return new CreateSpaceResult(readSpace(ownerId, coupleId), pairingToken);
     }
 
+    /**
+     * Consumes a one-time pairing token on behalf of a not-yet-existing
+     * partner: creates the second member, its profile and its first device
+     * session in one transaction. The raw session token is returned once.
+     */
     @Transactional
-    public PairResult pair(UUID userId, String oneTimeCode) {
-        accessPolicy.requireActiveUser(userId);
-        String normalizedCode = normalizePairingCode(oneTimeCode);
-        String codeHash = sha256(normalizedCode);
+    public PairResult pair(String pairingToken) {
+        String normalized = normalizePairingToken(pairingToken);
+        String tokenHash = sha256(normalized);
         PairingRow pairing = jdbcTemplate.query("""
                 SELECT id, couple_id, expires_at, consumed_at
                 FROM space_pairing_code
-                WHERE code_hash = ?
+                WHERE token_hash = ?
                 FOR UPDATE
-                """, this::mapPairing, codeHash).stream().findFirst()
-                .orElseThrow(() -> new ConflictException("pairing code is invalid or expired"));
+                """, this::mapPairing, tokenHash).stream().findFirst()
+                .orElseThrow(() -> new ConflictException("pairing token is invalid or expired"));
         if (pairing.consumedAt() != null || pairing.expiresAt().isBefore(Instant.now())) {
-            throw new ConflictException("pairing code is invalid or expired");
+            throw new ConflictException("pairing token is invalid or expired");
         }
 
         jdbcTemplate.queryForObject("SELECT id FROM couple_space WHERE id = ? FOR UPDATE",
@@ -89,25 +90,36 @@ public class CoupleService {
         if (memberCount != null && memberCount >= 2) {
             throw new ConflictException("couple space is full");
         }
-        Integer alreadyPaired = jdbcTemplate.queryForObject("""
-                SELECT count(*) FROM couple_member cm
-                JOIN couple_space cs ON cs.id = cm.couple_id
-                WHERE cm.user_id = ? AND cm.left_at IS NULL AND cm.deleted_at IS NULL
-                  AND cs.status IN ('ACTIVE', 'UNPAIRED') AND cs.deleted_at IS NULL
-                """, Integer.class, userId);
-        if (alreadyPaired != null && alreadyPaired > 0) {
-            throw new ConflictException("user already belongs to a couple space");
-        }
 
+        UUID partnerId = UUID.randomUUID();
+        jdbcTemplate.update("INSERT INTO app_user (id, status) VALUES (?, 'ACTIVE')", partnerId);
         jdbcTemplate.update("""
                 INSERT INTO couple_member(couple_id, user_id, joined_at)
                 VALUES (?, ?, now())
-                """, pairing.coupleId(), userId);
+                """, pairing.coupleId(), partnerId);
         jdbcTemplate.update("UPDATE couple_space SET status = 'ACTIVE', updated_at = now() WHERE id = ?",
                 pairing.coupleId());
         jdbcTemplate.update("UPDATE space_pairing_code SET consumed_at = now() WHERE id = ?", pairing.id());
-        ensureProfile(userId);
-        return new PairResult(readSpace(userId, pairing.coupleId()));
+        ensureProfile(partnerId);
+        String deviceToken = deviceSessionService.issueSession(partnerId, pairing.coupleId());
+        return new PairResult(readSpace(partnerId, pairing.coupleId()), deviceToken, partnerId);
+    }
+
+    /**
+     * Replaces an outstanding pairing token: revokes every unconsumed token
+     * of the space and issues a fresh one. The raw token is returned once.
+     */
+    @Transactional
+    public CreateSpaceResult regeneratePairingToken(UUID actorId, UUID coupleId) {
+        accessPolicy.requireMember(actorId, coupleId);
+        jdbcTemplate.queryForObject("SELECT id FROM couple_space WHERE id = ? FOR UPDATE",
+                UUID.class, coupleId);
+        jdbcTemplate.update("""
+                UPDATE space_pairing_code SET consumed_at = now()
+                WHERE couple_id = ? AND consumed_at IS NULL
+                """, coupleId);
+        String pairingToken = allocatePairingToken(coupleId);
+        return new CreateSpaceResult(readSpace(actorId, coupleId), pairingToken);
     }
 
     public CoupleView readSpace(UUID userId, UUID coupleId) {
@@ -186,9 +198,9 @@ public class CoupleService {
         }
     }
 
-    private static String normalizePairingCode(String raw) {
-        if (raw == null || !raw.trim().matches("[0-9]{6}")) {
-            throw new ValidationException("pairing code must contain six digits");
+    private static String normalizePairingToken(String raw) {
+        if (raw == null || !raw.trim().matches("[A-Za-z0-9_-]{43}")) {
+            throw new ValidationException("pairing token format is invalid");
         }
         return raw.trim();
     }
@@ -201,17 +213,14 @@ public class CoupleService {
                 """, userId);
     }
 
-    private String nextPairingCode() {
-        for (int attempt = 0; attempt < 10; attempt++) {
-            String code = "%06d".formatted(RANDOM.nextInt(1_000_000));
-            Integer count = jdbcTemplate.queryForObject(
-                    "SELECT count(*) FROM space_pairing_code WHERE code_hash = ? AND consumed_at IS NULL",
-                    Integer.class, sha256(code));
-            if (count == null || count == 0) {
-                return code;
-            }
-        }
-        throw new ConflictException("could not allocate pairing code");
+    private String allocatePairingToken(UUID coupleId) {
+        String token = deviceSessionService.generateToken();
+        jdbcTemplate.update("""
+                INSERT INTO space_pairing_code(id, couple_id, token_hash, expires_at)
+                VALUES (?, ?, ?, ?)
+                """, UUID.randomUUID(), coupleId, sha256(token),
+                java.sql.Timestamp.from(Instant.now().plus(PAIRING_TOKEN_LIFETIME)));
+        return token;
     }
 
     private CoupleView mapCouple(ResultSet rs) throws SQLException {

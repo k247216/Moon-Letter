@@ -11,7 +11,7 @@ enum ThemeKind {
     WARM_BEIGE, PURE_WHITE
 }
 
-record PairRequest(String oneTimeCode) {
+record PairRequest(String token) {
 }
 
 record UpdateProfileRequest(String displayName, UUID avatarAssetId, String theme) {
@@ -26,8 +26,8 @@ record MemberView(UUID userId, ProfileView profile) {
 record CoupleView(UUID id, SpaceStatus status, List<MemberView> members) {
 }
 
-record CreateSpaceResult(CoupleView couple, String pairingCode) {
+record CreateSpaceResult(CoupleView couple, String pairingToken) {
 }
 
-record PairResult(CoupleView couple) {
+record PairResult(CoupleView couple, String deviceToken, UUID userId) {
 }

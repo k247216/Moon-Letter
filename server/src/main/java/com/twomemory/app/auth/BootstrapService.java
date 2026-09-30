@@ -21,12 +21,14 @@ import java.util.UUID;
 public class BootstrapService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DeviceSessionService deviceSessionService;
     private final String configuredSecret;
-    private final SecureRandom secureRandom = new SecureRandom();
 
     public BootstrapService(JdbcTemplate jdbcTemplate,
+                            DeviceSessionService deviceSessionService,
                             @Value("${moon-letter.bootstrap.secret:}") String configuredSecret) {
         this.jdbcTemplate = jdbcTemplate;
+        this.deviceSessionService = deviceSessionService;
         this.configuredSecret = configuredSecret;
     }
 
@@ -49,10 +51,6 @@ public class BootstrapService {
 
         UUID userId = UUID.randomUUID();
         UUID coupleId = UUID.randomUUID();
-        UUID sessionId = UUID.randomUUID();
-        String rawToken = generateToken();
-        String tokenHash = DeviceSessionAuthenticationFilter.sha256Hex(rawToken);
-
         jdbcTemplate.update("INSERT INTO app_user (id, status) VALUES (?, 'ACTIVE')", userId);
         jdbcTemplate.update("""
                 INSERT INTO user_profile (user_id, display_name, theme) VALUES (?, ?, 'WARM_BEIGE')
@@ -63,18 +61,8 @@ public class BootstrapService {
         jdbcTemplate.update("""
                 INSERT INTO couple_member (couple_id, user_id) VALUES (?, ?)
                 """, coupleId, userId);
-        jdbcTemplate.update("""
-                INSERT INTO device_session (id, user_id, couple_id, token_hash, last_used_at)
-                VALUES (?, ?, ?, ?, now())
-                """, sessionId, userId, coupleId, tokenHash);
+        String rawToken = deviceSessionService.issueSession(userId, coupleId);
 
         return new BootstrapController.BootstrapResult(userId.toString(), coupleId.toString(), rawToken);
-    }
-
-    /** 256 bits of cryptographic randomness, base64url encoded. */
-    private String generateToken() {
-        byte[] bytes = new byte[32];
-        secureRandom.nextBytes(bytes);
-        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

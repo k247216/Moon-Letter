@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,6 +31,7 @@ class CoupleApiTest {
     private static final UUID OWNER = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID PARTNER = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID SPACE = UUID.fromString("00000000-0000-0000-0000-000000000010");
+    private static final String TOKEN = "a".repeat(43);
 
     @Autowired
     private MockMvc mvc;
@@ -43,40 +45,62 @@ class CoupleApiTest {
     @Test
     void ownerCreatesSpace() throws Exception {
         CoupleView view = view(SPACE, SpaceStatus.UNPAIRED, OWNER);
-        when(coupleService.createSpace(OWNER)).thenReturn(new CreateSpaceResult(view, "123456"));
+        when(coupleService.createSpace(OWNER)).thenReturn(new CreateSpaceResult(view, TOKEN));
 
         mvc.perform(post("/api/v1/couple")
                         .with(TestAuth.deviceSession(OWNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.couple.id").value(SPACE.toString()))
-                .andExpect(jsonPath("$.pairingCode").value("123456"));
+                .andExpect(jsonPath("$.pairingToken").value(TOKEN));
     }
 
     @Test
-    void validPairingCodeBecomesUnusable() throws Exception {
-        CoupleView view = view(SPACE, SpaceStatus.ACTIVE, OWNER, PARTNER);
-        when(coupleService.pair(PARTNER, "123456")).thenReturn(new PairResult(view));
-        doThrow(new ConflictException("pairing code already used"))
-                .when(coupleService).pair(PARTNER, "123456");
+    void validPairingTokenBecomesUnusable() throws Exception {
+        when(coupleService.pair(TOKEN)).thenReturn(new PairResult(
+                view(SPACE, SpaceStatus.ACTIVE, OWNER, PARTNER), "partner-device-token", PARTNER));
+        doThrow(new ConflictException("pairing token already used"))
+                .when(coupleService).pair(TOKEN);
 
         mvc.perform(post("/api/v1/couple/pair")
-                        .with(TestAuth.deviceSession(PARTNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PairRequest("123456"))))
+                        .content(objectMapper.writeValueAsString(new PairRequest(TOKEN))))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void thirdUserIsRejected() throws Exception {
         doThrow(new ConflictException("couple space is full"))
-                .when(coupleService).pair(PARTNER, "123456");
+                .when(coupleService).pair(TOKEN);
 
         mvc.perform(post("/api/v1/couple/pair")
-                        .with(TestAuth.deviceSession(PARTNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PairRequest("123456"))))
+                        .content(objectMapper.writeValueAsString(new PairRequest(TOKEN))))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void pairingTokenIsNotDisclosedOnSpaceRead() throws Exception {
+        CoupleView view = view(SPACE, SpaceStatus.UNPAIRED, OWNER);
+        when(coupleService.readSpace(OWNER, SPACE)).thenReturn(view);
+
+        mvc.perform(get("/api/v1/couple/{coupleId}", SPACE)
+                        .with(TestAuth.deviceSession(OWNER, SPACE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pairingToken").doesNotExist())
+                .andExpect(jsonPath("$.pairingCode").doesNotExist());
+    }
+
+    @Test
+    void ownerCanReplaceAnOutstandingPairingToken() throws Exception {
+        CoupleView view = view(SPACE, SpaceStatus.UNPAIRED, OWNER);
+        when(coupleService.regeneratePairingToken(OWNER, SPACE))
+                .thenReturn(new CreateSpaceResult(view, TOKEN));
+
+        mvc.perform(post("/api/v1/couple/{coupleId}/pairing-token", SPACE)
+                        .with(TestAuth.deviceSession(OWNER, SPACE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pairingToken").value(TOKEN));
     }
 
     @Test

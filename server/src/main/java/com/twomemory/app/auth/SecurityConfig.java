@@ -28,7 +28,7 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/actuator/health/**",
                                 "/api/v1/bootstrap",
-                                "/api/v1/pair",
+                                "/api/v1/couple/pair",
                                 "/error")
                         .permitAll()
                         .anyRequest().authenticated())
