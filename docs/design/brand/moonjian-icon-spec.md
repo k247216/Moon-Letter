@@ -13,7 +13,7 @@
 
 ## 权威图形
 
-权威可编辑源文件为 [`moonjian-app-icon.svg`](./moonjian-app-icon.svg)。图形必须保留：
+权威构图源为 [`moonjian-icon-reference.html`](./moonjian-icon-reference.html)，其中保留用户在真实 Android 主屏比例预览中批准的 48px CSS 几何。[`moonjian-app-icon.svg`](./moonjian-app-icon.svg) 必须由该几何以 `108 / 48 = 2.25` 倍等比转换，不得重新构图。图形必须保留：
 
 - 珊瑚色闭合日记本封面，作为主色和主轮廓。
 - 鼠尾草绿窄书脊，表达双重身份色，不做封面五五分割。
@@ -37,7 +37,7 @@
 ## Android 尺寸与分层
 
 - 前景层和背景层画布均为 `108 × 108dp`。
-- 日记本主体放入中央 `66 × 66dp` 安全区，不依赖外侧 18dp 区域表达核心语义。
+- 日记本的封面、书脊和月牙是核心语义；书签为装饰性延伸，即使被极端蒙版轻微裁切也不影响识别。
 - 启动器中通常以约 `48 × 48dp` 的视觉尺寸排列，不同密度使用不同像素资源，但逻辑尺寸保持接近。
 - Android 工程使用两层自适应图标：
   - `res/drawable/ic_launcher_background.xml`
@@ -49,5 +49,5 @@
 
 ## 交付边界
 
-- SVG 和 Android VectorDrawable 是当前权威资产，保证图形可编辑、可稳定缩放；`moonjian-app-icon.png` 是由 SVG 机械导出的 512 × 512 预览图。
+- HTML/CSS 是构图权威源；SVG 和 Android VectorDrawable 是等比落地资产；`moonjian-app-icon.png` 是由 SVG 机械导出的 512 × 512 预览图。
 - 此次品牌落库只修改名称与启动图标，不改动业务页面和服务端逻辑。

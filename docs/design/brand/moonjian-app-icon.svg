@@ -1,13 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
   <title id="title">月笺 App 图标</title>
-  <desc id="desc">暖米色背景上的珊瑚色日记本，鼠尾草绿书脊，封面带月金色月牙和书签。</desc>
-  <rect width="108" height="108" rx="24" fill="#F7EFE2"/>
-  <path fill="#EEE1CD" d="M27 25h51c4 0 6 3 6 7v44c0 4-2 6-6 6H27Z"/>
-  <path fill="#E2D1B8" d="M27 77h52c2.5 0 4 1.5 4 4v2H27Z"/>
-  <path fill="#D7B369" d="M48 73h7v15l-3.5-3-3.5 3Z"/>
-  <path fill="#C98273" d="M24 21h49c5 0 8 3 8 8v42c0 5-3 8-8 8H24Z"/>
-  <path fill="#818D78" d="M24 21h14v58H24c-4 0-6-3-6-7V28c0-4 2-7 6-7Z"/>
-  <path fill="#687361" d="M34 21h2v58h-2Z"/>
-  <path fill="#D7B369" fill-rule="evenodd" d="M58 34a12 12 0 1 0 0 24 12 12 0 1 0 0-24Zm4 2a10 10 0 1 1 0 20 10 10 0 1 1 0-20Z"/>
-  <path fill="#E5B2A5" d="M45 66h23v2H45Z"/>
+  <desc id="desc">从已批准的 48px 网页卡通图标以 2.25 倍等比转换：珊瑚色日记本、鼠尾草绿书脊、金色月牙和书签。</desc>
+  <defs>
+    <filter id="book-shadow" x="-20%" y="-20%" width="150%" height="160%">
+      <feDropShadow dx="0" dy="4.5" stdDeviation="2.25" flood-color="#3A2F26" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+
+  <rect width="108" height="108" rx="27" fill="#F7EFE2"/>
+
+  <g filter="url(#book-shadow)">
+    <path fill="#EFE2CD" d="M38.25 24.75H76.5A11.25 11.25 0 0 1 87.75 36V81A11.25 11.25 0 0 1 76.5 92.25H38.25A9 9 0 0 1 29.25 83.25V33.75A9 9 0 0 1 38.25 24.75Z"/>
+    <path fill="#D7B369" d="M60.75 81H67.5V99L64.125 94.68 60.75 99Z"/>
+    <path fill="#C98273" d="M29.25 18H72A11.25 11.25 0 0 1 83.25 29.25V76.5A11.25 11.25 0 0 1 72 87.75H29.25A6.75 6.75 0 0 1 22.5 81V24.75A6.75 6.75 0 0 1 29.25 18Z"/>
+    <path fill="#818D78" d="M29.25 18H38.25V87.75H29.25A6.75 6.75 0 0 1 22.5 81V24.75A6.75 6.75 0 0 1 29.25 18Z"/>
+    <path fill="#463A31" fill-opacity="0.14" d="M36 18H38.25V87.75H36Z"/>
+    <path d="M42.75 27V31M42.75 35V39M42.75 43V47M42.75 51V55M42.75 59V63M42.75 67V71M42.75 75V78.75" fill="none" stroke="#FFFFFF" stroke-opacity="0.4" stroke-width="2.25"/>
+    <circle cx="60.75" cy="45" r="11.25" fill="#D7B369"/>
+    <circle cx="67.5" cy="42.75" r="11.25" fill="#C98273"/>
+  </g>
 </svg>

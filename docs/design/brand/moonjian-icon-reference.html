@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>月笺图标权威网页参考</title>
+  <style>
+    :root{--paper:#f7efe2;--coral:#c98273;--sage:#818d78;--gold:#d7b369}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;background:#eee8de;font-family:system-ui,sans-serif;color:#3f3a34}
+    .main{text-align:center}
+    .icon-row{display:flex;align-items:end;justify-content:center;gap:36px;margin:28px 0}
+    .sample{display:grid;justify-items:center;gap:10px}
+    .sample span{font-size:13px;color:#6f675e}
+    .scale-1{width:48px;height:48px}.scale-2{width:96px;height:96px}.scale-4{width:192px;height:192px}
+    .scale-2 .mj-icon{transform:scale(2);transform-origin:top left}.scale-4 .mj-icon{transform:scale(4);transform-origin:top left}
+    .mj-icon{position:relative;width:48px;height:48px;border-radius:12px;background:var(--paper);box-shadow:0 4px 9px rgba(45,39,34,.18)}
+    .mj-book{position:absolute;left:10px;top:8px;width:29px;height:33px;filter:drop-shadow(0 2px 2px rgba(58,47,38,.16))}
+    .mj-pages{position:absolute;left:3px;top:3px;width:26px;height:30px;border-radius:4px 5px 5px 4px;background:#efe2cd}
+    .mj-cover{position:absolute;left:0;top:0;width:27px;height:31px;overflow:hidden;border-radius:3px 5px 5px 3px;background:var(--coral)}
+    .mj-spine{position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--sage);box-shadow:inset -1px 0 rgba(63,52,43,.14)}
+    .mj-seam{position:absolute;left:9px;top:4px;bottom:4px;border-left:1px dashed rgba(255,255,255,.4)}
+    .mj-moon{position:absolute;left:12px;top:7px;width:10px;height:10px;border-radius:50%;background:var(--gold)}
+    .mj-moon::after{content:"";position:absolute;left:3px;top:-1px;width:10px;height:10px;border-radius:50%;background:var(--coral)}
+    .mj-ribbon{position:absolute;left:17px;top:28px;width:3px;height:8px;background:var(--gold);clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%)}
+  </style>
+</head>
+<body>
+  <div class="main">
+    <h1>月笺图标</h1>
+    <div class="icon-row">
+      <div class="sample"><div class="scale-1"><div class="mj-icon"><div class="mj-book"><span class="mj-pages"></span><span class="mj-cover"><span class="mj-spine"></span><span class="mj-seam"></span><span class="mj-moon"></span></span><span class="mj-ribbon"></span></div></div></div><span>48px</span></div>
+      <div class="sample"><div class="scale-2"><div class="mj-icon"><div class="mj-book"><span class="mj-pages"></span><span class="mj-cover"><span class="mj-spine"></span><span class="mj-seam"></span><span class="mj-moon"></span></span><span class="mj-ribbon"></span></div></div></div><span>96px</span></div>
+      <div class="sample"><div class="scale-4"><div class="mj-icon"><div class="mj-book"><span class="mj-pages"></span><span class="mj-cover"><span class="mj-spine"></span><span class="mj-seam"></span><span class="mj-moon"></span></span><span class="mj-ribbon"></span></div></div></div><span>192px</span></div>
+    </div>
+    <p>此页保留已批准的原始 CSS 几何，SVG 和 Android VectorDrawable 均从 48px 基准以 2.25 倍转换。</p>
+  </div>
+</body>
+</html>
