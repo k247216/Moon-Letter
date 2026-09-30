@@ -1,29 +1,66 @@
-# M1 acceptance record
+# 月笺 M1 验收记录
 
-## Verification command
+状态：**NOT VERIFIED / 未通过验收**
+权威规格：`docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
+执行计划：`docs/superpowers/plans/2026-10-01-self-use-m1-implementation.md`
 
-Run from the repository root:
+## 1. 当前证据的正确解释
 
-```bash
-TEST_DB_URL=jdbc:postgresql://localhost:5432/postgres ./scripts/verify-m1.sh
-```
+| 已有内容 | 可证明 | 不能证明 |
+|---|---|---|
+| 服务端现有 28 个测试通过的历史记录 | 部分 service、controller 映射和数据库约束曾通过组件测试 | 服务可按 README 启动；真实认证；真实 HTTP 双端同步；正确游标并发语义 |
+| `server/.../e2e/TwoDeviceSyncTest.java` | 内存模型中的部分重试/同步想法 | Spring Boot、PostgreSQL、HTTP、真实事务或两台设备；其 `FakeServer` 不能计作 E2E |
+| `android/.../TwoDeviceScenarioTest.kt` | 简单 JVM 数据模型断言 | 两个 Room、Retrofit、WorkManager、服务端或 UI 数据链；相同字符串断言不能计作双端验收 |
+| Android Room/KSP 与 Compose 源码 | 工程骨架和目标模块已存在 | `assembleDebug`、instrumented test、真机运行或视觉一致性 |
+| 六张 UI 参考图 | 权威视觉目标明确 | 当前 App 已按图实现或已接真实数据 |
 
-The script deliberately reports missing PostgreSQL, Android SDK, or emulator checks as `INCOMPLETE` and exits with status `2`; skipped device checks are not a pass. On macOS, run it from a normal terminal when the test runner cannot connect to local PostgreSQL or attach the Mockito/Byte Buddy test agent.
+因此，在下表全部满足前，不得使用“完成”“双端稳定”“E2E 已通过”或“可交付”等表述。
 
-## Scenarios
+## 2. 必须提交的验收证据
 
-- Two independent devices create entries offline and reconnect in reverse order.
-- A retry after a simulated timeout keeps one visible effect for the same operation ID.
-- Same-block edits remain a conflict until a new resolving revision is written.
-- Delete/edit conflicts remain recoverable rather than silently overwriting a block.
-- A ready media object remains recoverable when publication fails.
-- A third user cannot read another space's feed or entry.
+| Gate | 必须证明 | 建议命令或材料 | 当前状态 | 证据 |
+|---|---|---|---|---|
+| S1 服务启动 | 干净环境配置、Flyway、health | `mvn spring-boot:run` + health 响应 | NOT RUN | — |
+| S2 认证与隔离 | bootstrap、一次配对、两 token、第三方拒绝 | real HTTP integration test | NOT RUN | — |
+| S3 同步正确性 | typed mutation、幂等、业务写入与 change 同事务 | server focused tests | NOT RUN | — |
+| S4 游标并发 | 同空间事务逆序压力下不漏变更 | `ChangeFeedOrderingTest` 重复运行 | NOT RUN | — |
+| S5 Server E2E | `RANDOM_PORT` + real PostgreSQL + real HTTP | `SelfUseRecordingLoopE2ETest` | NOT RUN | — |
+| A1 Android 构建 | 所有模块编译并产出 APK | `./gradlew :app:assembleDebug` | NOT RUN | — |
+| A2 Room/outbox | 本地事务、重启保留、page+cursor 原子提交 | connected database tests | NOT RUN | — |
+| A3 Android 网络链 | Retrofit、真实 Room、真实 server | instrumented integration test | NOT RUN | — |
+| E1 双端闭环 | A 离线写入后在 B 的 Room 与 UI 出现 | 两设备/独立数据目录录像与日志 | NOT RUN | — |
+| E2 故障恢复 | 超时重试、重复 ID、逆序重连、进程重启 | 脚本、日志、数据库查询 | NOT RUN | — |
+| D1 备份恢复 | 数据与媒体可恢复且校验一致 | 恢复演练报告 | NOT RUN | — |
+| D2 选择性导出 | JSON + 可读文档 + 原媒体，无密钥 | 样例导出包与检查清单 | NOT RUN | — |
+| U1 视觉一致性 | 四个 M1 页面接真实数据并对照批准稿 | 390×844 截图与差异记录 | NOT RUN | — |
+| U2 适配与可用性 | 小屏、键盘、大字号、滚动、触控目标 | 截图/录像/检查表 | NOT RUN | — |
 
-## Current evidence
+## 3. 每条证据的记录格式
 
-- Server migrations V1–V5 and server tests pass with the local PostgreSQL fallback.
-- The full server suite currently passes 28 tests when run with the local PostgreSQL connection and JVM test-agent permissions.
-- Android model JVM test passes on JDK 21 with a JVM 17 release target.
-- Room KSP and `room-paging` are now wired in `core:database`; Gradle exposes the KSP generation tasks, but actual generation still waits for Android SDK 37.
-- Android SDK 37 license has not been accepted in this environment, so Room, Compose, connected-device, and screenshot checks remain `INCOMPLETE`.
-- Visual comparison is pending a 390 × 844 emulator capture; the approved reference PNGs remain authoritative in `docs/design/reference/`.
+每次更新一行 Gate 时，必须同时记录：
+
+- 被验证的 Git commit（完整或可唯一识别的 SHA）；
+- 操作系统、JDK、Android SDK、设备/模拟器与 PostgreSQL 版本；
+- 完整命令和退出码；
+- 通过/失败数量，禁止只写“已测”；
+- 日志、截图、录像或导出包的仓库内路径/CI URL；
+- 任何跳过项和原因。
+
+真实 E2E 必须跨越进程边界。直接调用 service、内存 FakeServer、mock HTTP、单个 Room 数据库或静态 UI 截图只能归入组件证据。
+
+## 4. 目标核心场景
+
+1. 首位用户初始化，第二位用户使用一次性凭据配对；第三人无法进入空间。
+2. 设备 A 断网创建个人文字记录，杀进程后重启，outbox 仍存在。
+3. A 恢复网络，操作通过真实 HTTP 写入 PostgreSQL 并产生有序 change。
+4. 设备 B 从自己的 cursor 拉取，业务数据与新 cursor 原子写入自己的 Room，时间线显示相同记录与作者时间。
+5. 网络在服务端提交后、客户端收到响应前中断；使用同一 operation ID 重试只产生一次业务效果。
+6. 两端逆序重连、分页拉取和服务端并发提交均不遗漏 change。
+7. 双方分别补充同一共同记录，各自视角并列显示；任何一方都不能改写对方内容。
+8. 图片上传成功但发布失败时，ready 媒体可恢复且不会重复创建对象。
+9. 从备份恢复到隔离环境后，记录、版本、评论、媒体计数与抽样哈希一致。
+10. 按单条和日期范围导出可读内容及原始媒体，且不含令牌、密钥和内部凭据。
+
+## 5. 最终签署
+
+只有所有 Gate 为 `PASS` 且指向同一个候选 commit，才能把首行改为 `VERIFIED`。任何 `NOT RUN`、`FAIL`、无证据的 `PASS` 或依赖假服务的关键链路都保持 `NOT VERIFIED`。

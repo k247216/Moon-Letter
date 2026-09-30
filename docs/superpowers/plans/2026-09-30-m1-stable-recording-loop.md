@@ -1,5 +1,7 @@
 # M1 Stable Recording Loop Implementation Plan
 
+> **停止执行。** 本计划已由 `docs/superpowers/plans/2026-10-01-self-use-m1-implementation.md` 取代。旧计划中的跨作者冲突合并、FCM 时效和验收口径不再属于 M1 执行基线。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build an Android-first, offline-capable two-person recording loop in which either device can create personal or shared entries, synchronize without duplication, preserve edit history, and render the approved home/editor/profile designs.
