@@ -24,5 +24,6 @@ The script deliberately reports missing PostgreSQL, Android SDK, or emulator che
 - Server migrations V1–V5 and server tests pass with the local PostgreSQL fallback.
 - The full server suite currently passes 28 tests when run with the local PostgreSQL connection and JVM test-agent permissions.
 - Android model JVM test passes on JDK 21 with a JVM 17 release target.
+- Room KSP and `room-paging` are now wired in `core:database`; Gradle exposes the KSP generation tasks, but actual generation still waits for Android SDK 37.
 - Android SDK 37 license has not been accepted in this environment, so Room, Compose, connected-device, and screenshot checks remain `INCOMPLETE`.
 - Visual comparison is pending a 390 × 844 emulator capture; the approved reference PNGs remain authoritative in `docs/design/reference/`.
