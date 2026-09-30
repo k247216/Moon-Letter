@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">月笺 App 图标</title>
+  <desc id="desc">暖米色背景上的珊瑚色日记本，鼠尾草绿书脊，封面带月金色月牙和书签。</desc>
+  <rect width="108" height="108" rx="24" fill="#F7EFE2"/>
+  <path fill="#EEE1CD" d="M27 25h51c4 0 6 3 6 7v44c0 4-2 6-6 6H27Z"/>
+  <path fill="#E2D1B8" d="M27 77h52c2.5 0 4 1.5 4 4v2H27Z"/>
+  <path fill="#D7B369" d="M48 73h7v15l-3.5-3-3.5 3Z"/>
+  <path fill="#C98273" d="M24 21h49c5 0 8 3 8 8v42c0 5-3 8-8 8H24Z"/>
+  <path fill="#818D78" d="M24 21h14v58H24c-4 0-6-3-6-7V28c0-4 2-7 6-7Z"/>
+  <path fill="#687361" d="M34 21h2v58h-2Z"/>
+  <path fill="#D7B369" fill-rule="evenodd" d="M58 34a12 12 0 1 0 0 24 12 12 0 1 0 0-24Zm4 2a10 10 0 1 1 0 20 10 10 0 1 1 0-20Z"/>
+  <path fill="#E5B2A5" d="M45 66h23v2H45Z"/>
+</svg>

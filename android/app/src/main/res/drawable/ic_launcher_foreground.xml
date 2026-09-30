@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Warm page block behind the cover. -->
+    <path
+        android:fillColor="#EEE1CD"
+        android:pathData="M27,25H78C82,25 84,28 84,32V76C84,80 82,82 78,82H27Z" />
+    <path
+        android:fillColor="#E2D1B8"
+        android:pathData="M27,77H79C81.5,77 83,78.5 83,81V83H27Z" />
+
+    <!-- Gold bookmark sits behind the coral cover. -->
+    <path
+        android:fillColor="#D7B369"
+        android:pathData="M48,73H55V88L51.5,85L48,88Z" />
+
+    <!-- Dominant coral diary cover. -->
+    <path
+        android:fillColor="#C98273"
+        android:pathData="M24,21H73C78,21 81,24 81,29V71C81,76 78,79 73,79H24Z" />
+
+    <!-- Sage cloth spine and its quiet binding line. -->
+    <path
+        android:fillColor="#818D78"
+        android:pathData="M24,21H38V79H24C20,79 18,76 18,72V28C18,24 20,21 24,21Z" />
+    <path
+        android:fillColor="#687361"
+        android:pathData="M34,21H36V79H34Z" />
+
+    <!-- Small moon-gold crescent pressed into the cover. -->
+    <path
+        android:fillColor="#D7B369"
+        android:fillType="evenOdd"
+        android:pathData="M58,34A12,12 0,1 0,58 58A12,12 0,1 0,58 34ZM62,36A10,10 0,1 1,62 56A10,10 0,1 1,62 36Z" />
+
+    <!-- One restrained writing line keeps the diary identity at small size. -->
+    <path
+        android:fillColor="#E5B2A5"
+        android:pathData="M45,66H68V68H45Z" />
+</vector>

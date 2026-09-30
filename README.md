@@ -1,9 +1,10 @@
-# Moon Letter
+# 月笺 (Moon Letter)
 
-双人私密日记 Android 应用。产品规格和已批准的视觉参考位于：
+双人私密日记 Android 应用。对外中文名称固定为「月笺」，`Moon Letter` 仅作英文工程代号。产品规格和已批准的视觉参考位于：
 
 - `docs/superpowers/specs/2026-09-30-couple-diary-design.md`
 - `docs/design/reference/`
+- `docs/design/brand/`
 - `docs/superpowers/plans/2026-09-30-m1-stable-recording-loop.md`
 
 ## 本地基础设施
