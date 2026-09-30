@@ -16,4 +16,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "MoonLetter"
 include(":app")
-
+include(":core:model")
+include(":core:database")
+include(":core:network")
+include(":core:sync")
