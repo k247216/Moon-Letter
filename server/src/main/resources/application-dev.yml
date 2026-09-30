@@ -1,0 +1,7 @@
+# Local development profile. Credentials match infra/compose.yaml and are
+# development-only; production must provide JDBC_DATABASE_* instead.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/moon_letter
+    username: moon_letter
+    password: moon_letter_dev_only

@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: moon-letter-server
+  datasource:
+    # Must be provided by the environment. The default profile fails fast
+    # with a clear missing-database error instead of silently attaching to
+    # an unrelated database.
+    url: ${JDBC_DATABASE_URL:}
+    username: ${JDBC_DATABASE_USERNAME:}
+    password: ${JDBC_DATABASE_PASSWORD:}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+moon-letter:
+  storage:
+    s3:
+      endpoint: ${S3_ENDPOINT:}
+      region: ${S3_REGION:}
+      bucket: ${S3_BUCKET:}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+  notification:
+    fcm:
+      credentials: ${FCM_CREDENTIALS:}

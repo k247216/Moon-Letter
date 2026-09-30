@@ -20,7 +20,7 @@
 
 | Gate | 必须证明 | 建议命令或材料 | 当前状态 | 证据 |
 |---|---|---|---|---|
-| S1 服务启动 | 干净环境配置、Flyway、health | `mvn spring-boot:run` + health 响应 | NOT RUN | — |
+| S1 服务启动 | 干净环境配置、Flyway、health | `mvn spring-boot:run` + health 响应 | **PASS（Task 1）** | 见 §6 记录 1 |
 | S2 认证与隔离 | bootstrap、一次配对、两 token、第三方拒绝 | real HTTP integration test | NOT RUN | — |
 | S3 同步正确性 | typed mutation、幂等、业务写入与 change 同事务 | server focused tests | NOT RUN | — |
 | S4 游标并发 | 同空间事务逆序压力下不漏变更 | `ChangeFeedOrderingTest` 重复运行 | NOT RUN | — |
@@ -64,3 +64,15 @@
 ## 5. 最终签署
 
 只有所有 Gate 为 `PASS` 且指向同一个候选 commit，才能把首行改为 `VERIFIED`。任何 `NOT RUN`、`FAIL`、无证据的 `PASS` 或依赖假服务的关键链路都保持 `NOT VERIFIED`。
+
+## 6. 开发机证据记录（Task 1 起逐条追加）
+
+### 记录 1：Task 1 服务可复现启动（2026-10-01）
+
+- **Commit**：本文件所在提交（`build(server): add reproducible runtime configuration`）。
+- **环境**：Windows 11；OpenJDK 21.0.2（`E:\jdk21-extract\jdk-21.0.2`）；Maven 3.9.15；Docker 29.6.2 运行 `postgres:18-alpine`（infra/compose.yaml，卷挂载已修正为 `/var/lib/postgresql`）。
+- **TDD 红灯证据**：`mvn -Dtest=CoupleDiaryApplicationTest test`（配置实现前）→ `Tests run: 3, Errors: 3`，ApplicationContext 加载失败（缺数据源配置）。
+- **中间红灯**：JDK 25 上 surefire 触发 Mockito/Byte Buddy agent 附加失败（`Could not initialize plugin: MockMaker`）；按交接文档要求切换 JDK 21 后消除。surefire 已配置 `-XX:+EnableDynamicAgentLoading`。
+- **绿灯**：`mvn -Dtest=CoupleDiaryApplicationTest test`（JAVA_HOME=JDK 21，PostgreSQL 为 compose 实例）→ `Tests run: 3, Failures: 0, Errors: 0`，`EXIT=0`；断言 Flyway 已应用迁移且 M1 全部表存在（app_user、couple_space、entry、entry_block、entry_revision、comment、media_asset、idempotency_record、sync_change 等 14 张）。
+- **启动验证**：`mvn spring-boot:run -Dspring-boot.run.profiles=dev` → `GET http://127.0.0.1:8080/actuator/health` 返回 `{"status":"UP","groups":["liveness","readiness"]}`。
+- **已知环境怪癖**：本机存在遗留环境变量 `SERVER__PORT=63834`，被 relaxed binding 读取导致端口冲突；启动时用 `--server.port=8080` 显式覆盖，已写入 README。

@@ -62,9 +62,21 @@ mvn test -Dtest=SchemaConstraintTest
 
 ## 服务端
 
-当前分支尚缺少可复现的运行配置，不能把 `mvn spring-boot:run` 视为已验证命令。开发机应先完成新计划 Task 1，并将最终启动命令、health 响应和环境变量写回 `docs/testing/m1-acceptance.md`。
+已按执行计划 Task 1 完成可复现运行配置（`application.yml` + `application-dev.yml` + actuator health）。
 
-组件测试可在明确的测试数据库配置下运行，但结果只计作组件证据。
+启动本地数据库并运行：
+
+```bash
+docker compose -f infra/compose.yaml up -d postgres
+cd server
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+健康检查：`GET http://localhost:8080/actuator/health` 应返回 `{"status":"UP"}`。
+
+默认 profile 不提供数据库配置时将快速失败并给出缺库错误；生产部署通过 `JDBC_DATABASE_URL`、`JDBC_DATABASE_USERNAME`、`JDBC_DATABASE_PASSWORD` 提供。开发机的 `dev` profile 使用 compose 中的本地账号密码，禁止带入生产环境。
+
+注意：某些机器存在遗留环境变量 `SERVER__PORT`（例如值 63834），Spring Boot 的 relaxed binding 会读取它。如端口异常，用 `--server.port=8080` 显式覆盖。
 
 ## Android
 

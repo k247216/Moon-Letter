@@ -8,7 +8,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - moon-letter-postgres:/var/lib/postgresql/data
+      # postgres:18 images expect a single mount at /var/lib/postgresql so
+      # PGDATA lives in a versioned subdirectory (pg_upgrade friendly).
+      - moon-letter-postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U moon_letter -d moon_letter"]
       interval: 5s

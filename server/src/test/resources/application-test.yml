@@ -1,3 +1,7 @@
+# Legacy component-test profile: in-memory H2 with PostgreSQL compatibility
+# mode and Flyway/Security disabled. The application context test
+# (CoupleDiaryApplicationTest) no longer uses this profile — it boots against
+# a real PostgreSQL instance so Flyway migrations are exercised.
 spring:
   datasource:
     url: jdbc:h2:mem:context;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
