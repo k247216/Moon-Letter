@@ -1,0 +1,15 @@
+.DS_Store
+.superpowers/
+.idea/
+*.iml
+
+server/target/
+server/.env
+
+android/.gradle/
+android/local.properties
+android/**/build/
+android/**/.cxx/
+.android-sdk/
+
+infra/.env
