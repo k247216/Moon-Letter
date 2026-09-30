@@ -3,12 +3,12 @@ package com.twomemory.app.entry;
 import com.twomemory.app.auth.AuthenticatedUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,10 +28,9 @@ public class EntryController {
 
     @PostMapping
     public ResponseEntity<EntryView> createDraft(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @RequestBody CreateEntryCommand command) {
-        UUID userId = AuthenticatedUser.fromHeader(rawUserId).userId();
-        if (!userId.equals(command.authorId())) {
+        if (!actor.userId().equals(command.authorId())) {
             throw new EntryAccessDeniedException("entry author must be the authenticated user");
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(entryService.createDraft(command));
@@ -39,28 +38,26 @@ public class EntryController {
 
     @GetMapping("/{entryId}")
     public EntryView readEntry(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID entryId) {
-        return entryService.readEntry(entryId, AuthenticatedUser.fromHeader(rawUserId).userId());
+        return entryService.readEntry(entryId, actor.userId());
     }
 
     @PostMapping("/{entryId}/publish")
     public PublishResult publish(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID entryId,
             @RequestBody PublishRequest request) {
-        AuthenticatedUser.fromHeader(rawUserId);
-        return entryService.publish(entryId, request.baseVersion());
+        return entryService.publish(entryId, actor.userId(), request.baseVersion());
     }
 
     @PostMapping("/{entryId}/changes")
     public ApplyChangesResult applyChanges(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID entryId,
             @RequestBody ApplyChangesRequest request) {
-        UUID userId = AuthenticatedUser.fromHeader(rawUserId).userId();
         if (request.mutations() != null && request.mutations().stream()
-                .anyMatch(mutation -> !userId.equals(mutation.authorId()))) {
+                .anyMatch(mutation -> !actor.userId().equals(mutation.authorId()))) {
             throw new EntryAccessDeniedException("block author must be the authenticated user");
         }
         return entryService.applyChanges(entryId, request.baseRevision(), request.mutations());
@@ -68,12 +65,11 @@ public class EntryController {
 
     @PostMapping("/{entryId}/resolve")
     public EntryView resolveConflict(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID entryId,
             @RequestBody ResolveConflictCommand command) {
-        UUID userId = AuthenticatedUser.fromHeader(rawUserId).userId();
         if (command.mutations() != null && command.mutations().stream()
-                .anyMatch(mutation -> !userId.equals(mutation.authorId()))) {
+                .anyMatch(mutation -> !actor.userId().equals(mutation.authorId()))) {
             throw new EntryAccessDeniedException("block author must be the authenticated user");
         }
         return entryService.resolveConflict(entryId, command);
@@ -81,11 +77,10 @@ public class EntryController {
 
     @PostMapping("/{entryId}/comments")
     public CommentView addComment(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID entryId,
             @RequestBody CommentRequest request) {
-        UUID userId = AuthenticatedUser.fromHeader(rawUserId).userId();
-        return commentService.addComment(entryId, userId, request.body(), request.replyToId());
+        return commentService.addComment(entryId, actor.userId(), request.body(), request.replyToId());
     }
 
     @ExceptionHandler(EntryConflict.class)

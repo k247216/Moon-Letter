@@ -12,7 +12,7 @@
 | `server/.../e2e/TwoDeviceSyncTest.java` | 内存模型中的部分重试/同步想法 | Spring Boot、PostgreSQL、HTTP、真实事务或两台设备；其 `FakeServer` 不能计作 E2E |
 | `android/.../TwoDeviceScenarioTest.kt` | 简单 JVM 数据模型断言 | 两个 Room、Retrofit、WorkManager、服务端或 UI 数据链；相同字符串断言不能计作双端验收 |
 | Android Room/KSP 与 Compose 源码 | 工程骨架和目标模块已存在 | `assembleDebug`、instrumented test、真机运行或视觉一致性 |
-| 六张 UI 参考图 | 权威视觉目标明确 | 当前 App 已按图实现或已接真实数据 |
+| 六张 UI 参考图 | 视觉方向（质感、结构、层级）明确 | 当前 App 已按方向实现或已接真实数据；参考稿不是像素基线 |
 
 因此，在下表全部满足前，不得使用“完成”“双端稳定”“E2E 已通过”或“可交付”等表述。
 
@@ -26,14 +26,28 @@
 | S4 游标并发 | 同空间事务逆序压力下不漏变更 | `ChangeFeedOrderingTest` 重复运行 | NOT RUN | — |
 | S5 Server E2E | `RANDOM_PORT` + real PostgreSQL + real HTTP | `SelfUseRecordingLoopE2ETest` | NOT RUN | — |
 | A1 Android 构建 | 所有模块编译并产出 APK | `./gradlew :app:assembleDebug` | NOT RUN | — |
-| A2 Room/outbox | 本地事务、重启保留、page+cursor 原子提交 | connected database tests | NOT RUN | — |
-| A3 Android 网络链 | Retrofit、真实 Room、真实 server | instrumented integration test | NOT RUN | — |
-| E1 双端闭环 | A 离线写入后在 B 的 Room 与 UI 出现 | 两设备/独立数据目录录像与日志 | NOT RUN | — |
+| A2 Room/outbox | 本地事务、重启保留、page+cursor 原子提交 | JVM 双 Room 夹具（Robolectric + 真实 Room 数据库文件） | NOT RUN | — |
+| A3 Android 网络链 | Retrofit、真实 Room、真实 server | JVM 夹具内的真实 Retrofit → 真实 Spring Boot/PostgreSQL | NOT RUN | — |
+| E1 双端闭环 | A 离线写入后在 B 的 Room 与 UI 出现 | 夹具日志（两个 Room + 真实 HTTP）+ 至少一台真机的互见录像；证据须写明配对端用的是真机还是具名模拟器 | NOT RUN | — |
 | E2 故障恢复 | 超时重试、重复 ID、逆序重连、进程重启 | 脚本、日志、数据库查询 | NOT RUN | — |
 | D1 备份恢复 | 数据与媒体可恢复且校验一致 | 恢复演练报告 | NOT RUN | — |
 | D2 选择性导出 | JSON + 可读文档 + 原媒体，无密钥 | 样例导出包与检查清单 | NOT RUN | — |
-| U1 视觉一致性 | 四个 M1 页面接真实数据并对照批准稿 | 390×844 截图与差异记录 | NOT RUN | — |
+| U1 视觉一致性 | 四个 M1 页面接真实数据；按规格 §8 三条判据（像纸/像使用者自己的/不像软件）在真实设备上复核，参考稿是方向不是像素基线 | 真实设备截图与差异记录（390×844 为基准之一） | NOT RUN | — |
 | U2 适配与可用性 | 小屏、键盘、大字号、滚动、触控目标 | 截图/录像/检查表 | NOT RUN | — |
+| H1 记录成本 | 真机实测解锁→保存成功 ≤10 秒、≤4 次交互 | 两台真机各计时一次的秒数与交互数 | NOT RUN | — |
+| H2 系统分享入口 | 分享图片/文字直达一条已自动保存的可编辑草稿 | intent 配置、真机录像、双端互见日志 | NOT RUN | — |
+| H3 每周回看与提醒 | 到点呈现一条更早记录；无内容时安静跳过；对方新记录一次本地通知 | 真机录像、跳过场景、设置可关闭证明 | NOT RUN | — |
+| H4 会话恢复 | 吊销全部会话后用本地管理命令重新进入并双端一致 | 命令、退出码、恢复后拉取比对 | NOT RUN | — |
+| H5 备份作为运行能力 | 每日自动执行、健康记录行连续 7 天、版本化、异机副本、介质加密 | `backup_health` 查询结果、调度配置、副本位置 | NOT RUN | — |
+| H6 开始真实使用 | Task 11 通过当日在两台真机开始写真实记录 | `docs/testing/real-use-log.md` 的开始日期与已知缺陷清单 | NOT RUN | — |
+| H7 无统计功能自查 | 未引入条数/字数/活跃/间隔统计、已读列表、"对方没写"提示 | 自查清单与评审记录（规格 §3.4） | NOT RUN | — |
+| H8 可修改性（所有权） | 不配置也能直接用；使用者在应用内自行改掉称呼/身份色/主题/封面，约 2 分钟、零重新构建；已有记录逐字节不变；主题与封面不产生 change row；只有桌面图标名提前决定 | 真机操作录像、改动前后记录校验、change_feed 查询、Task 12b 测试输出 | NOT RUN | — |
+
+**H 类 Gate 与 S/A/E/D/U 同权重。** 缺任意一项即为 `NOT VERIFIED`，不得因为技术链路全绿而优先标记完成——H 类衡量的是这个东西是否真的会被用起来。
+
+本表中"两台真机"按规格 §9 第 7 条理解：至少一台真实 Android 设备，配对端优先第二台真机、确实没有时用带独立数据目录的具名模拟器。凡填写证据的 Gate 必须写明用的是真机还是模拟器、设备名与系统版本；涉及分享面板、通知到点、键盘与触控成本和视觉对照的 Gate 不接受 JVM 夹具证据。
+
+`未经提醒的自发打开次数`（Task 11a 记录的观察基线）只作为维护者自己的判断依据，**不是通过条件**，也不得写进任何界面、报表或统计功能。
 
 ## 3. 每条证据的记录格式
 
@@ -76,3 +90,12 @@
 - **绿灯**：`mvn -Dtest=CoupleDiaryApplicationTest test`（JAVA_HOME=JDK 21，PostgreSQL 为 compose 实例）→ `Tests run: 3, Failures: 0, Errors: 0`，`EXIT=0`；断言 Flyway 已应用迁移且 M1 全部表存在（app_user、couple_space、entry、entry_block、entry_revision、comment、media_asset、idempotency_record、sync_change 等 14 张）。
 - **启动验证**：`mvn spring-boot:run -Dspring-boot.run.profiles=dev` → `GET http://127.0.0.1:8080/actuator/health` 返回 `{"status":"UP","groups":["liveness","readiness"]}`。
 - **已知环境怪癖**：本机存在遗留环境变量 `SERVER__PORT=63834`，被 relaxed binding 读取导致端口冲突；启动时用 `--server.port=8080` 显式覆盖，已写入 README。
+
+### 记录 2：Task 2 设备会话认证（2026-10-01）
+
+- **Commit**：`feat(auth): add bootstrap and device bearer sessions`（本文件所在提交）。
+- **实现**：迁移 `V6__device_sessions_and_bootstrap.sql`（device_session 表、每成员单活跃会话部分唯一索引、display_name 扩到 1–40 字符）；`DeviceSessionAuthenticationFilter`（Bearer → SHA-256 哈希查会话，直接写 401 响应避免 /error 转发覆盖状态码）；`SecurityConfig`（CSRF/表单/Basic 关闭，仅 health、bootstrap、pair、error 公开）；`BootstrapController/Service`（空安装 + BOOTSTRAP_SECRET 才可执行，SecureRandom 256-bit token，仅存哈希）；四个 controller 全部改用 `@AuthenticationPrincipal`，`X-User-Id`/`fromHeader` 从主代码清零。
+- **测试**：新增 `BootstrapAuthenticationTest`（真 PostgreSQL 独立库 `moon_letter_boot_test` + RANDOM_PORT 真 HTTP）：错误密钥 403、首次 bootstrap 201 返回一次性 token、二次 409、无效 bearer 401、伪造 X-User-Id 401、token 读取空间 200。
+- **结果**：`mvn test` → `Tests run: 31, Failures: 0, Errors: 0`，`EXIT=0`。
+- **修复的基线缺陷**：`CoupleService.mapCouple` 缺 `rs.next()`（readSpace 必崩，bootstrap 后首次暴露）；旧 MockMvc 测试迁移到 `TestAuth.deviceSession` 认证后处理器。
+- **TDD 红灯**：测试先于实现编写（当时编译失败/接口不存在即为红灯状态；首次运行 401→/error→403 的发现过程见 filter 注释）。

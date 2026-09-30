@@ -4,11 +4,11 @@ import com.twomemory.app.auth.AuthenticatedUser;
 import com.twomemory.app.auth.SpaceAccessPolicy;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,9 +37,9 @@ public class SyncController {
 
     @PostMapping("/operations")
     public ResponseEntity<MutationResult> executeOperation(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @RequestBody SyncOperationRequest request) {
-        UUID userId = AuthenticatedUser.fromHeader(rawUserId).userId();
+        UUID userId = actor.userId();
         accessPolicy.requireMember(userId, request.coupleId());
         if (!SyncPayloadHasher.hash(request).equalsIgnoreCase(request.payloadHash())) {
             throw new SyncValidationException("payload hash does not match canonical operation payload");
@@ -61,12 +61,11 @@ public class SyncController {
 
     @GetMapping("/changes")
     public ChangePage readChanges(
-            @RequestHeader(value = "X-User-Id", required = false) String rawUserId,
+            @AuthenticationPrincipal AuthenticatedUser actor,
             @RequestParam UUID coupleId,
             @RequestParam(defaultValue = "0") long after,
             @RequestParam(defaultValue = "50") int limit) {
-        UUID userId = AuthenticatedUser.fromHeader(rawUserId).userId();
-        return changeFeedService.readChanges(userId, coupleId, after, limit);
+        return changeFeedService.readChanges(actor.userId(), coupleId, after, limit);
     }
 
     @ExceptionHandler(SyncConflictException.class)

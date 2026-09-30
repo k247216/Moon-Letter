@@ -1,20 +1,16 @@
 package com.twomemory.app.auth;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
-
+import java.security.Principal;
 import java.util.UUID;
 
-public record AuthenticatedUser(UUID userId) {
+/**
+ * Authenticated principal resolved from a device bearer session.
+ * Never constructed from client-supplied headers in production.
+ */
+public record AuthenticatedUser(UUID userId, UUID coupleId, UUID sessionId) implements Principal {
 
-    public static AuthenticatedUser fromHeader(String rawUserId) {
-        if (rawUserId == null || rawUserId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "missing authenticated user");
-        }
-        try {
-            return new AuthenticatedUser(UUID.fromString(rawUserId));
-        } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "invalid authenticated user");
-        }
+    @Override
+    public String getName() {
+        return userId.toString();
     }
 }

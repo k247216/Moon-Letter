@@ -23,6 +23,8 @@ management:
         enabled: true
 
 moon-letter:
+  bootstrap:
+    secret: ${BOOTSTRAP_SECRET:}
   storage:
     s3:
       endpoint: ${S3_ENDPOINT:}

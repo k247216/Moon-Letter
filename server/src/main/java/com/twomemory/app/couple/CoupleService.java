@@ -169,8 +169,8 @@ public class CoupleService {
         }
         String normalized = raw.trim();
         long codePoints = normalized.codePoints().count();
-        if (codePoints < 1 || codePoints > 24) {
-            throw new ValidationException("display name must contain 1 to 24 Unicode code points");
+        if (codePoints < 1 || codePoints > 40) {
+            throw new ValidationException("display name must contain 1 to 40 Unicode code points");
         }
         return normalized;
     }
@@ -215,6 +215,9 @@ public class CoupleService {
     }
 
     private CoupleView mapCouple(ResultSet rs) throws SQLException {
+        if (!rs.next()) {
+            return null;
+        }
         UUID coupleId = rs.getObject("id", UUID.class);
         SpaceStatus status = SpaceStatus.valueOf(rs.getString("status"));
         List<MemberView> members = new ArrayList<>();

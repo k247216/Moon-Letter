@@ -65,8 +65,12 @@ public class EntryService {
     }
 
     @Transactional
-    public PublishResult publish(UUID entryId, long baseVersion) {
+    public PublishResult publish(UUID entryId, UUID actorId, long baseVersion) {
         EntryRow entry = lockEntry(entryId);
+        accessPolicy.requireMember(actorId, entry.coupleId());
+        if (!entry.authorId().equals(actorId)) {
+            throw new EntryAccessDeniedException("only the author can publish the draft");
+        }
         if (entry.rowVersion() != baseVersion) {
             throw new EntryConflict(entryId, List.of());
         }

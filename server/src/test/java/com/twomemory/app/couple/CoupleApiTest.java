@@ -1,6 +1,7 @@
 package com.twomemory.app.couple;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.twomemory.app.auth.TestAuth;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -45,7 +46,7 @@ class CoupleApiTest {
         when(coupleService.createSpace(OWNER)).thenReturn(new CreateSpaceResult(view, "123456"));
 
         mvc.perform(post("/api/v1/couple")
-                        .header("X-User-Id", OWNER)
+                        .with(TestAuth.deviceSession(OWNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.couple.id").value(SPACE.toString()))
@@ -60,7 +61,7 @@ class CoupleApiTest {
                 .when(coupleService).pair(PARTNER, "123456");
 
         mvc.perform(post("/api/v1/couple/pair")
-                        .header("X-User-Id", PARTNER)
+                        .with(TestAuth.deviceSession(PARTNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new PairRequest("123456"))))
                 .andExpect(status().isConflict());
@@ -72,7 +73,7 @@ class CoupleApiTest {
                 .when(coupleService).pair(PARTNER, "123456");
 
         mvc.perform(post("/api/v1/couple/pair")
-                        .header("X-User-Id", PARTNER)
+                        .with(TestAuth.deviceSession(PARTNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new PairRequest("123456"))))
                 .andExpect(status().isConflict());
@@ -85,7 +86,7 @@ class CoupleApiTest {
                 .thenReturn(profile);
 
         mvc.perform(patch("/api/v1/couple/{coupleId}/members/{userId}/profile", SPACE, OWNER)
-                        .header("X-User-Id", OWNER)
+                        .with(TestAuth.deviceSession(OWNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new UpdateProfileRequest("  小明  ", null, "PURE_WHITE"))))
@@ -101,7 +102,7 @@ class CoupleApiTest {
                 .when(coupleService).updateProfile(eq(OWNER), eq(SPACE), eq(PARTNER), any(UpdateProfileRequest.class));
 
         mvc.perform(patch("/api/v1/couple/{coupleId}/members/{userId}/profile", SPACE, PARTNER)
-                        .header("X-User-Id", OWNER)
+                        .with(TestAuth.deviceSession(OWNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new UpdateProfileRequest("小红", null, "WARM_BEIGE"))))
@@ -114,7 +115,7 @@ class CoupleApiTest {
                 .when(coupleService).updateProfile(eq(OWNER), eq(SPACE), eq(OWNER), any(UpdateProfileRequest.class));
 
         mvc.perform(patch("/api/v1/couple/{coupleId}/members/{userId}/profile", SPACE, OWNER)
-                        .header("X-User-Id", OWNER)
+                        .with(TestAuth.deviceSession(OWNER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new UpdateProfileRequest("小明", null, "PINK"))))

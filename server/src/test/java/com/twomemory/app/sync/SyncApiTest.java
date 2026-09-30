@@ -2,6 +2,7 @@ package com.twomemory.app.sync;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twomemory.app.auth.SpaceAccessPolicy;
+import com.twomemory.app.auth.TestAuth;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -61,7 +62,7 @@ class SyncApiTest {
                 .thenReturn(new MutationResult(200, BODY_TRUE, true));
 
         mvc.perform(post("/api/v1/sync/operations")
-                        .header("X-User-Id", USER)
+                        .with(TestAuth.deviceSession(USER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -78,7 +79,7 @@ class SyncApiTest {
                 .thenThrow(new SyncConflictException("operation id was used with another payload"));
 
         mvc.perform(post("/api/v1/sync/operations")
-                        .header("X-User-Id", USER)
+                        .with(TestAuth.deviceSession(USER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict());
@@ -90,7 +91,7 @@ class SyncApiTest {
                 .thenThrow(new SyncValidationException("limit must be between 1 and 200"));
 
         mvc.perform(get("/api/v1/sync/changes")
-                        .header("X-User-Id", USER)
+                        .with(TestAuth.deviceSession(USER, SPACE))
                         .param("coupleId", SPACE.toString())
                         .param("after", "0")
                         .param("limit", "201"))
@@ -105,7 +106,7 @@ class SyncApiTest {
                         9L, false));
 
         mvc.perform(get("/api/v1/sync/changes")
-                        .header("X-User-Id", USER)
+                        .with(TestAuth.deviceSession(USER, SPACE))
                         .param("coupleId", SPACE.toString())
                         .param("after", "8")
                         .param("limit", "50"))
@@ -121,7 +122,7 @@ class SyncApiTest {
                 .when(changeFeedService).readChanges(eq(USER), eq(SPACE), eq(0L), eq(50));
 
         mvc.perform(get("/api/v1/sync/changes")
-                        .header("X-User-Id", USER)
+                        .with(TestAuth.deviceSession(USER, SPACE))
                         .param("coupleId", SPACE.toString())
                         .param("after", "0")
                         .param("limit", "50"))

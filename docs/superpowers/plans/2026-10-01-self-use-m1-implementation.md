@@ -9,6 +9,7 @@
 **Tech Stack:** Java 21, Spring Boot 3.5.x, Spring Security, Maven, PostgreSQL, Flyway, Testcontainers or explicit test PostgreSQL; Kotlin, Android Gradle Plugin, Jetpack Compose, Room, WorkManager, Retrofit/OkHttp, Kotlinx Serialization.
 
 **Authoritative spec:** `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
+**Standing product principles:** `docs/human-scale-principles.md` — 范围或顺序需要取舍时按该文件第 9 节让路，不得为完成度牺牲记录成本、连续性或可带走性。
 
 **Current truth:** M1 is `NOT VERIFIED`. Existing server and Android tests are component evidence only; `TwoDeviceSyncTest` and `TwoDeviceScenarioTest` are not accepted as end-to-end evidence.
 
@@ -23,6 +24,24 @@
 - Never commit `local.properties`, `.env`, tokens, bootstrap secrets, object-storage keys or `google-services.json`.
 - A fake server may support unit tests but may not be labeled E2E.
 - If a listed file already exists, modify it rather than creating a parallel implementation.
+- **Measure authoring cost, do not argue about it.** 每个触及编辑器的任务都要在验收记录里写下从解锁到保存成功的实际秒数与交互数（规格 §3.5）。任何让这两项变大的改动都算回归，即使它让界面更好看。
+- **No statistics features at all.** 不得实现记录条数、字数、活跃或间隔天数的统计、趋势、排名、已读列表或"对方没写"提示，包括以设置项、调试入口或本地统计的形式（规格 §3.4）。
+- **Migration discipline starts when real entries start.** Task 11 之后出现真实内容，此后所有 migration 必须向后兼容或有演练过的回滚，并先在一份含真实数据的副本上跑过（规格 §6.4）。
+- **Task 11 green means start using it for real, that day.** 不要等 Task 14。带已知缺陷开始在两台真机上写真实记录，是唯一正确的顺序；延后一天就少一天真实记录（规格 §9.1）。
+- **本文中"两台真机"= 规格 §9 第 7 条定义的两台目标设备。** 至少一台是真实 Android 手机；配对端优先用第二台真机，确实没有时用带独立应用数据目录的具名模拟器，并在验收记录写明用的是真机还是模拟器、设备名与 Android 版本。凡涉及真实系统能力（分享面板、通知到点、键盘与触控成本、视觉对照）的证据不得用 JVM 夹具代替。
+
+## Task 0: Decisions that must precede the data layer
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`（§7.3 待决标记、§5.1 密钥失效）
+- Modify: `docs/handoff/2026-09-30-cross-machine-m1-handoff.md`（记录已定结论）
+
+Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难改的决定。可逆的偏好项不在这里问使用者——把它们做成"以后随时能改"（Task 12b），比要求使用者在使用前先配置更符合人类尺度原则第 7、9 节。未获得明确答复时按括号内默认值继续，**但实现方不得自行改换架构方向**。
+
+- [ ] **主数据表示（规格 §7.3）**：确认采用方案 A（PostgreSQL 权威 + 强制全量导出，默认）或方案 B（文件集合本身是权威，数据库退化为索引）。选 B 会重写 Tasks 5–7 的幂等与游标语义，必须先回传影响评估再动工。
+- [ ] **开始真实使用的日期**：写下一个具体日期，不晚于 Task 11 通过之日，并在该日期于两台真机开始写真实记录。同时写下每周可投入的时间上限；超出上限时按人类尺度原则第 9 节砍范围，而不是延长日期。
+- [ ] **桌面图标名称**（Android 唯一被迫提前的命名决定，见规格 §8）：给两个候选让使用者挑，或者明确同意"先用现名，以后随版本改"。除此之外，App 内称呼、身份色、封面和措辞**不在此处提问**，由 Task 12b 以可改入口交付；向使用者索取时一律用两个具体选项，不提供成品征求意见。
+- [ ] Commit: `docs(decisions): fix pre-flight product decisions`.
 
 ## Task 1: Make the server reproducibly bootable
 
@@ -49,7 +68,9 @@
 - Create: `server/src/main/java/com/twomemory/app/auth/SecurityConfig.java`
 - Create: `server/src/main/java/com/twomemory/app/auth/BootstrapController.java`
 - Create: `server/src/main/java/com/twomemory/app/auth/BootstrapService.java`
+- Create: `server/src/main/java/com/twomemory/app/auth/SessionAdminCommand.java`
 - Create: `server/src/test/java/com/twomemory/app/auth/BootstrapAuthenticationTest.java`
+- Create: `server/src/test/java/com/twomemory/app/auth/SessionRecoveryTest.java`
 - Modify: `server/src/main/java/com/twomemory/app/auth/AuthenticatedUser.java`
 - Modify: `server/src/main/java/com/twomemory/app/couple/CoupleController.java`
 - Modify: `server/src/main/java/com/twomemory/app/entry/EntryController.java`
@@ -57,6 +78,9 @@
 - Modify: `server/src/main/java/com/twomemory/app/sync/SyncController.java`
 
 - [ ] Write real-database tests proving bootstrap works only on an empty installation with `BOOTSTRAP_SECRET`, a second bootstrap is rejected, an invalid bearer token receives 401, and a guessed `X-User-Id` grants no access.
+- [ ] 标记 bootstrap 密钥已消费：bootstrap 成功后同一 `BOOTSTRAP_SECRET` 永久失效并有测试证明。否则恢复演练中的"删库重建"会让任何可达该端口的人抢先把空间建走。
+- [ ] Write `SessionRecoveryTest` proving that with **no valid session existing at all**（模拟两台设备都不可用），一个仅在本机可执行的管理命令能吊销残留会话、为指定成员签发新会话，且新会话可以通过真实 HTTP 拉取到该空间的全部既有数据。这是规格 §5.4 的锁死防护，缺了它，一次换机或系统重置就等于永久失去存档。
+- [ ] Implement `SessionAdminCommand` as a local-only CLI (or an endpoint guarded by a distinct `RECOVERY_SECRET` that is never equal to `BOOTSTRAP_SECRET`); record issue/revoke/restore in an audit row containing no token material.
 - [ ] Add `device_session` with token hash, user/couple foreign keys, created/last-used/revoked timestamps; never persist plaintext tokens. Enforce at most one active session per member in M1 and rotate it on device replacement.
 - [ ] Return an opaque token only when creating a session. Use `Authorization: Bearer`; disable form login and HTTP Basic; allow only health, bootstrap and pair endpoints explicitly.
 - [ ] Remove production use of `AuthenticatedUser.fromHeader` and make controllers read the authenticated principal.
@@ -156,7 +180,9 @@
 - Create: `android/gradle.properties`
 
 - [ ] Run `cd android && ./gradlew :app:assembleDebug :app:testDebugUnitTest`; keep the first compiler/configuration failures as evidence.
+- [ ] **测试装置选型先定，不要先做：** 以 Robolectric 在 JVM 上运行**两个真实 Room 数据库 + 真实 Retrofit 到真实 Spring Boot** 作为 `Room → Outbox → HTTP → PostgreSQL → Change Feed → 第二个 Room` 的主要证明手段；模拟器侧只保留一个最小 `connectedDebugAndroidTest` smoke 和 Task 14 的录像。跨两个独立应用数据目录的 instrumented 双端测试在单人开发中极不稳定（共享 localhost 服务、两个 app 实例、网络注入），而它要证明的链路并不需要模拟器。**这是证明成本的选择，不是降低标准**：Robolectric 侧必须用真 Room、真 HTTP、真 PostgreSQL，仍不得调用 service 或使用内存假服务。
 - [ ] Enable Compose where Compose code exists, configure the instrumentation runner and dependencies, fix incorrect imports, align JVM targets and configure JUnit consistently.
+- [ ] 静态审查已确认、需在此任务内一并修掉的缺陷（不必重新发现）：缺少 `android/gradle.properties`（`android.useAndroidX` 从未设置）；除 `app` 外 5 个含 Compose 代码的模块没有 `buildFeatures { compose = true }`；`PersonalEditorScreen.kt:12` 的 `verticalScroll` import 包名错误；`ui-test-junit4` 无版本号而 Compose BOM 只加在 `implementation` 上；9 个模块均无 `testInstrumentationRunner`；feature/app 的 androidTest 缺 junit4 与 `androidx.test:core`；`core:sync` 声明了 JUnit 5 但从未 `useJUnitPlatform()`；`app` 模块不依赖 `:core:database`/`:core:network`/`:core:sync`，因此 WorkManager 根本不在 APK 里；`AndroidManifest.xml` 无 `android:theme` 且 `res/values` 无 `styles.xml`。
 - [ ] Run `./gradlew :app:assembleDebug testDebugUnitTest` and one minimal `connectedDebugAndroidTest` on a named API 37 device.
 - [ ] Document JDK, SDK, emulator/device model and Android version; do not commit `local.properties`.
 - [ ] Commit: `build(android): establish verified app and test baseline`.
@@ -213,6 +239,56 @@
 - [ ] Gate: do not begin Tasks 12–13 until this task is green.
 - [ ] Commit: `feat(m1): complete personal text two-device slice`.
 
+## Task 11a: Start using it for real (same day Task 11 goes green)
+
+这不是一个开发任务，是一个**必须当天执行的动作**。档案的价值只按天累积，而这条链路已经真实可用。
+
+**Files:**
+- Create: `docs/testing/real-use-log.md`
+- Modify: `docs/testing/m1-acceptance.md`
+
+- [ ] 在两台目标真机安装该 commit 产出的 APK，用真实账号 bootstrap 与配对，双方各写至少一条真实记录并完成一次双端互见。
+- [ ] 在 `docs/testing/real-use-log.md` 记下开始日期、设备型号、Android 版本与当前已知缺陷清单（明确写出"带这些缺陷开始用"）。
+- [ ] 宣告迁移纪律切换：此后该库中已存在不可再生内容，所有 migration 必须向后兼容或有演练过的回滚，并先在一份真实数据副本上执行（规格 §6.4）。
+- [ ] 执行一次规格 §5.4 的会话恢复演练：吊销全部会话 → 用 `SessionAdminCommand` 重新签发 → 两台真机重新拉取一致。记录命令与退出码。
+- [ ] 记录观察基线：未来四周内，每台设备**未经提醒的自发打开**次数。这是唯一被承认的使用指标，不得在界面内呈现任何形式（规格 §3.4）。
+
+## Task 11b: System share intake and measured authoring cost
+
+接住已经发生的交换，比邀请新的创作更重要。一张本来就要发给对方的照片，应该两步之内成为一条记录。
+
+**Files:**
+- Modify: `android/app/src/main/AndroidManifest.xml`
+- Modify: `android/app/src/main/java/com/twomemory/app/AppNavigation.kt`
+- Create: `android/app/src/main/java/com/twomemory/app/ShareReceiverActivity.kt`
+- Modify: `android/feature/editor/src/main/java/com/twomemory/editor/PersonalEditorScreen.kt`
+- Modify: `android/feature/editor/src/main/java/com/twomemory/editor/EditorViewModel.kt`
+
+- [ ] 注册 `SEND`/`SEND_MULTIPLE` intent 过滤器（文字与图片 MIME），分享进入后直达一条**已自动保存为草稿**的可编辑记录，不出现媒介类型选择、不出现必填字段。
+- [ ] 图片分享在 Task 13 之前只落地为本地待上传引用，不得因为服务端不可达而丢失正文或本地图（规格 §3.1 第 8 项与人类尺度原则第 6 节）。
+- [ ] `＋记录` 直接进入书写态；失焦自动保存；进程被杀后重进恢复正文。
+- [ ] 在两台真机上各计时一次：从解锁到一条纯文字记录保存成功的实际秒数与交互数，写入验收记录（目标 ≤ 10 秒、≤ 4 次交互）。此后任何使该数字变大的改动都算回归。
+- [ ] Commit: `feat(android): accept shared content as a draft entry`.
+
+## Task 11c: Weekly re-encounter and one quiet notification
+
+回看才是回报。这条能力的实现成本极低、情感收益极高，因此不属于 M3。
+
+**Files:**
+- Create: `android/core/sync/src/main/java/com/twomemory/sync/WeeklyReviewWorker.kt`
+- Create: `android/app/src/main/java/com/twomemory/app/notifications/`
+- Modify: `android/feature/timeline/src/main/java/com/twomemory/timeline/TimelineViewModel.kt`
+- Modify: `android/feature/couple/src/main/java/com/twomemory/couple/CoupleScreen.kt`
+
+- [ ] 每周固定时间（默认周日 20:00，可关闭、可改时间）挑出**一条**明显更早的已发布记录（优先约一年前，逐级回退），点开直达该条记录。
+- [ ] 找不到符合窗口内任何记录时安静跳过：不提示"本周没有内容"，不用近期记录凑数，不生成任何内容（规格 §3.1 第 14 项）。
+- [ ] 对方发布新记录后，在**本端同步完成时**发一次本地通知，只写"TA 写了一条新的"，不含正文、不含数量、不累积未读数（规格 §3.1 第 16 项）。
+- [ ] 两个能力都必须能在设置里一次关闭；关闭后不得留下任何计数或历史。
+- [ ] 自查并在代码评审记录中确认：本任务未引入任何统计、趋势、已读列表或"对方没写"提示（规格 §3.4）。
+- [ ] Commit: `feat(android): add weekly re-encounter and new-entry notice`.
+
+> Task 11b 与 11c 不阻塞 Task 12；但 11a 必须与 Task 11 同日完成。
+
 ## Task 12: Add shared perspectives, comments and version history
 
 **Files:**
@@ -231,6 +307,26 @@
 - [ ] Do not implement CRDT, live cursor, cross-author merge or conflict-resolution UI.
 - [ ] Run server tests plus Android unit/instrumented tests for the shared path.
 - [ ] Commit: `feat(entries): add author-owned shared perspectives`.
+
+## Task 12b: Make identity and appearance editable by the user
+
+"由使用者决定"不是一次提前的问答，而是应用里的一个入口。没有实现这条能力时，Task 14 的"像使用者自己的"无法通过——目前没有任何其他任务产出它。
+
+**Files:**
+- Modify: `android/feature/couple/src/main/java/com/twomemory/couple/CoupleScreen.kt`
+- Create: `android/feature/couple/src/main/java/com/twomemory/couple/ProfileEditScreen.kt`
+- Create: `android/core/database/src/main/java/com/twomemory/database/PreferenceDao.kt`
+- Modify: `android/core/database/src/main/java/com/twomemory/database/AppDatabase.kt`
+- Modify: `server/src/main/java/com/twomemory/app/couple/CoupleService.java`
+- Modify: `server/src/main/java/com/twomemory/app/sync/SyncOperationDispatcher.java`
+- Modify: `server/src/test/java/com/twomemory/app/couple/CoupleApiTest.java`
+
+- [ ] 名字、头像与本人身份色属于 profile，经 `UPDATE_OWN_PROFILE` 类型的同步操作走同一条链路：本地写入与 outbox 在同一 Room 事务提交，伴侣端能看到"TA 改了称呼/颜色"。只能改自己的，越权路径已在 Task 4 覆盖，此处补 negative test。
+- [ ] 主题（暖米色/纯白）与首页封面属于本机偏好，存 Room 并跨重启保留，明确不覆盖对方；封面默认沿用现稿，替换为一张本地图片后不得影响任何已有记录。
+- [ ] 全部入口只放在「我们」页，记录路径不得多出新步骤或新选择器（规格 §3.5）。
+- [ ] 测试：改称呼与身份色后伴侣端 Room 一致；改主题与封面后重启应用仍生效且不产生任何 change row；已有记录内容逐字节不变。
+- [ ] `display_name` 与 `comment.body` 的长度上限按规格 §6.5 的裁定实现，未裁定前不写死较紧的一方。
+- [ ] Commit: `feat(couple): make identity and appearance user-editable in app`.
 
 ## Task 13: Add image lifecycle, backup/restore and selective export
 
@@ -254,6 +350,9 @@
 - [ ] Test pending/uploaded/ready/failure states and reject publication for non-ready or foreign media.
 - [ ] Make retries reuse an object identity; preserve a ready upload when publication fails.
 - [ ] Produce a versioned backup manifest and perform a restore into an isolated database/bucket; compare counts and sampled hashes.
+- [ ] **备份首先是每天自己会跑的东西，其次才是一次演练。** 实现调度（cron/systemd timer/等价机制）每日自动执行，不依赖维护者记得操作；每次成功写入一行可查询的 `backup_health`（时间、规模、校验摘要）；连续失败必须在维护者下次进入服务端时明确可见，而不是只落在日志里。自托管存档的真实风险不是"没备份过"，而是"脚本某天静默失败，三个月后才发现"。
+- [ ] 启用对象存储版本控制或等效防误删能力；至少存放一份**不在这台服务器上**的副本，且不与服务器共享同一把钥匙；备份介质本身加密并具备独立访问控制——泄露面不能只是从服务器搬到备份目录。
+- [ ] 收集连续至少 7 天的 `backup_health` 证据行，再做一次完整恢复演练（含 Task 11a 的会话恢复），演练记录写入 `docs/testing/m1-backup-restore.md` 并注明此后每季度重复。
 - [ ] Export a selected record and a date range as JSON, Markdown/HTML and original media without secrets.
 - [ ] Run media/export tests and the documented restore drill.
 - [ ] Commit: `feat(data): add image integrity backup and export`.
@@ -266,11 +365,13 @@
 - Modify: `docs/testing/m1-acceptance.md`
 - Modify: `README.md`
 
-- [ ] Wire profile name/avatar and per-device beige/white theme. Keep album and map as honest unavailable states.
+- [ ] Verify Task 12b landed (profile name/avatar, identity color, per-device beige/white theme, cover). If it has not, do not re-implement it here as a static style — raise it as a blocked dependency. Keep album and map as honest unavailable states.
 - [ ] Capture 390 × 844 reference-state screenshots for timeline, personal editor, shared editor and couple profile; also test a shorter viewport, keyboard open and enlarged font.
 - [ ] Compare against `docs/design/reference/` for structure, spacing, color, icon stroke, typography, scroll and navigation. Do not use screenshots as UI backgrounds.
+- [ ] **验收现场是真实设备（规格 §9 第 7 条），不是参考稿的并排截图。** 参考稿与骨架代码产出自同一天，它给的是方向（手帐质感、连续缝线时间轴、双身份色层级），不是像素基线。最终判断标准三条：像纸、像使用者自己的、不像软件。
+- [ ] 开箱默认值必须自己就过得去——使用者不配置也能直接用；同时现场演示 Task 12b 的入口：使用者在两台目标设备上各自改掉称呼或身份色/主题/封面，**两分钟内完成、不需要重新构建、不丢任何已有记录**。桌面图标名是唯一需要提前问的一项（两个候选二选一）。不得提供成品征求意见，也不得以"和参考图一致"为由覆盖使用者的选择（人类尺度原则第 7 节）。
 - [ ] Run the full server suite, Android unit tests, connected tests, assembly, two-device scenario and backup/restore drill from a clean checkout.
-- [ ] On two real devices or two independent emulator data directories, record a complete screen capture of offline A → online server → B Room/UI.
+- [ ] Record a complete screen capture of offline A → online server → B Room/UI on real hardware: at least one real Android phone, the paired side a second real phone or a named emulator with its own data directory (state which, plus device name and OS version). The Room-to-Room data trace itself comes from the JVM harness; this recording proves the app people actually touch.
 - [ ] Update acceptance rows with exact commands, environment, commit, exit code and artifact paths. Any missing mandatory row leaves status `NOT VERIFIED`.
 - [ ] Commit: `test(m1): record verified self-use acceptance evidence`.
 
@@ -278,4 +379,9 @@
 
 ## Completion boundary
 
-Do not claim M1 complete because code compiles, 28 tests pass, a fake two-device model passes, or screenshots resemble the references. Completion requires the Task 14 evidence set on one exact commit. Video, audio, music, map stories, album organization, countdowns, capsules, “过去的今天” and weekly summaries remain subsequent milestones.
+Do not claim M1 complete because code compiles, 28 tests pass, a fake two-device model passes, or screenshots resemble the references. Completion requires the Task 14 evidence set on one exact commit. Video, audio, music, map stories, album organization, countdowns, capsules and “过去的今天” remain subsequent milestones; **每周回看不再属于其中，它已经在 Task 11c**。
+
+另外两条同等有效的判定：
+
+- **把开始使用的日期一再推后，本身就是失败**，哪怕每个 Gate 都是绿的。这份档案的价值只按天累积（Task 11a）。
+- 任何使记录成本变大、或引入统计与关系记分牌的改动，即使让测试更绿，也不算完成，只能算回归（规格 §3.4、§3.5）。

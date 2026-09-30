@@ -1,6 +1,7 @@
 package com.twomemory.app.entry;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.twomemory.app.auth.TestAuth;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -46,7 +47,7 @@ class EntryApiTest {
         when(entryService.readEntry(eq(ENTRY), eq(USER))).thenThrow(new EntryAccessDeniedException("draft is private"));
 
         mvc.perform(get("/api/v1/entries/{entryId}", ENTRY)
-                        .header("X-User-Id", USER))
+                        .with(TestAuth.deviceSession(USER, SPACE)))
                 .andExpect(status().isForbidden());
     }
 
@@ -59,7 +60,7 @@ class EntryApiTest {
                 new BlockMutation(UUID.fromString("00000000-0000-0000-0000-000000000030"),
                         BlockType.TEXT, 10, USER, "{\"text\":\"改\"}", null, false)));
         mvc.perform(post("/api/v1/entries/{entryId}/changes", ENTRY)
-                        .header("X-User-Id", USER)
+                        .with(TestAuth.deviceSession(USER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict());
@@ -75,7 +76,7 @@ class EntryApiTest {
                         USER, 0, 0, List.of()));
 
         mvc.perform(post("/api/v1/entries")
-                        .header("X-User-Id", USER)
+                        .with(TestAuth.deviceSession(USER, SPACE))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(command)))
                 .andExpect(status().isCreated());
