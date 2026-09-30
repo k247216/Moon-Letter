@@ -115,3 +115,11 @@
 - **测试**：新增 `EntryOwnershipTest`（独立真库 moon_letter_own_test，种子两个空间三成员）：外空间成员读条目被拒、伴侣/外来者发布他人草稿被拒（作者成功）、伴侣可追加自己块但改/删作者块被拒、发布引用 UPLOADING 媒体被拒、引用外空间 READY 媒体被拒。
 - **结果**：`mvn test` → `Tests run: 39, Failures: 0, Errors: 0`，`EXIT=0`。
 - **TDD 红灯**：首跑 5 个断言中 3 处期望异常类型与实际策略不符（requireMember 抛 403 ResponseStatusException），修正断言后转绿；归属逻辑本身无缺陷。
+
+### 记录 5：Task 5 类型化幂等操作（2026-10-01）
+
+- **Commit**：`feat(sync): dispatch typed idempotent operations`。
+- **实现**：新增 `SyncOperationDispatcher`（封闭 OperationType 枚举，当前仅 CREATE_PERSONAL_ENTRY），客户端不再能提交任意 change payload；请求 DTO 改为 `{operationId, coupleId, payloadHash, operationType, payload}`，hash 对 operationType+payload 规范化；dispatcher 校验 payload（作者必须=认证用户、TEXT-only 块、必填时间/时区）后调用 EntryService.createDraft；幂等声明、业务变更、change 追加、响应存储同处 executeOnce 的一个 @Transactional 边界；entry 包的跨包 DTO（EntryMode/BlockType/BlockMutation/CreateEntryCommand/EntryView）提升为 public。
+- **测试**：新增 `TypedSyncOperationTest`（独立真库 moon_letter_sync_test + 真 HTTP + 手工种子设备会话）：类型化操作改变 entry/entry_block/sync_change 表、重复 (couple_id, operation_id) 回放且无第二效果（响应经 jsonb 归一化后语义相等）、同 ID 不同 payload 409、注入失败后幂然声明/业务数据/变更行三者全部回滚且同 ID 可重试成功、未知操作类型 400。
+- **结果**：`mvn test` → `Tests run: 45, Failures: 0, Errors: 0`，`EXIT=0`。
+- **TDD 红灯**：首跑暴露两处测试缺陷（payload() 双次调用产生不同随机 blockId 导致 hash 自不匹配；回放体键序差异需语义比较），实现本身无缺陷，修正后转绿。

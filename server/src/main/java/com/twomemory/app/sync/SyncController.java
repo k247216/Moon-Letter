@@ -22,15 +22,18 @@ public class SyncController {
 
     private final IdempotencyService idempotencyService;
     private final ChangeFeedService changeFeedService;
+    private final SyncOperationDispatcher operationDispatcher;
     private final SyncNotificationPublisher notificationPublisher;
     private final SpaceAccessPolicy accessPolicy;
 
     public SyncController(IdempotencyService idempotencyService,
                            ChangeFeedService changeFeedService,
+                           SyncOperationDispatcher operationDispatcher,
                            SyncNotificationPublisher notificationPublisher,
                            SpaceAccessPolicy accessPolicy) {
         this.idempotencyService = idempotencyService;
         this.changeFeedService = changeFeedService;
+        this.operationDispatcher = operationDispatcher;
         this.notificationPublisher = notificationPublisher;
         this.accessPolicy = accessPolicy;
     }
@@ -40,6 +43,9 @@ public class SyncController {
             @AuthenticationPrincipal AuthenticatedUser actor,
             @RequestBody SyncOperationRequest request) {
         UUID userId = actor.userId();
+        if (request.coupleId() == null || request.operationId() == null) {
+            throw new SyncValidationException("operation id and couple id are required");
+        }
         accessPolicy.requireMember(userId, request.coupleId());
         if (!SyncPayloadHasher.hash(request).equalsIgnoreCase(request.payloadHash())) {
             throw new SyncValidationException("payload hash does not match canonical operation payload");
@@ -47,11 +53,13 @@ public class SyncController {
         AtomicLong sequence = new AtomicLong(-1);
         MutationResult result = idempotencyService.executeOnce(
                 request.operationId(), userId, request.payloadHash(), () -> {
+                    SyncOperationDispatcher.DispatchOutcome outcome = operationDispatcher.dispatch(
+                            userId, request.coupleId(), request.operationType(), request.payload());
                     long latest = changeFeedService.appendChange(
-                            request.coupleId(), request.entityType(), request.entityId(),
-                            request.operation(), request.body());
+                            request.coupleId(), outcome.entityType(), outcome.entityId(),
+                            outcome.operation(), outcome.responseBody());
                     sequence.set(latest);
-                    return new MutationResult(200, request.body(), false);
+                    return new MutationResult(200, outcome.responseBody(), false);
                 });
         if (!result.replayed() && sequence.get() >= 0) {
             notificationPublisher.notifySpaceChanged(request.coupleId(), sequence.get());

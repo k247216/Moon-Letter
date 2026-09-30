@@ -47,6 +47,9 @@ class SyncApiTest {
     private ChangeFeedService changeFeedService;
 
     @MockBean
+    private SyncOperationDispatcher operationDispatcher;
+
+    @MockBean
     private SyncNotificationPublisher notificationPublisher;
 
     @MockBean
@@ -54,11 +57,8 @@ class SyncApiTest {
 
     @Test
     void duplicateOperationReturnsOriginalResult() throws Exception {
-        SyncOperationRequest request = new SyncOperationRequest(
-                OPERATION, SPACE, "", "ENTRY", OPERATION, "UPSERT", BODY_TRUE);
-        String hash = SyncPayloadHasher.hash(request);
-        request = new SyncOperationRequest(OPERATION, SPACE, hash, "ENTRY", OPERATION, "UPSERT", BODY_TRUE);
-        when(idempotencyService.executeOnce(eq(OPERATION), eq(USER), eq(hash), any()))
+        SyncOperationRequest request = request(BODY_TRUE);
+        when(idempotencyService.executeOnce(eq(OPERATION), eq(USER), eq(request.payloadHash()), any()))
                 .thenReturn(new MutationResult(200, BODY_TRUE, true));
 
         mvc.perform(post("/api/v1/sync/operations")
@@ -71,11 +71,8 @@ class SyncApiTest {
 
     @Test
     void reusedOperationIdWithDifferentPayloadIsRejected() throws Exception {
-        SyncOperationRequest request = new SyncOperationRequest(
-                OPERATION, SPACE, "", "ENTRY", OPERATION, "UPSERT", BODY_FALSE);
-        String hash = SyncPayloadHasher.hash(request);
-        request = new SyncOperationRequest(OPERATION, SPACE, hash, "ENTRY", OPERATION, "UPSERT", BODY_FALSE);
-        when(idempotencyService.executeOnce(eq(OPERATION), eq(USER), eq(hash), any()))
+        SyncOperationRequest request = request(BODY_FALSE);
+        when(idempotencyService.executeOnce(eq(OPERATION), eq(USER), eq(request.payloadHash()), any()))
                 .thenThrow(new SyncConflictException("operation id was used with another payload"));
 
         mvc.perform(post("/api/v1/sync/operations")
@@ -83,6 +80,24 @@ class SyncApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void payloadHashMismatchIsRejectedBeforeAnyMutation() throws Exception {
+        SyncOperationRequest request = new SyncOperationRequest(
+                OPERATION, SPACE, "0".repeat(64), "CREATE_PERSONAL_ENTRY", "{}");
+
+        mvc.perform(post("/api/v1/sync/operations")
+                        .with(TestAuth.deviceSession(USER, SPACE))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    private SyncOperationRequest request(String payload) {
+        return new SyncOperationRequest(OPERATION, SPACE,
+                SyncPayloadHasher.hash("CREATE_PERSONAL_ENTRY", payload),
+                "CREATE_PERSONAL_ENTRY", payload);
     }
 
     @Test
