@@ -5,40 +5,40 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Warm page block behind the cover. -->
+    <!-- Exact 2.25x translation of the approved 48px browser icon. -->
     <path
-        android:fillColor="#EEE1CD"
-        android:pathData="M27,25H78C82,25 84,28 84,32V76C84,80 82,82 78,82H27Z" />
-    <path
-        android:fillColor="#E2D1B8"
-        android:pathData="M27,77H79C81.5,77 83,78.5 83,81V83H27Z" />
+        android:fillColor="#293A2F26"
+        android:pathData="M38.25,29.25H76.5A11.25,11.25 0,0 1,87.75 40.5V85.5A11.25,11.25 0,0 1,76.5 96.75H38.25A9,9 0,0 1,29.25 87.75V38.25A9,9 0,0 1,38.25 29.25Z" />
 
-    <!-- Gold bookmark sits behind the coral cover. -->
+    <path
+        android:fillColor="#EFE2CD"
+        android:pathData="M38.25,24.75H76.5A11.25,11.25 0,0 1,87.75 36V81A11.25,11.25 0,0 1,76.5 92.25H38.25A9,9 0,0 1,29.25 83.25V33.75A9,9 0,0 1,38.25 24.75Z" />
+
     <path
         android:fillColor="#D7B369"
-        android:pathData="M48,73H55V88L51.5,85L48,88Z" />
+        android:pathData="M60.75,81H67.5V99L64.125,94.68L60.75,99Z" />
 
-    <!-- Dominant coral diary cover. -->
     <path
         android:fillColor="#C98273"
-        android:pathData="M24,21H73C78,21 81,24 81,29V71C81,76 78,79 73,79H24Z" />
+        android:pathData="M29.25,18H72A11.25,11.25 0,0 1,83.25 29.25V76.5A11.25,11.25 0,0 1,72 87.75H29.25A6.75,6.75 0,0 1,22.5 81V24.75A6.75,6.75 0,0 1,29.25 18Z" />
 
-    <!-- Sage cloth spine and its quiet binding line. -->
     <path
         android:fillColor="#818D78"
-        android:pathData="M24,21H38V79H24C20,79 18,76 18,72V28C18,24 20,21 24,21Z" />
+        android:pathData="M29.25,18H38.25V87.75H29.25A6.75,6.75 0,0 1,22.5 81V24.75A6.75,6.75 0,0 1,29.25 18Z" />
     <path
-        android:fillColor="#687361"
-        android:pathData="M34,21H36V79H34Z" />
+        android:fillColor="#24463A31"
+        android:pathData="M36,18H38.25V87.75H36Z" />
 
-    <!-- Small moon-gold crescent pressed into the cover. -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M42.75,27V31M42.75,35V39M42.75,43V47M42.75,51V55M42.75,59V63M42.75,67V71M42.75,75V78.75"
+        android:strokeColor="#66FFFFFF"
+        android:strokeWidth="2.25" />
+
     <path
         android:fillColor="#D7B369"
-        android:fillType="evenOdd"
-        android:pathData="M58,34A12,12 0,1 0,58 58A12,12 0,1 0,58 34ZM62,36A10,10 0,1 1,62 56A10,10 0,1 1,62 36Z" />
-
-    <!-- One restrained writing line keeps the diary identity at small size. -->
+        android:pathData="M60.75,33.75A11.25,11.25 0,1 0,60.75 56.25A11.25,11.25 0,1 0,60.75 33.75Z" />
     <path
-        android:fillColor="#E5B2A5"
-        android:pathData="M45,66H68V68H45Z" />
+        android:fillColor="#C98273"
+        android:pathData="M67.5,31.5A11.25,11.25 0,1 0,67.5 54A11.25,11.25 0,1 0,67.5 31.5Z" />
 </vector>
