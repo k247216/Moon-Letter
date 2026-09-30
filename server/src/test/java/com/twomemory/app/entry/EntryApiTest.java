@@ -54,7 +54,7 @@ class EntryApiTest {
     @Test
     void sameBlockConflictReturns409() throws Exception {
         doThrow(new EntryConflict(ENTRY, List.of(UUID.fromString("00000000-0000-0000-0000-000000000030"))))
-                .when(entryService).applyChanges(eq(ENTRY), eq(1), any());
+                .when(entryService).applyChanges(eq(ENTRY), eq(USER), eq(1), any());
 
         ApplyChangesRequest request = new ApplyChangesRequest(1, List.of(
                 new BlockMutation(UUID.fromString("00000000-0000-0000-0000-000000000030"),
@@ -71,7 +71,7 @@ class EntryApiTest {
         CreateEntryCommand command = new CreateEntryCommand(
                 USER, SPACE, EntryMode.COLLABORATIVE, "周末", Instant.parse("2026-09-30T12:18:00Z"),
                 "Asia/Shanghai", List.of());
-        when(entryService.createDraft(any(CreateEntryCommand.class)))
+        when(entryService.createDraft(eq(USER), any(CreateEntryCommand.class)))
                 .thenReturn(new EntryView(ENTRY, SPACE, EntryMode.COLLABORATIVE, EntryState.DRAFT,
                         USER, 0, 0, List.of()));
 

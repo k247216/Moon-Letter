@@ -3,6 +3,7 @@ package com.twomemory.app.entry;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twomemory.app.auth.SpaceAccessPolicy;
+import com.twomemory.app.media.MediaService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,20 +27,25 @@ public class EntryService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final SpaceAccessPolicy accessPolicy;
+    private final MediaService mediaService;
 
     public EntryService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper,
-                        SpaceAccessPolicy accessPolicy) {
+                        SpaceAccessPolicy accessPolicy, MediaService mediaService) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.accessPolicy = accessPolicy;
+        this.mediaService = mediaService;
     }
 
     @Transactional
-    public EntryView createDraft(CreateEntryCommand command) {
+    public EntryView createDraft(UUID actorId, CreateEntryCommand command) {
         if (command == null || command.authorId() == null || command.coupleId() == null
                 || command.mode() == null || command.occurredAt() == null
                 || command.occurredTimezone() == null || command.occurredTimezone().isBlank()) {
             throw new EntryValidationException("entry author, space, mode and occurrence time are required");
+        }
+        if (!actorId.equals(command.authorId())) {
+            throw new EntryAccessDeniedException("entry author must be the authenticated user");
         }
         accessPolicy.requireMember(command.authorId(), command.coupleId());
         List<BlockMutation> blocks = stableOrder(command.blocks() == null ? List.of() : command.blocks());
@@ -77,6 +83,7 @@ public class EntryService {
         if (entry.state() != EntryState.DRAFT) {
             throw new EntryValidationException("only a draft can be published");
         }
+        mediaService.requireReady(entry.coupleId(), referencedAssetIds(entryId));
         int revisionNo = entry.currentRevisionNo() + 1;
         updateEntryVersion(entryId, revisionNo, entry.rowVersion() + 1, EntryState.PUBLISHED);
         insertRevision(entryId, revisionNo, entry.currentRevisionNo(), entry.authorId(),
@@ -85,10 +92,14 @@ public class EntryService {
     }
 
     @Transactional
-    public ApplyChangesResult applyChanges(UUID entryId, int baseRevision,
+    public ApplyChangesResult applyChanges(UUID entryId, UUID actorId, int baseRevision,
                                            List<BlockMutation> mutations) {
         EntryRow entry = lockEntry(entryId);
+        accessPolicy.requireMember(actorId, entry.coupleId());
         List<BlockMutation> normalized = stableOrder(mutations == null ? List.of() : mutations);
+        if (normalized.stream().anyMatch(block -> !actorId.equals(block.authorId()))) {
+            throw new EntryAccessDeniedException("block author must be the authenticated user");
+        }
         Set<UUID> incomingIds = normalized.stream().map(BlockMutation::blockId)
                 .filter(id -> id != null).collect(Collectors.toCollection(LinkedHashSet::new));
         Set<UUID> changedSinceBase = new HashSet<>();
@@ -105,6 +116,11 @@ public class EntryService {
         for (BlockMutation block : normalized) {
             validateBlock(block);
             ensureContributor(entry, block.authorId());
+            UUID existingAuthor = existingBlockAuthor(entryId, block.blockId());
+            if (existingAuthor != null && !existingAuthor.equals(block.authorId())) {
+                throw new EntryAccessDeniedException(
+                        "only the block author may edit or delete a shared block");
+            }
             if (block.deleted()) {
                 jdbcTemplate.update("""
                         UPDATE entry_block
@@ -133,8 +149,8 @@ public class EntryService {
         return new ApplyChangesResult(loadEntry(entryId), baseRevision != entry.currentRevisionNo());
     }
 
-    public EntryView resolveConflict(UUID entryId, ResolveConflictCommand command) {
-        return applyChanges(entryId, command.baseRevision(), command.mutations()).entry();
+    public EntryView resolveConflict(UUID entryId, UUID actorId, ResolveConflictCommand command) {
+        return applyChanges(entryId, actorId, command.baseRevision(), command.mutations()).entry();
     }
 
     public EntryView readEntry(UUID entryId, UUID userId) {
@@ -146,7 +162,8 @@ public class EntryService {
         return loadEntry(entryId);
     }
 
-    public TimelinePage readTimeline(UUID coupleId, TimelineCursor cursor, int limit) {
+    public TimelinePage readTimeline(UUID userId, UUID coupleId, TimelineCursor cursor, int limit) {
+        accessPolicy.requireMember(userId, coupleId);
         int safeLimit = Math.max(1, Math.min(limit, 200));
         List<EntryView> entries;
         if (cursor == null) {
@@ -299,6 +316,24 @@ public class EntryService {
                        row_version, current_revision_no
                 FROM entry WHERE id = ?
                 """, this::mapEntryRow, entryId);
+    }
+
+    /** Author of an existing block, or null when the block is new. */
+    private UUID existingBlockAuthor(UUID entryId, UUID blockId) {
+        if (blockId == null) {
+            return null;
+        }
+        List<UUID> authors = jdbcTemplate.query("""
+                SELECT created_by FROM entry_block WHERE id = ? AND entry_id = ?
+                """, (rs, rowNum) -> rs.getObject("created_by", UUID.class), blockId, entryId);
+        return authors.isEmpty() ? null : authors.getFirst();
+    }
+
+    private List<UUID> referencedAssetIds(UUID entryId) {
+        return jdbcTemplate.query("""
+                SELECT asset_id FROM entry_block
+                WHERE entry_id = ? AND asset_id IS NOT NULL AND deleted_at IS NULL
+                """, (rs, rowNum) -> rs.getObject("asset_id", UUID.class), entryId);
     }
 
     private EntryView loadEntry(UUID entryId) {

@@ -30,10 +30,7 @@ public class EntryController {
     public ResponseEntity<EntryView> createDraft(
             @AuthenticationPrincipal AuthenticatedUser actor,
             @RequestBody CreateEntryCommand command) {
-        if (!actor.userId().equals(command.authorId())) {
-            throw new EntryAccessDeniedException("entry author must be the authenticated user");
-        }
-        return ResponseEntity.status(HttpStatus.CREATED).body(entryService.createDraft(command));
+        return ResponseEntity.status(HttpStatus.CREATED).body(entryService.createDraft(actor.userId(), command));
     }
 
     @GetMapping("/{entryId}")
@@ -56,11 +53,7 @@ public class EntryController {
             @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID entryId,
             @RequestBody ApplyChangesRequest request) {
-        if (request.mutations() != null && request.mutations().stream()
-                .anyMatch(mutation -> !actor.userId().equals(mutation.authorId()))) {
-            throw new EntryAccessDeniedException("block author must be the authenticated user");
-        }
-        return entryService.applyChanges(entryId, request.baseRevision(), request.mutations());
+        return entryService.applyChanges(entryId, actor.userId(), request.baseRevision(), request.mutations());
     }
 
     @PostMapping("/{entryId}/resolve")
@@ -68,11 +61,7 @@ public class EntryController {
             @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID entryId,
             @RequestBody ResolveConflictCommand command) {
-        if (command.mutations() != null && command.mutations().stream()
-                .anyMatch(mutation -> !actor.userId().equals(mutation.authorId()))) {
-            throw new EntryAccessDeniedException("block author must be the authenticated user");
-        }
-        return entryService.resolveConflict(entryId, command);
+        return entryService.resolveConflict(entryId, actor.userId(), command);
     }
 
     @PostMapping("/{entryId}/comments")

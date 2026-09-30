@@ -107,3 +107,11 @@
 - **测试**：`PairingFlowTest`（独立真库 moon_letter_pair_test + 真 HTTP）：令牌 43 字符且两次生成不同、过期令牌 409、换发后仅一条未消费、配对后 2 成员 ACTIVE、伙伴 bearer 可读空间、读空间不泄露 pairingToken、复用 409；`CoupleApiTest` 8 个切片测试更新到新协议。
 - **结果**：`mvn -Dtest=CoupleApiTest,PairingFlowTest test` → `Tests run: 9, Failures: 0, Errors: 0`，`EXIT=0`。
 - **TDD 红灯**：先写 PairingFlowTest，首跑在配对响应 500（Instant→timestamptz 绑定失败）暴露问题，修复后转绿。
+
+### 记录 4：Task 4 actor 归属校验（2026-10-01）
+
+- **Commit**：`fix(server): enforce actor and media authorization`。
+- **实现**：所有业务变更服务方法显式接收 actorId：createDraft(actorId, cmd)（拒绝代他人建稿）、applyChanges(actorId,…)（拒绝非本人块变更 + 既有块 created_by 归属校验：伴侣可追加自己的块、不可改/删作者块）、resolveConflict、readTimeline(actorId,…)；publish 增加 mediaService.requireReady（发布时所有引用媒体必须 READY 且属于本空间）；MediaService 删除可空用户重载，complete/markFailed 强制 owner。
+- **测试**：新增 `EntryOwnershipTest`（独立真库 moon_letter_own_test，种子两个空间三成员）：外空间成员读条目被拒、伴侣/外来者发布他人草稿被拒（作者成功）、伴侣可追加自己块但改/删作者块被拒、发布引用 UPLOADING 媒体被拒、引用外空间 READY 媒体被拒。
+- **结果**：`mvn test` → `Tests run: 39, Failures: 0, Errors: 0`，`EXIT=0`。
+- **TDD 红灯**：首跑 5 个断言中 3 处期望异常类型与实际策略不符（requireMember 抛 403 ResponseStatusException），修正断言后转绿；归属逻辑本身无缺陷。

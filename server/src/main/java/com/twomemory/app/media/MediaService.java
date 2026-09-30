@@ -68,18 +68,8 @@ public class MediaService {
     }
 
     @Transactional
-    public MediaAssetView completeUpload(UUID assetId, String sha256) {
-        return completeUploadInternal(null, assetId, sha256);
-    }
-
-    @Transactional
     public MediaAssetView completeUpload(UUID userId, UUID assetId, String sha256) {
         return completeUploadInternal(userId, assetId, sha256);
-    }
-
-    @Transactional
-    public MediaAssetView markFailed(UUID assetId, String code) {
-        return markFailedInternal(null, assetId, code);
     }
 
     @Transactional
@@ -141,11 +131,9 @@ public class MediaService {
                        sha256, NULL AS failure_code
                 FROM media_asset WHERE id = ? AND deleted_at IS NULL FOR UPDATE
                 """, this::mapAsset, assetId);
-        if (userId != null) {
-            accessPolicy.requireMember(userId, asset.coupleId());
-            if (!userId.equals(asset.ownerId())) {
-                throw new MediaAccessDeniedException("only the uploader may complete this asset");
-            }
+        accessPolicy.requireMember(userId, asset.coupleId());
+        if (!userId.equals(asset.ownerId())) {
+            throw new MediaAccessDeniedException("only the uploader may complete this asset");
         }
         if (!asset.sha256().equalsIgnoreCase(sha256)) {
             markFailedInternal(userId, assetId, "SHA256_MISMATCH");
@@ -173,11 +161,9 @@ public class MediaService {
                        sha256, ? AS failure_code
                 FROM media_asset WHERE id = ? AND deleted_at IS NULL
                 """, this::mapAsset, code, assetId);
-        if (userId != null) {
-            accessPolicy.requireMember(userId, asset.coupleId());
-            if (!userId.equals(asset.ownerId())) {
-                throw new MediaAccessDeniedException("only the uploader may mark this asset failed");
-            }
+        accessPolicy.requireMember(userId, asset.coupleId());
+        if (!userId.equals(asset.ownerId())) {
+            throw new MediaAccessDeniedException("only the uploader may mark this asset failed");
         }
         jdbcTemplate.update("UPDATE media_asset SET status = 'FAILED', updated_at = now() WHERE id = ?", assetId);
         return new MediaAssetView(asset.id(), asset.coupleId(), asset.ownerId(), asset.kind(),
