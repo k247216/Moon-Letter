@@ -131,3 +131,10 @@
 - **测试**：新增 `ChangeFeedOrderingTest`（独立真库 moon_letter_order_test）：事务 A 持锁未提交时 B 无法完成分配（400ms 内未完成+线程存活），A 提交后 B 获得下一个序列；分页 after=0/limit=1 先见 A 的变更且 hasMore=true，翻页得 B 的变更——游标推进不可能跳过已提交变更。SchemaConstraintTest 增加 (couple_id, space_sequence) 唯一性与 NOT NULL 断言。
 - **结果**：`mvn test` → `Tests run: 47, Failures: 0, Errors: 0`，`EXIT=0`。
 - **TDD 红灯**：并发测试首版错误地在工作线程外开启事务（Spring 事务线程绑定），重写为主线程持事务 + 工作线程阻塞的正确形态后转绿。
+
+### 记录 7：Task 7 服务端真实记录回路 E2E（2026-10-01）
+
+- **Commit**：`test(server): add real HTTP PostgreSQL recording loop`。
+- **实现**：新增 `SelfUseRecordingLoopE2ETest`（`@SpringBootTest(RANDOM_PORT)` + 独立真库 moon_letter_e2e_test，全部真实 HTTP，双 bearer token）：bootstrap → 配对（B 端建号+会话）→ A 经类型化同步操作建个人草稿 + 幂等重试（仅 1 条 entry）→ A 发布 → B 分页拉取变更流（limit=1 两页，第二页含 PUBLISH）→ B 读取已发布条目 → 伪造 token 401 → 协作条目双视角（B 追加自己的块成 2 块，改 A 块 403）。配套：publish 现在也追加 PUBLISH 变更行（否则 B 永远感知不到发布）；`TwoDeviceSyncTest` 更名 `TwoDeviceSyncModelTest`（FakeServer 模型/单元测试，注明不计入 E2E 数量）。服务端重启项在本机以 `mvn spring-boot:run` 重启 + curl health 复验过（记录于 Task 1），测试内不做进程级重启。
+- **结果**：`mvn test` → `Tests run: 48, Failures: 0, Errors: 0`，`EXIT=0`（数据库：本地 Docker PostgreSQL 18，`jdbc:postgresql://localhost:5432/moon_letter_e2e_test`）。
+- **TDD 红灯**：三轮修正——测试端 ClassCastException（MutationResult.body 是 JSON 字符串需再解析）、协作建稿 400（BlockMutation.payload 应为 JSON 字符串而非嵌套对象）。均为测试侧问题，服务端实现无改动。

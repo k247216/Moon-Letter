@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twomemory.app.auth.SpaceAccessPolicy;
 import com.twomemory.app.media.MediaService;
+import com.twomemory.app.sync.ChangeFeedService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,13 +29,16 @@ public class EntryService {
     private final ObjectMapper objectMapper;
     private final SpaceAccessPolicy accessPolicy;
     private final MediaService mediaService;
+    private final ChangeFeedService changeFeedService;
 
     public EntryService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper,
-                        SpaceAccessPolicy accessPolicy, MediaService mediaService) {
+                        SpaceAccessPolicy accessPolicy, MediaService mediaService,
+                        ChangeFeedService changeFeedService) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.accessPolicy = accessPolicy;
         this.mediaService = mediaService;
+        this.changeFeedService = changeFeedService;
     }
 
     @Transactional
@@ -88,6 +92,8 @@ public class EntryService {
         updateEntryVersion(entryId, revisionNo, entry.rowVersion() + 1, EntryState.PUBLISHED);
         insertRevision(entryId, revisionNo, entry.currentRevisionNo(), entry.authorId(),
                 "published draft");
+        changeFeedService.appendChange(entry.coupleId(), "ENTRY", entryId,
+                "PUBLISH", "{\"entryId\":\"" + entryId + "\",\"revisionNo\":" + revisionNo + "}");
         return new PublishResult(loadEntry(entryId), revisionNo);
     }
 

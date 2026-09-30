@@ -9,7 +9,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class TwoDeviceSyncTest {
+/**
+ * Model/unit test over an in-memory FakeServer: explores offline reconnect
+ * ordering, idempotent retry and conflict recovery semantics without any
+ * HTTP or database. It is NOT part of the E2E count — see
+ * {@link SelfUseRecordingLoopE2ETest} for the real recording loop.
+ */
+class TwoDeviceSyncModelTest {
 
     @Test
     void twoOfflineDevicesReconnectInReverseOrderWithoutDuplicateEffects() {
