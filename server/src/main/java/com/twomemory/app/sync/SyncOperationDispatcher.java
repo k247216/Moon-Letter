@@ -133,9 +133,6 @@ public class SyncOperationDispatcher {
             if (!"TEXT".equalsIgnoreCase(rawType) && !"IMAGE".equalsIgnoreCase(rawType)) {
                 throw new SyncValidationException("entry sync accepts TEXT or IMAGE blocks only");
             }
-            if ("IMAGE".equalsIgnoreCase(rawType) && mode == EntryMode.PERSONAL) {
-                throw new SyncValidationException("personal entry sync accepts TEXT blocks only");
-            }
             long orderKey = blockNode.path("orderKey").asLong(-1);
             if (orderKey < 0) {
                 throw new SyncValidationException("block orderKey must be a non-negative number");

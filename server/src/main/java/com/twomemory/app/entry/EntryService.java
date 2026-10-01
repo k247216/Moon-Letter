@@ -71,6 +71,7 @@ public class EntryService {
             validateBlock(block);
             insertBlock(entryId, block, 0);
         }
+        mediaService.requireReady(command.coupleId(), referencedAssetIds(entryId));
         return loadEntry(entryId);
     }
 
@@ -259,6 +260,9 @@ public class EntryService {
             } catch (JsonProcessingException exception) {
                 throw new EntryValidationException("block payload must be valid JSON");
             }
+        }
+        if (block.type() == BlockType.IMAGE && block.assetId() == null) {
+            throw new EntryValidationException("image block requires an asset");
         }
         if (block.payload() == null || block.payload().isBlank()) {
             throw new EntryValidationException("block payload is required");
