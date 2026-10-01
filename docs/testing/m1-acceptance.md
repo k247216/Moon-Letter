@@ -278,3 +278,26 @@
 - **刻意保留**：`couple_sync_state.last_space_sequence=5` **不回卷**——两台手机的本地 cursor 已经走到 5，回卷会让新记录落在 cursor 之下而永远拉不到；`idempotency_record` 5 行保留，使任何仍在手机 outbox 里的旧操作被服务端判定为重放而不是把刚删掉的记录写回来；`app_user / user_profile / couple_space / couple_member / device_session / space_pairing_code` 全部保留，空间与配对关系不变，只清书。
 - **未完成 / 必须知道的边界**：**这只清了服务器**。两台手机各自的 Room 里那 5 条 DRAFT 仍在，时间线还会显示它们；本机无设备也无法远程清。开档当天的动作是：在两台手机上「设置 → 应用 → 清除数据」后重新配对（或卸载重装），从「我们的第一页」开始写。此步骤必须与「她正式加入」同一天做，否则她会先看到 5 页乱码。
 - **恢复命令（若需要）**：`docker cp moon_letter-pre-open.dump infra-postgres-1:/tmp/r.dump && docker exec infra-postgres-1 pg_restore -U moon_letter -d moon_letter --no-owner /tmp/r.dump`（恢复到空库，不要覆盖已有真实记录）。
+
+### 记录 20：无明显破绽——响应式呈现、草稿归属与假数据清理（2026-10-01）
+
+- **Commits**：`d107bba`（本轮 Android 侧全部改动 + 本条台账另一次 docs 提交）。**更正记录 18 的「本地领先 origin 34 个提交」**：`562e402`/`94a08d7`/`d7ed275` 在其后已按授权推送，`git branch -vv` 当前实测 `ahead 2`（`f7b8d21` 与本条）；推送仍是一次一批、逐次授权，不视为长期许可。
+- **门槛清单第 3 项**「无明显破绽：Scaffold 遮挡、时间线刷新这些毛刺清掉」，顺带收尾第 2 项的呈现面与第 4 项的签署观感。服务端本轮**未改动**。
+- **时间线毛刺的根因**：`TimelineViewModel` 收的是一个一次性 `loader`，靠 `LaunchedEffect(selectedKey, editingMode)` 与发布后的 `refresh()` 手动重查——离开再回来才刷新，同步线程写入（WorkManager 拉到伴侣的新记录）时页面**不会动**，她看到的永远是进页时的那一帧。改为 `observer: () -> Flow<List<TimelineItem>>`，唯一入口是 Room 的失效驱动流；`refresh()` 与两处轮询 `LaunchedEffect` 全部删除，「本地写完立刻可见」变成一条测试而不是一个操作顺序（`aSingleLocalWriteReachesTheScreenWithNoRefreshCall`）。
+- **两个隐藏的呈现缺陷**：① 旧 `timelineSnapshot()` 带 `LIMIT 100`，第 101 页回忆会**静默消失**——删掉该查询，只留无上限的 `observeTimeline()`，`ORDER BY occurredAtEpochMillis DESC, id DESC` 一份实现；② 每条记录一次 `blocks(id)` 的 N+1，改为一条全表 `observeBlocks()` 流在内存里分组，一次发射拼出预览与首图。记录详情页同样从 `loader`+`open()`+`reload()` 改为三条流 `combine(observeEntry, observeBlocks, observeForEntry)`，伴侣的回应落到本页时不需要重开。
+- **Room 单行流的坑（决定了签名）**：`Flow<Entity?>` 在**查无结果时根本不发射**，删除条目后页面会停在旧内容；因此 `observeEntry` 有意返回 `Flow<List<EntryEntity>>` 再 `firstOrNull()`，让「没有这条记录」成为一个真实的发射值。
+- **草稿归属（原来会写丢内容）**：`DraftStore` 只有 `title/body/photos/mode` 四个无前缀键，个人稿与共同稿**共用一个槽**。切到「共同记录」时旧稿被覆盖，且 `editingMode = draft.mode` 会用**存下的模式**覆盖用户刚选的类型；清空正文后 `save` 提前 return 使槽位残留，旧内容会「复活」。改为按 `mode.name` 分槽、空内容时**擦除**该槽、发布成功只清对应模式，并抽出 `openEditor(mode)` 让入口、切模式、底栏三处走同一条路（切模式先 `keepDraft()` 再开新槽）。
+- **键盘遮挡**：`targetSdk 37` 强制 edge-to-edge，manifest 无 `windowSoftInputMode`、MainActivity 未调 `enableEdgeToEdge()`，两个编辑器的 bottomBar（发布按钮所在）此前只吃 `navigationBarsPadding()`——键盘弹起会**盖住发布按钮**，而写记录正是最高频动作。两个 bottomBar 补 `.imePadding()`。
+- **签署观感**：编辑器里写死一枚「满」字假头像和 `R.drawable.moonletter_avatar_xiaoman/ayu` 两张插画行，与她刚在配对时取的真名无关。新增 `AuthorMark(name, size, accent)`（与时间线 initials 同一形状），编辑器传 `ownName = cachedNames.own`、无名时回退「我」；同时删掉 `SharedEditorScreen` 里点了没反应的「＋ 在这里添加内容」假文本与恒为空的 `blocks` 参数。
+- **假数据与死控件清理（含一条硬违规）**：`CoupleScreen` 的「已相伴 1097 天」「中秋节 · 还有 360 天」「月相 · 中秋」和整张「下一个纪念日」卡**属于统计口径**，是产品红线，直接删除而不是加设置项；`SettingsRow` 的箭头图标暗示可点而无人接线，改为行尾「还没开放」文本；地图预览「杭州 · 0」「杭州的故事」换成「还没有留下地点」「我们的故事」；相册预览删掉假的「新建相册」。`album / map` 两个底栏标签仍按参考图保留（只清假数字），是否彻底移除留给用户决策。
+- **死代码与依赖**：分页路径（`PagingSource`、`androidx.room:room-paging`、`androidx.paging:paging-runtime`）从来没有任何界面消费过，连同 toml 别名一并删除。
+- **两个离线坑（都会伪装成代码回归）**：① 删掉 paging 后 `androidx.lifecycle:lifecycle-common` 解析回落到 2.3.1，而离线缓存里没有它，`:core:database:kspDebugUnitTestKotlin` 报 `No cached version available for offline mode`——用 `testImplementation("androidx.lifecycle:lifecycle-common:2.9.3")` 显式钉到已缓存版本，而不是把 paging 加回来；② `:core:database:compileDebugAndroidTestKotlin` 需要 `room-testing` 与 `androidx.test:runner`，二者**从未下载过**，即该模块仪器测试在此之前**连编译都做不到**，本轮破例走一次联网取回后离线复现通过。
+- **夹具修复**：`feature/editor` 的 androidTest 断言的是「发布这篇记录」「同一段回忆，两个视角」等**当前实现里不存在的文案**——又一件从未通过的假绿灯，重写为 4 条真断言（发布时间戳、附件按钮集、真名签署且**不出现**「小满」、无名时回退「我」、共同记录的视角提示）。
+- **新增测试**：`TimelineViewModelTest`（6）、`EntryDetailViewModelTest`（6），沿用 `feature/couple` 的 JVM 范式（`Dispatchers.setMain(UnconfinedTestDispatcher())`，不用 `runTest`，因为 `viewModelScope` 走 `Main.immediate`）。详情页六条钉的是：晚到的回应出现在**已打开**的页面上、新发射不吞掉她正在输入的半句、一次点击恰好投递一条去过空白的回应、空回应不落库、发送失败保留原文并说明原因、改名连已渲染的回应一起重贴标签。
+- **绿灯**：`TEMP/TMP=E:/tmp JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 ./gradlew --offline testDebugUnitTest :core:model:test :app:assembleDebug` → **BUILD SUCCESSFUL**，单元测试 **44 条全绿、0 失败 0 错误**：`SyncEngineTest` 11、`RoomSyncStoreTest` 7、`MediaGatedOutboxTest` 5、`TimelineViewModelTest` 6、`EntryDetailViewModelTest` 6、`CoupleViewModelTest` 5、`SetupViewModelTest` 2、两个真链路竖切各 1（真 Room×2 + 真 HTTP + 真 Spring Boot + 真 PostgreSQL）。四个模块的 `compileDebugAndroidTestKotlin` 与 `:app:assembleDebug` 均通过。
+- **兼容性副作用（开档当天正好吸收）**：旧版 SharedPreferences 的无前缀 `title/body/photos/mode` 成为死数据，**跨越本次升级的未发布草稿会被忽略**。因为开档本就要求两台手机清除应用数据后重新配对，这条不单独处理；若将来还有别的升级路径，需要写迁移。
+- **诚实记录 / 未做**：
+  1. 以上仍是 **JVM/Robolectric 证据**。edge-to-edge 下 `imePadding()` 是否真的让发布按钮露出来、时间线滚动的稳定性、`AuthorMark` 的排版、详情页流式更新的实际手感，都要真机才算数——门槛第 3 项只能算「代码层已修」，第 4 项（视觉过参考图）仍未验收。
+  2. `CoupleScreen` 无头像时仍用参考图里的两张角色插画作为默认像（真名已经走 `Text(name)`）。它属于「我们自己的画」这一视觉意图，未改；若她希望默认就是名字首字母，是一行改动。
+  3. 全表 `observeBlocks()` 对两个用户是刻意的取舍；记录数增长到千级才需要考虑按需订阅。
+  4. 本轮未触碰 #7（每周回看、新记录本地通知）与 #9 清单；`baseVersion` 固定 0、`DEFAULT_DEV_BASE_URL` 硬编码 IP、图片无磁盘缓存、IMAGE payload 外泄本机路径、主题不跨设备、无 Room 迁移测试等仍在。
