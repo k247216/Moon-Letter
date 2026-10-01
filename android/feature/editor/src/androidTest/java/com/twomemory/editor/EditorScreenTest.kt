@@ -30,22 +30,50 @@ class EditorScreenTest {
         listOf("图片", "视频", "语音", "音乐", "城市", "更多").forEach {
             composeRule.onNodeWithContentDescription(it).assertIsDisplayed()
         }
-        composeRule.onNodeWithText("发布这篇记录").assertIsDisplayed()
+        composeRule.onNodeWithText("完成").assertIsDisplayed()
     }
 
     @Test
-    fun sharedEditorShowsAuthorLabels() {
+    fun personalEditorSignsWithTheRealNameAndNeverInventsOne() {
+        composeRule.setContent {
+            TwoMemoryTheme {
+                PersonalEditorScreen(
+                    state = EditorUiState(),
+                    onTitleChange = {}, onBodyChange = {}, onPublish = {},
+                    ownName = "阿屿屿",
+                )
+            }
+        }
+        composeRule.onNodeWithText("阿屿屿").assertIsDisplayed()
+        composeRule.onNodeWithText("小满").assertDoesNotExist()
+    }
+
+    @Test
+    fun anUnnamedWriterFallsBackToPronounsNotToAPlaceholderPerson() {
+        composeRule.setContent {
+            TwoMemoryTheme {
+                PersonalEditorScreen(
+                    state = EditorUiState(),
+                    onTitleChange = {}, onBodyChange = {}, onPublish = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("我").assertIsDisplayed()
+    }
+
+    @Test
+    fun sharedEditorShowsOneRealAuthorAndPromisesThePartnerOnlyInWords() {
         composeRule.setContent {
             TwoMemoryTheme {
                 SharedEditorRoute(
                     state = EditorUiState(),
-                    blocks = listOf(SharedBlockUi("我", "今天很开心"), SharedBlockUi("对方", "我也记得")),
                     onPublish = {},
+                    ownName = "小满呀",
                 )
             }
         }
-        composeRule.onNodeWithText("同一段回忆，两个视角").assertIsDisplayed()
-        composeRule.onNodeWithText("我").assertIsDisplayed()
-        composeRule.onNodeWithText("对方").assertIsDisplayed()
+        composeRule.onNodeWithText("小满呀").assertIsDisplayed()
+        composeRule.onNodeWithText("先写下你的部分，TA 可以补充自己的视角。").assertIsDisplayed()
+        composeRule.onNodeWithText("阿屿").assertDoesNotExist()
     }
 }

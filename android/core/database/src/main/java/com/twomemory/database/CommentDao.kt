@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CommentDao {
@@ -12,6 +13,9 @@ interface CommentDao {
 
     @Query("SELECT * FROM comments WHERE entryId = :entryId AND deleted = 0 ORDER BY createdAtEpochMillis, id")
     suspend fun commentsForEntry(entryId: String): List<CommentEntity>
+
+    @Query("SELECT * FROM comments WHERE entryId = :entryId AND deleted = 0 ORDER BY createdAtEpochMillis, id")
+    fun observeForEntry(entryId: String): Flow<List<CommentEntity>>
 
     @Query("SELECT * FROM comments WHERE id = :commentId LIMIT 1")
     suspend fun find(commentId: String): CommentEntity?

@@ -4,9 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.twomemory.model.BlockType
 import com.twomemory.model.EntryDetail
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -39,31 +41,30 @@ data class EntryDetailUi(
 
 /**
  * One record as a page: everything written in it, its pictures, and the
- * comments under it. Loading and answering run through the callbacks the app
- * module supplies, so this stays unaware of Room and of the network.
+ * comments under it. The app module hands over a live stream of this device's
+ * copy of the record, so a reply arriving later shows up without reopening.
  */
 class EntryDetailViewModel(
-    private val loader: suspend (String) -> EntryDetail?,
+    observer: () -> Flow<EntryDetail?>,
     private val addComment: suspend (String, String) -> Unit,
     private val currentUserId: UUID?,
 ) : ViewModel() {
 
-    private var ownName: String = ""
-    private var partnerName: String = ""
-    private var entryId: String? = null
+    private val names = MutableStateFlow("" to "")
 
     private val mutableState = MutableStateFlow<EntryDetailUi?>(null)
     val state: StateFlow<EntryDetailUi?> = mutableState.asStateFlow()
 
-    fun open(id: String) {
-        entryId = id
-        reload()
+    init {
+        viewModelScope.launch {
+            combine(observer(), names) { detail, (own, partner) ->
+                detail?.toUi(own, partner)
+            }.collect { mutableState.value = it }
+        }
     }
 
     fun updateNames(own: String, partner: String) {
-        ownName = own.trim()
-        partnerName = partner.trim()
-        reload()
+        names.value = own.trim() to partner.trim()
     }
 
     fun updateDraft(draft: String) {
@@ -73,13 +74,12 @@ class EntryDetailViewModel(
     /** One comment, one explicit send: the text never reaches storage by itself. */
     fun sendComment() {
         val current = mutableState.value ?: return
-        val id = entryId ?: return
         val body = current.draft.trim()
         if (body.isEmpty() || current.sending) return
         viewModelScope.launch {
             mutableState.value = current.copy(sending = true, error = null)
             try {
-                addComment(id, body)
+                addComment(current.header.id, body)
                 mutableState.value = mutableState.value?.copy(sending = false, draft = "")
             } catch (failure: Exception) {
                 mutableState.value = mutableState.value?.copy(
@@ -87,19 +87,15 @@ class EntryDetailViewModel(
                     error = "这句回应没能存下来：${failure.message ?: "请重试"}",
                 )
             }
-            reload()
         }
     }
 
-    private fun reload() {
-        val id = entryId ?: return
-        viewModelScope.launch {
-            val detail = loader(id) ?: return@launch
-            mutableState.value = detail.toUi(draft = mutableState.value?.draft.orEmpty())
-        }
-    }
-
-    private fun EntryDetail.toUi(draft: String): EntryDetailUi {
+    /**
+     * What is already on the page survives a new emission: her half-typed reply,
+     * the in-flight send, and the error she has not edited away yet.
+     */
+    private fun EntryDetail.toUi(ownName: String, partnerName: String): EntryDetailUi {
+        val onScreen = mutableState.value
         val zone = runCatching { ZoneId.of(entry.occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
         val timeFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm", Locale.CHINA)
         return EntryDetailUi(
@@ -127,7 +123,9 @@ class EntryDetailViewModel(
                     mine = mine,
                 )
             },
-            draft = draft,
+            draft = onScreen?.draft.orEmpty(),
+            sending = onScreen?.sending == true,
+            error = onScreen?.error,
         )
     }
 }

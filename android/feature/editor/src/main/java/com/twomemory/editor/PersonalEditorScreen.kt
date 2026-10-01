@@ -9,11 +9,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -21,12 +23,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,8 +33,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
 import com.twomemory.model.EntryMode
@@ -44,20 +43,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val occurrenceFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日 · HH:mm", Locale.CHINA)
-
-@Composable
-fun PersonalEditorRoute(
-    viewModel: EditorViewModel,
-    onPublish: suspend (EditorUiState) -> Unit,
-) {
-    val state by viewModel.state.collectAsState()
-    PersonalEditorScreen(
-        state = state,
-        onTitleChange = viewModel::updateTitle,
-        onBodyChange = viewModel::updateBody,
-        onPublish = { viewModel.publish(onPublish) },
-    )
-}
 
 @Composable
 fun PersonalEditorScreen(
@@ -69,12 +54,13 @@ fun PersonalEditorScreen(
     mode: EntryMode = EntryMode.PERSONAL,
     onModeChange: (EntryMode) -> Unit = {},
     photoActions: EditorPhotoActions? = null,
+    ownName: String = "",
 ) {
     Scaffold(
         bottomBar = {
             Column(
                 modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-                    .navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                    .navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 state.error?.let {
                     Text(
@@ -95,14 +81,11 @@ fun PersonalEditorScreen(
         ) {
             EditorTopBar(state, onClose, onPublish)
             RecordModeSwitch(mode, onModeChange)
+            val author = ownName.ifBlank { "我" }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.foundation.Image(
-                    painter = androidx.compose.ui.res.painterResource(R.drawable.moonletter_avatar_xiaoman),
-                    contentDescription = "小满头像",
-                    modifier = Modifier.size(54.dp).clip(androidx.compose.foundation.shape.CircleShape),
-                )
+                AuthorMark(author, 54.dp, MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(12.dp))
-                Text("小满", style = TwoMemoryTypography.title, color = MaterialTheme.colorScheme.primary)
+                Text(author, style = TwoMemoryTypography.title, color = MaterialTheme.colorScheme.primary)
             }
             BasicTextField(
                 value = state.title,
@@ -221,5 +204,21 @@ fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
                 Icon(icon, contentDescription = label)
             }
         }
+    }
+}
+
+/** The same initial-in-a-circle an entry shows once it reaches the timeline. */
+@Composable
+internal fun AuthorMark(name: String, size: Dp, accent: Color) {
+    Box(
+        modifier = Modifier.size(size).clip(CircleShape).background(accent.copy(alpha = 0.16f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            name.take(1),
+            style = TwoMemoryTypography.title,
+            color = accent,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }

@@ -17,6 +17,7 @@ import com.twomemory.network.RetrofitSessionApi
 import com.twomemory.sync.SyncEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -272,7 +273,7 @@ class TwoDeviceRecordingLoopTest {
             //     just a draft rather than a page of the shared book.
             assertEquals(
                 setOf(entryIdA.toString(), entryIdB.toString()),
-                databaseB.entryDao().timelineSnapshot()
+                databaseB.entryDao().observeTimeline().first()
                     .filter { it.state == "PUBLISHED" }.map { it.id }.toSet(),
             )
             assertEquals("DRAFT", databaseB.entryDao().findEntry(privateIdB.toString())!!.state)

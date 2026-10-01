@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -27,10 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
 import com.twomemory.model.EntryMode
@@ -38,24 +37,23 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-data class SharedBlockUi(val author: String, val text: String)
-
 @Composable
 fun SharedEditorRoute(
     state: EditorUiState,
-    blocks: List<SharedBlockUi>,
     onPublish: () -> Unit,
     onTitleChange: (String) -> Unit = {},
     onBodyChange: (String) -> Unit = {},
     onClose: () -> Unit = {},
     onModeChange: (EntryMode) -> Unit = {},
     photoActions: EditorPhotoActions? = null,
+    ownName: String = "",
 ) {
+    val author = ownName.ifBlank { "我" }
     Scaffold(
         bottomBar = {
             Column(
                 modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
-                    .navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+                    .navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
             ) { EditorAttachmentToolbar(onImageClick = photoActions?.pick) }
         },
     ) { padding ->
@@ -67,18 +65,8 @@ fun SharedEditorRoute(
             SharedTopBar(state, onClose, onPublish)
             RecordModeSwitch(EntryMode.COLLABORATIVE, onModeChange)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.foundation.Image(
-                    painter = painterResource(R.drawable.moonletter_avatar_xiaoman),
-                    contentDescription = "小满头像",
-                    modifier = Modifier.size(48.dp).clip(CircleShape),
-                )
-                Spacer(Modifier.width(8.dp))
-                androidx.compose.foundation.Image(
-                    painter = painterResource(R.drawable.moonletter_avatar_ayu),
-                    contentDescription = "阿屿头像",
-                    modifier = Modifier.size(48.dp).clip(CircleShape),
-                )
-                Spacer(Modifier.width(14.dp))
+                AuthorMark(author, 48.dp, MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
                 Text("先写下你的部分，TA 可以补充自己的视角。", style = TwoMemoryTypography.caption,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
             }
@@ -97,8 +85,7 @@ fun SharedEditorRoute(
                 },
             )
             AuthorBlock(
-                name = "小满",
-                avatar = R.drawable.moonletter_avatar_xiaoman,
+                name = author,
                 accent = MaterialTheme.colorScheme.primary,
             ) {
                 BasicTextField(
@@ -124,17 +111,6 @@ fun SharedEditorRoute(
             state.error?.let {
                 Text(it, style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.error)
             }
-            blocks.forEach { block ->
-                AuthorBlock(
-                    name = block.author,
-                    avatar = if (block.author == "小满") R.drawable.moonletter_avatar_xiaoman else R.drawable.moonletter_avatar_ayu,
-                    accent = if (block.author == "小满") MaterialTheme.colorScheme.primary else Color(0xFF74856B),
-                ) {
-                    Text(block.text, style = TwoMemoryTypography.body)
-                }
-            }
-            Text("＋  在这里添加内容", style = TwoMemoryTypography.body, color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 12.dp))
             Spacer(Modifier.size(96.dp))
         }
     }
@@ -165,7 +141,6 @@ private fun SharedTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
 @Composable
 private fun AuthorBlock(
     name: String,
-    avatar: Int,
     accent: Color,
     content: @Composable () -> Unit,
 ) {
@@ -176,11 +151,7 @@ private fun AuthorBlock(
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.foundation.Image(
-                    painter = painterResource(avatar),
-                    contentDescription = "$name 头像",
-                    modifier = Modifier.size(34.dp).clip(CircleShape),
-                )
+                AuthorMark(name, 34.dp, accent)
                 Spacer(Modifier.width(8.dp))
                 Text(name, style = TwoMemoryTypography.caption, color = accent)
                 Spacer(Modifier.width(8.dp))

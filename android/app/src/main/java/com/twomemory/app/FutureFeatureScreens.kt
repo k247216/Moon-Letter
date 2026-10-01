@@ -46,8 +46,6 @@ fun AlbumPreviewScreen() {
                 HandDrawnUnderline(170f)
             }
             Icon(TwoMemoryIcons.Album, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.size(8.dp))
-            Text("新建相册", style = TwoMemoryTypography.body, color = MaterialTheme.colorScheme.primary)
         }
         SegmentedPreview("照片", "相册集")
         Surface(
@@ -67,7 +65,7 @@ fun AlbumPreviewScreen() {
                 Text("照片会在这里按月份长出来", style = TwoMemoryTypography.title, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "当前版本先保证文字记录可靠到达两台设备。媒体上传闭环完成前，这里不会用演示照片冒充你的回忆。",
+                    "带照片的记录已经能可靠到达两台手机。这里还空着：相册的整理方式想等你们的照片真的多起来再定，不会用演示照片冒充你的回忆。",
                     style = TwoMemoryTypography.body,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                     textAlign = TextAlign.Center,
@@ -108,7 +106,7 @@ fun CityMapPreviewScreen() {
                     Icon(TwoMemoryIcons.Location, contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.size(6.dp))
-                    Text("杭州 · 0", style = TwoMemoryTypography.body)
+                    Text("还没有留下地点", style = TwoMemoryTypography.body)
                 }
             }
         }
@@ -116,7 +114,7 @@ fun CityMapPreviewScreen() {
             modifier = Modifier.fillMaxWidth().weight(1f).padding(26.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("杭州的故事", style = TwoMemoryTypography.display)
+            Text("我们的故事", style = TwoMemoryTypography.display)
             HandDrawnUnderline(168f)
             Text("城市故事尚未开放", style = TwoMemoryTypography.title)
             Text(

@@ -3,9 +3,11 @@ package com.twomemory.timeline
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.twomemory.model.TimelineItem
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -27,39 +29,31 @@ data class TimelineEntryUi(
 )
 
 /**
- * Timeline observes LOCAL Room state only — no hardcoded production data.
- * The loader is supplied by the app module (Room-backed); entries appear
- * here after they are written locally or pulled from the change feed.
+ * Timeline reflects LOCAL Room state only — no hardcoded production data.
+ * The app module hands over a live stream of this device's entries, so a record
+ * written here or pulled from the change feed appears without any polling.
  */
 class TimelineViewModel(
-    private val loader: (suspend () -> List<TimelineItem>)? = null,
-    private val currentUserId: UUID? = null,
+    observer: () -> Flow<List<TimelineItem>>,
+    currentUserId: UUID? = null,
 ) : ViewModel() {
 
-    private var ownName: String = ""
-    private var partnerName: String = ""
+    private val names = MutableStateFlow("" to "")
 
     private val mutableEntries = MutableStateFlow<List<TimelineEntryUi>>(emptyList())
     val entries: StateFlow<List<TimelineEntryUi>> = mutableEntries.asStateFlow()
 
     init {
-        refresh()
-    }
-
-    fun refresh() {
-        val load = loader ?: return
         viewModelScope.launch {
-            mutableEntries.value = load().map { it.toUi() }
+            combine(observer(), names) { items, (own, partner) ->
+                items.map { it.toEntryUi(own, partner, currentUserId) }
+            }.collect { mutableEntries.value = it }
         }
     }
 
     fun updateNames(own: String, partner: String) {
-        ownName = own.trim()
-        partnerName = partner.trim()
-        refresh()
+        names.value = own.trim() to partner.trim()
     }
-
-    private fun TimelineItem.toUi() = toEntryUi(ownName, partnerName, currentUserId)
 }
 
 /** Author naming and date rendering shared by the timeline and a record's page. */
