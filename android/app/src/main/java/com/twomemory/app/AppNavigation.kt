@@ -288,6 +288,26 @@ object DraftStore {
         editor.apply()
     }
 
+    /**
+     * Shares are additive: an incoming note must not silently erase a draft
+     * the user had already started. The editor still shows one ordinary
+     * personal draft, with the shared text and photos ready to edit.
+     */
+    fun mergeIncomingShare(
+        context: android.content.Context,
+        title: String,
+        body: String,
+        photos: List<com.twomemory.editor.EditorPhoto>,
+    ) {
+        val existing = load(context, EntryMode.PERSONAL)
+        val mergedTitle = existing?.title?.takeIf { it.isNotBlank() } ?: title
+        val mergedBody = listOf(existing?.body.orEmpty(), body)
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
+        val mergedPhotos = (existing?.photos.orEmpty() + photos).distinctBy { it.id }
+        save(context, EntryMode.PERSONAL, mergedTitle, mergedBody, mergedPhotos)
+    }
+
     fun load(context: android.content.Context, mode: EntryMode): Draft? {
         val stored = prefs(context)
         val title = stored.getString(field(mode, "title"), null).orEmpty()
@@ -324,7 +344,12 @@ object DraftStore {
 }
 
 @Composable
-fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId: String? = null) {
+fun AppNavigation(
+    onThemeChange: (MoonLetterTheme) -> Unit = {},
+    initialEntryId: String? = null,
+    initialEditorMode: String? = null,
+    initialEditorRequest: Int = 0,
+) {
     val context = LocalContext.current
     var bound by remember { mutableStateOf(SyncSession.load(context) != null) }
     if (!bound) {
@@ -445,6 +470,17 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
             editorViewModel.restore(it.title, it.body, it.photos)
         }
         editingMode = mode
+    }
+
+    // Android Sharesheet hand-offs land in the same editor as the +记录 tab.
+    // The request counter lets a second share reopen the editor while the app
+    // is already visible; the mode remains explicit for future shared drafts.
+    LaunchedEffect(initialEditorRequest) {
+        if (initialEditorRequest > 0) {
+            val mode = runCatching { EntryMode.valueOf(initialEditorMode.orEmpty()) }
+                .getOrDefault(EntryMode.PERSONAL)
+            openEditor(mode)
+        }
     }
 
     editingMode?.let { mode ->

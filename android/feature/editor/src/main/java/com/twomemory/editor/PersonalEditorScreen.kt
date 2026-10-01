@@ -21,11 +21,16 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -192,8 +197,41 @@ fun RecordModeSwitch(mode: EntryMode, onModeChange: (EntryMode) -> Unit) {
     }
 }
 
+private enum class EditorAttachmentKind(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val explanation: String,
+) {
+    VIDEO(
+        "视频",
+        TwoMemoryIcons.Video,
+        "视频卡片和播放控制已预留；等媒体上传接口接通后，选择的视频会先保存到本机，再进入待同步状态。当前不会生成空卡片或假装已上传。",
+    ),
+    VOICE(
+        "语音",
+        TwoMemoryIcons.Voice,
+        "语音记录需要录音与媒体上传器。接口接通前，这里只展示接入边界，不会偷偷申请麦克风权限。",
+    ),
+    MUSIC(
+        "音乐",
+        TwoMemoryIcons.Music,
+        "网易云链接可以通过系统分享直接进入个人草稿；编辑器内的音乐卡片、标题和封面等待 MUSIC block 接口接通后再写入。",
+    ),
+    LOCATION(
+        "城市",
+        TwoMemoryIcons.Location,
+        "这里只做一次城市位置快照，不做实时定位或轨迹。位置接口接通后会在保存前让你确认城市名称。",
+    ),
+    MORE(
+        "更多",
+        TwoMemoryIcons.More,
+        "时间胶囊、导出等不属于正文附件的工具会从“我们”页进入；这里保留入口语义，不新增重复的隐藏页面。",
+    ),
+}
+
 @Composable
 fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
+    var explanation by remember { mutableStateOf<EditorAttachmentKind?>(null) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -208,16 +246,32 @@ fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
             "更多" to TwoMemoryIcons.More,
         ).forEach { (label, icon) ->
             val images = label == "图片"
+            val kind = EditorAttachmentKind.values().firstOrNull { it.label == label }
             IconButton(
-                onClick = { onImageClick?.invoke() },
-                enabled = images && onImageClick != null,
+                onClick = {
+                    if (images) onImageClick?.invoke() else kind?.let { explanation = it }
+                },
+                enabled = images.not() || onImageClick != null,
                 modifier = Modifier.semantics {
-                    contentDescription = if (images) "添加照片" else "$label（暂未开放）"
+                    contentDescription = if (images) "添加照片" else "$label（查看说明）"
                 },
             ) {
                 Icon(icon, contentDescription = label)
             }
         }
+    }
+    explanation?.let { kind ->
+        AlertDialog(
+            onDismissRequest = { explanation = null },
+            icon = { Icon(kind.icon, contentDescription = null) },
+            title = { Text("${kind.label}记录") },
+            text = { Text(kind.explanation, style = TwoMemoryTypography.body) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { explanation = null }) {
+                    Text("知道了")
+                }
+            },
+        )
     }
 }
 

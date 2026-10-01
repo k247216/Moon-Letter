@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.twomemory.designsystem.TwoMemoryTheme
 import com.twomemory.designsystem.MoonLetterRecordStatus
@@ -73,6 +74,21 @@ class EditorScreenTest {
             }
         }
         composeRule.onNodeWithText("我").assertIsDisplayed()
+    }
+
+    @Test
+    fun mediaButtonsExplainTheirBoundaryInsteadOfBeingDead() {
+        composeRule.setContent {
+            TwoMemoryTheme {
+                PersonalEditorScreen(
+                    state = EditorUiState(),
+                    onTitleChange = {}, onBodyChange = {}, onPublish = {},
+                )
+            }
+        }
+        composeRule.onNodeWithContentDescription("视频（查看说明）").performClick()
+        composeRule.onNodeWithText("视频记录").assertIsDisplayed()
+        composeRule.onNodeWithText("当前不会生成空卡片或假装已上传。").assertIsDisplayed()
     }
 
     @Test

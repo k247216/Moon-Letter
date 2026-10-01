@@ -436,3 +436,14 @@
 - **Commit**：`1b10d43 feat(ui): add deterministic memory review screens`，已推送到 `origin/m1-stable-recording-loop`。
 - **实现**：`我们` 页新增两个可进入入口；“过去的今天”筛选更早年份同月日的已发布记录，“本周小结”筛选当前周一至周日的真实记录，并显示照片/视频/语音/音乐/城市来源标签。点击卡片回到原详情，不复制数据、不计数、不评分、不调用 AI。
 - **验证边界**：新增 `MemoryReviewScreensTest`，本机未运行 Gradle/Compose instrumentation/真机；当前仍不能把回看页面写成 H3 或 M1 已通过。
+
+### 记录 31：系统分享直接进入个人草稿（2026-10-01）
+
+- **本轮内容**：新增 `ShareReceiverActivity` 与 `SEND`/`SEND_MULTIPLE` intent 过滤器。系统分享的文字、网易云分享文本或图片先被复制到应用自己的草稿/照片目录，再打开普通个人编辑器；已有未完成草稿采用追加合并，不静默覆盖。接收过程不调用网络，发布仍由用户在编辑器中明确点击完成。
+- **实现边界**：分享入口只接收文字与图片。视频/语音上传、音乐结构化 block、城市位置快照仍等待 SDK 机器提供媒体/位置接口；本轮不把 URL 猜成 MUSIC block，也不把 provider 临时 URI 写入记录。
+- **验证边界**：新增 `ShareIntentParserTest` 3 例覆盖文字、图片列表和无关 intent；本机没有运行 Gradle、Compose instrumentation、Sharesheet 或真机。需要 SDK 机器补做系统分享面板进入草稿、进程恢复和 ≤4 次交互的真实记录。
+
+### 记录 32：编辑器附件入口不再是死按钮（2026-10-01）
+
+- **本轮内容**：保留指导图要求的图片/视频/语音/音乐/城市/更多六项顺序。图片继续打开本机照片选择器；其余入口现在可点击并说明当前接入边界，不请求未实现的权限、不写假的媒体/位置 block，也不把等待服务端的能力显示成成功。
+- **验证边界**：新增 `EditorScreenTest.mediaButtonsExplainTheirBoundaryInsteadOfBeingDead`；本机未运行 Gradle、Compose instrumentation 或真机。需要 SDK 机器确认对照截图的底部工具栏尺寸、系统分享进入音乐草稿及媒体/城市接口接通后的回归。

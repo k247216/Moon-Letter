@@ -27,3 +27,18 @@
 - Add “过去的今天” and “本周小结” entries to the profile page.
 - Derive them from published Room entries using local calendar rules; preserve source entry IDs so every card opens the original detail.
 - Show media/city tags as source evidence, never counts, scores, or AI-generated prose.
+
+## Task 5 — Accept shared content as a personal draft
+
+- Register Android `SEND`/`SEND_MULTIPLE` entry points for text and images.
+- Copy shared image bytes into the app-owned photo directory before opening the editor; never keep a temporary provider URI as record data.
+- Merge the incoming text/images into the personal draft, then open the existing personal editor directly with an explicit “草稿已保存” state.
+- Keep the receiver independent from sync and server availability; publish remains the user's explicit action and existing Room/outbox behavior.
+- Test the parser and intent routing on the JVM; this Mac only performs source/diff checks. SDK-machine real-device timing and share-sheet evidence remain open.
+
+## Task 6 — Make editor attachment states honest and tappable
+
+- Keep the six-icon toolbar in the approved order and visual language.
+- Keep 图片 wired to the existing picker; make 视频、语音、音乐、城市、更多 open an explanation instead of silently doing nothing.
+- State the exact handoff for each unavailable capability: media upload, MUSIC block, one-time city snapshot, or profile tools. Never request a permission or write a fake block from a disabled path.
+- Add a Compose regression for the video explanation; device screenshots remain the SDK-machine responsibility.
