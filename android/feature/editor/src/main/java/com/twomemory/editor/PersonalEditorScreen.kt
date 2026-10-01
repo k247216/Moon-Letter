@@ -54,11 +54,29 @@ fun PersonalEditorScreen(
 ) {
     Scaffold(
         bottomBar = {
-            Button(
-                onClick = onPublish,
-                enabled = !state.saving,
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
-            ) { Text(if (state.saved) "已保存" else "发布这篇记录") }
+            Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
+                state.error?.let {
+                    Text(
+                        it,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        style = TwoMemoryTypography.caption,
+                    )
+                    Spacer(Modifier.size(8.dp))
+                }
+                Button(
+                    onClick = onPublish,
+                    enabled = !state.saving && state.hasContent,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        when {
+                            state.saving -> "保存中…"
+                            state.saved -> "已保存"
+                            else -> "发布这篇记录"
+                        }
+                    )
+                }
+            }
         },
     ) { padding ->
         Column(

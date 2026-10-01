@@ -37,6 +37,10 @@ data class TimelineItem(
     val occurredAt: Instant,
     val occurredTimezone: String,
     val title: String?,
+    /** Writer of the entry; the UI renders 我 vs the partner label by it. */
+    val authorId: UUID? = null,
+    /** Plain text preview of the first content block, for the timeline card. */
+    val preview: String? = null,
 )
 
 data class PendingOperation(

@@ -10,12 +10,14 @@ import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.UUID
 
 data class TimelineEntryUi(
     val id: String,
     val dateLabel: String,
     val timeLabel: String,
     val author: String,
+    val title: String?,
     val body: String,
     val shared: Boolean = false,
 )
@@ -27,6 +29,7 @@ data class TimelineEntryUi(
  */
 class TimelineViewModel(
     private val loader: (suspend () -> List<TimelineItem>)? = null,
+    private val currentUserId: UUID? = null,
 ) : ViewModel() {
 
     private val mutableEntries = MutableStateFlow<List<TimelineEntryUi>>(emptyList())
@@ -48,12 +51,19 @@ class TimelineViewModel(
         val local = occurredAt.atZone(zone)
         val date = local.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))
         val time = local.format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA))
+        val mine = currentUserId != null && authorId == currentUserId
         return TimelineEntryUi(
             id = id.toString(),
             dateLabel = date,
             timeLabel = time,
-            author = "我",
-            body = title ?: "",
+            author = when {
+                mine -> "我"
+                mode == com.twomemory.model.EntryMode.COLLABORATIVE -> "共同"
+                else -> "TA"
+            },
+            title = title?.takeIf { it.isNotBlank() },
+            // Body must be the real content text; title is rendered separately.
+            body = preview ?: title.orEmpty(),
             shared = mode == com.twomemory.model.EntryMode.COLLABORATIVE,
         )
     }
