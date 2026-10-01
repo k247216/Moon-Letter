@@ -353,4 +353,19 @@
   5. 编辑已发布记录（现无此功能）不会造成重复通知：REPLACE 会让该行排到 `rowid` 末尾，但 id 不变 → 判定仍是 `NONE`。记在这里是为了下次不必重新推一遍。
   6. 关闭开关**不收回已经贴在通知栏的那一条**（她划掉即可），重新打开也不补发关闭期间的记录——见上面的水位删除规则。
   7. 未做：把当周挑中的那条也在 App 内呈现（打开就看到的卡片）。plan 只要求通知直达；界面复刻与参考图对齐另有其人。
-  8. 落地动作与记录 21 相同且仍未完成：服务端用新构建重启 8080（当前无进程），两台手机装 `:app:assembleDebug` 产出的新 APK；开档当天照旧「两台清数据 → 第一位初始化 → 第二位用新生成的码配对」。
+  8. 落地动作与记录 21 相同且仍未完成：服务端用新构建重启 8080（当前无进程），两台手机装 `:app:assembleDebug` 产出的新 APK；开档当天的顺序以 `docs/testing/open-day-runbook.md` 为准——**还在用的那台不必清数据**，直接进「我们」页生成配对码，只有丢会话的那台走绑定/恢复路径。
+
+### 记录 23：文档台账对齐与开档准备（2026-10-01）
+
+- **Commits**：`57e6686 fix(server): make the documented session recovery command actually run`、`40fb3a7 test(server): pin the table names the open-day runbook counts`，docs 提交另计；`git rev-list --count origin/m1-stable-recording-loop..HEAD` 实测**本地领先 13 个提交**（docs 提交之前），推送仍逐次授权。
+- **本轮没有新增产品能力**，做的是把台账、复核、README 与代码对齐，并把开档当天的操作顺序写成 `docs/testing/open-day-runbook.md`。台账 **70/118**（复核基线 62/118 → Task 2 恢复两项 + Task 11c 六项）。
+
+- **给文档写命令时才发现恢复命令是哑的（真问题，不是文档问题）**：`SessionAdminCommand.run` 只读 `System.getProperty(...)`，而类注释、计划与 README 的用法全部写成 Spring 程序参数 `--moon-letter.admin.mode=...`。照文档敲的命令**解析不到 mode，直接当成普通启动返回**——web 已关，于是进程安静地跑起来又什么都不做。更要命的是第二处：`Mode.valueOf("ISSUE")` 找不到常量（枚举叫 `ISSUE_REPLACEMENT`），即便用 `-D` 传进去，文档里写的 `issue` 这个值本身也进不了分支。**这两处都只在真机锁死那天才会暴露**，而那天正是它唯一的用途。
+  - 红灯：新增 `SessionAdminCommandInvocationTest`（纯 JUnit，不碰数据库）。首跑 `找不到符号 resolveRequest`（编译红），实现后再红两次：`moon-letter.admin.mode must be revoke-all or issue, was: issue` 与 precedence 用例漏传 user-id 导致的 `missing required argument`——后者是测试自己写错，修测试；前者就是上面那个真实缺陷。
+  - 绿灯：`resolveRequest` 同时接受程序参数与系统属性（参数优先），`parseMode` 接受 `issue`/`issue-replacement`/`issue_replacement` 与 `revoke-all`/`revoke`；mode 有值而 user-id 缺失时抛带键名的错误而不是安静退出；未知 mode 抛错而不是继续启动 web。`run` 对 `revoke-all` 打印明确结果而不是 `token (shown once): null`。
+  - 顺带修正：`executeForTest` 原来在 switch **之前**无条件 `queryForObject(couple_id …)`，`REVOKE_ALL` 根本不需要 coupleId，成员行缺失时会先撞上 `EmptyResultDataAccessException`。改为签发时才反查（`coupleIdOf`，查不到给出「该用户不属于任何空间，没有可恢复的东西」）。coupleId 从不接受手填——填错等于把会话签进别人的空间。
+- **CLI 真跑过一遍（克隆库，dev 库未被写）**：`CREATE DATABASE … TEMPLATE moon_letter`（源库当时 0 连接）→ 用 README 原文那条命令跑 `revoke-all`，退出码 0、目标成员会话由 active 变 revoked、另一成员会话未受影响、`session_admin_audit` 落一行 `REVOKE_ALL` 且 `note` 为空 → 再跑 `issue`，退出码 0 且 stdout 只打印一次 43 字符令牌 → `DROP DATABASE`。**dev 库全程未连**，收尾核对仍是 `entry=0 … session=2`。
+- **表名进了测试**：runbook 要求用 `entry / entry_block / comment / sync_change / media_asset / couple_space / couple_member / device_session` 计数来证明「一条真实记录产生一行 entry」。写这段时发现 `sync_change`、`media_asset` 都改过名，文档里的表名一旦写错，前后对比会永远等于 0 且看起来一切正常。新增 `SchemaTableNamesTest`（Flyway + Testcontainers 或 `TEST_DB_URL`，与 `SchemaConstraintTest` 同一套取库方式）钉住这八个名字，并显式断言三个旧名字不存在。
+- **文档修正清单**（都按代码现状改，未凭印象）：README 删掉不存在的 `RECOVERY_SECRET` 前置条件、改为记录本地 CLI 恢复与 `BOOTSTRAP_SECRET` 可重复找回自己槽位的语义与其代价（该密钥现在是长期凭据，泄露＝第一位成员整槽被接管，服务端端口不得公网可达）；README 服务端启动改成 jar + 环境变量注入并写明 `mvn spring-boot:run --moon-letter.…` 传不进应用这条真机 403 根因；复核报告追加 §6 后续状态表（P0 与四条 P1 的技术部分逐条给提交号，同时写明「仍然成立的部分」是所有需要设备的证据）；交接快照 §3 五条问题标为已闭合、§4 顺序标出第 4 项才是当前第一优先级、§2 表里「服务器 8080 运行中」和「时间线仍非持续响应式」两处过时表述已改；计划 Task 2 第 82/83 项勾选并附证据与边界（真机失联演练仍归 H4），Task 11c 六项勾选并记录文件划分偏差（`core/sync/WeeklyReview.kt` + `app/notifications/WeeklyReviewWorker.kt`，非计划里的单个 `core/sync/WeeklyReviewWorker.kt`）。
+- **一处故意不勾**：Task 2「bootstrap 密钥已消费」保持未勾选，并写明它被使用者的决定取代——重装后必须仍能用同一密钥找回自己的位置，与一次性密钥互斥。把代价和约束写在同一行，避免下一个人把它当漏项补掉。
+- **本轮未做**：真机一切（E1 互见、E2 断网、H1 计时、H3 到点、H4 双端演练、D1 异机还原、U1/U2 视觉）；legacy 偏差清单（`CAPSULE_LOCKED/ARCHIVED`、`RoomSyncStore.mapState`、发布草稿时 `baseVersion` 固定 0、硬编码 `DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"`、cleartext、图片无磁盘缓存、IMAGE payload 带本机绝对路径、主题不跨端同步、无 Room migration 测试）——这些是下一件事，开档前只挑会影响真实数据的那部分先修。

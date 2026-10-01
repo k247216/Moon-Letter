@@ -67,7 +67,7 @@
 
 ## 4. 文档状态修正
 
-- 执行计划已按逐条证据更新为 **62/118**；Task 1/3/5/6/9/11 的当前定义全部勾选，Task 2/4/7/8/10 只勾已有证据的子项，其余 56 项保持未完成。
+- 执行计划已按逐条证据更新为 **62/118**（复核当日数字；本轮后为 70/118，见本文 §6 与验收记录 23）；Task 1/3/5/6/9/11 的当前定义全部勾选，Task 2/4/7/8/10 只勾已有证据的子项，其余 56 项保持未完成。
 - Task 2 的恢复、Task 4 的 profile 越权、Task 7 的进程重启/聚焦命令、Task 8 的 connected smoke、Task 10 的严格 FIFO/完整触发、Task 11a 之后的项目保持未勾选。
 - Task 9/11 的测试路径从旧的 `androidTest`/connected 表述改为已经批准且实际执行的 Robolectric `src/test` 夹具；真机 smoke 和 UI 录像没有被取消，仍由 Task 8/11a/14 约束。
 - Gate 表的 PASS 只覆盖各行明确写出的技术能力；顶部总状态继续为 `NOT VERIFIED`。
@@ -81,3 +81,18 @@
 5. Task 11b/11c、Task 12/12b、Task 13、Task 14，按计划继续。
 
 在第 1–4 项完成前，不进入共同记录扩展、媒体、备份 UI 或视觉完成宣告。
+
+## 6. 后续状态（同日追加，不修改上面作为当时证据的正文）
+
+复核基线之后的提交已闭合 §2 的 P0 与三条 P1 中的技术部分；本节是读这份复核时的现行索引。
+
+| 复核项 | 现状 | 依据 |
+|---|---|---|
+| P0 H4 会话恢复 | 代码与真库测试已存在：`SessionAdminCommand`（本地 CLI，web 显式关闭）+ `SessionRecoveryTest`；新增 `issueReplacementSession`＝先吊销该成员全部会话再签发（普通 `issueSession` 仍不吊销，只用于空安装），bootstrap 找回与恢复命令都走它；重装后可用 `BOOTSTRAP_SECRET` 找回创始成员槽位，掉线一方由对端生成 `REJOIN` 配对码 | `51b4a4d`、`52b1f59`、`9d3ca4c` |
+| P1 outbox 重试链 | 严格 FIFO、`CancellationException` 重新抛出、worker 依据 push 结果返回 retry | `1223c53` |
+| P1 凭据与网络配置 | 令牌改由 Keystore 密封存储；明文存储取消；`SyncSession.load` 对损坏会话回退绑定页 | `3a50c8f` |
+| P1 时间线非响应式 | Room DAO 暴露 `observeTimeline()` / `observeBlocks()`，ViewModel 持续收集 | `d107bba` |
+| P1 Scaffold 遮挡 | 记录页关闭按钮不再压状态栏 | `fe697d7` |
+| P1 备份/恢复/真实使用 | `scripts/backup.sh`、`scripts/restore.sh` 已存在；每周回看与新记录通知（Task 11c）已落地；`real-use-log.md` 仍未建立，ShareReceiver/ProfileEdit/ExportService 的完成度以计划台账为准 | `138aaea`、验收记录 22 |
+
+**仍然成立的部分**：§1 里 A1 的"不得外推为设备可用性"、§2 结论中所有需要设备的证据（真机 smoke、Task 11a、E1 互见、E2 故障恢复、H1–H8、U 类视觉）一件都没有变成真机证据，M1 继续是 `NOT VERIFIED`。§5 的第 1–3 项做完不等于通过，只等于可以在真机上开始验证。

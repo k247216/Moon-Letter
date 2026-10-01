@@ -11,7 +11,7 @@
 **Authoritative spec:** `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
 **Standing product principles:** `docs/human-scale-principles.md` — 范围或顺序需要取舍时按该文件第 9 节让路，不得为完成度牺牲记录成本、连续性或可带走性。
 
-**Current truth:** M1 is `NOT VERIFIED`. S1–S5 and A1–A3 have accepted development-machine evidence at review baseline `5a38d39`; E1 is only partially proven by the Robolectric two-Room/real-HTTP/real-PostgreSQL harness. H1–H8, E2, D1–D2 and U1–U2 remain incomplete. Historical `TwoDeviceSyncTest`/`TwoDeviceScenarioTest` evidence is still not counted as E2E.
+**Current truth:** M1 is `NOT VERIFIED`；台账 **70/118**（复核基线时为 62/118）。S1–S5 与 A1–A3 有已接受的开发机证据；H4 的本地恢复命令与真库测试（Task 2 第 82、83 项）、严格 FIFO 与取消传播的 outbox 重试链、Keystore 密封的会话令牌、响应式时间线和 Task 11c 的每周回看/新记录通知此后已落地。仍未完成的是需要设备的证据（E1 真机互见、E2 故障恢复、H1–H8、D/U 视觉对照）与 Task 11a/11b、12/12b、13、14 的剩余子项，另加一份实现偏差清单：`EntryMode` 的遗留命名与 `RoomSyncStore.mapState`、发布草稿时 `baseVersion` 固定 0、硬编码开发机地址与 cleartext、图片无磁盘缓存、无 Room migration 测试。历史 `TwoDeviceSyncTest`/`TwoDeviceScenarioTest` 证据仍不计为 E2E。开档（真实内容第一天）的操作顺序见 `docs/testing/open-day-runbook.md`。
 
 ---
 
@@ -77,10 +77,10 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/src/main/java/com/twomemory/app/media/MediaController.java`
 - Modify: `server/src/main/java/com/twomemory/app/sync/SyncController.java`
 
-- [x] Write real-database tests proving bootstrap works only on an empty installation with `BOOTSTRAP_SECRET`, a second bootstrap is rejected, an invalid bearer token receives 401, and a guessed `X-User-Id` grants no access.
-- [ ] 标记 bootstrap 密钥已消费：bootstrap 成功后同一 `BOOTSTRAP_SECRET` 永久失效并有测试证明。否则恢复演练中的"删库重建"会让任何可达该端口的人抢先把空间建走。
-- [ ] Write `SessionRecoveryTest` proving that with **no valid session existing at all**（模拟两台设备都不可用），一个仅在本机可执行的管理命令能吊销残留会话、为指定成员签发新会话，且新会话可以通过真实 HTTP 拉取到该空间的全部既有数据。这是规格 §5.4 的锁死防护，缺了它，一次换机或系统重置就等于永久失去存档。
-- [ ] Implement `SessionAdminCommand` as a local-only CLI (or an endpoint guarded by a distinct `RECOVERY_SECRET` that is never equal to `BOOTSTRAP_SECRET`); record issue/revoke/restore in an audit row containing no token material.
+- [x] Write real-database tests proving bootstrap works only on an empty installation with `BOOTSTRAP_SECRET`, a second bootstrap is rejected, an invalid bearer token receives 401, and a guessed `X-User-Id` grants no access. 其中"第二次 bootstrap 被拒绝"已按 H4 需要改为**找回创始成员自己的槽位**（同 userId/coupleId、轮换令牌、旧令牌立刻 401），见 `BootstrapAuthenticationTest.bootstrapIsOneTimeAndBearerTokenIsEnforced` 第 3、4 步。
+- [ ] 标记 bootstrap 密钥已消费：bootstrap 成功后同一 `BOOTSTRAP_SECRET` 永久失效并有测试证明。否则恢复演练中的"删库重建"会让任何可达该端口的人抢先把空间建走。**本项已被 2026-10-01 的使用者决定取代，保持未勾选**：卸载重装后必须仍能用同一密钥找回自己的槽位，因此密钥是长期凭据而非一次性凭据（`BootstrapService.reclaimFoundingMember`，`52b1f59`）。代价写明：`BOOTSTRAP_SECRET` 泄露＝第一位成员整槽被接管，所以服务端端口不得公网可达，密钥只留在服务端本机环境。H4 不再以本项为前置条件。
+- [x] Write `SessionRecoveryTest` proving that with **no valid session existing at all**（模拟两台设备都不可用），一个仅在本机可执行的管理命令能吊销残留会话、为指定成员签发新会话，且新会话可以通过真实 HTTP 拉取到该空间的全部既有数据。这是规格 §5.4 的锁死防护，缺了它，一次换机或系统重置就等于永久失去存档。证据：`51b4a4d`，`server/src/test/java/com/twomemory/app/auth/SessionRecoveryTest.java`（真实 PostgreSQL 独立库 + `RANDOM_PORT` 真实 HTTP，断言旧令牌保持 401、新令牌能读 `/api/v1/sync/changes`、审计行不含令牌明文）。**这是 JVM + 真库证据；双端真机失联演练仍归 H4。**
+- [x] Implement `SessionAdminCommand` as a local-only CLI (or an endpoint guarded by a distinct `RECOVERY_SECRET` that is never equal to `BOOTSTRAP_SECRET`); record issue/revoke/restore in an audit row containing no token material. 选择规格允许的第一种形态：`--spring.main.web-application-type=none` 下的本地 CLI（`--moon-letter.admin.mode=revoke-all|issue`），`RECOVERY_SECRET` 因此不存在，README 与交接文档中的该前置条件已删除。
 - [x] Add `device_session` with token hash, user/couple foreign keys, created/last-used/revoked timestamps; never persist plaintext tokens. Enforce at most one active session per member in M1 and rotate it on device replacement.
 - [x] Return an opaque token only when creating a session. Use `Authorization: Bearer`; disable form login and HTTP Basic; allow only health, bootstrap and pair endpoints explicitly.
 - [x] Remove production use of `AuthenticatedUser.fromHeader` and make controllers read the authenticated principal.
@@ -280,12 +280,16 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `android/feature/timeline/src/main/java/com/twomemory/timeline/TimelineViewModel.kt`
 - Modify: `android/feature/couple/src/main/java/com/twomemory/couple/CoupleScreen.kt`
 
-- [ ] 每周固定时间（默认周日 20:00，可关闭、可改时间）挑出**一条**明显更早的已发布记录（优先约一年前，逐级回退），点开直达该条记录。
-- [ ] 找不到符合窗口内任何记录时安静跳过：不提示"本周没有内容"，不用近期记录凑数，不生成任何内容（规格 §3.1 第 14 项）。
-- [ ] 对方发布新记录后，在**本端同步完成时**发一次本地通知，只写"TA 写了一条新的"，不含正文、不含数量、不累积未读数（规格 §3.1 第 16 项）。
-- [ ] 两个能力都必须能在设置里一次关闭；关闭后不得留下任何计数或历史。
-- [ ] 自查并在代码评审记录中确认：本任务未引入任何统计、趋势、已读列表或"对方没写"提示（规格 §3.4）。
-- [ ] Commit: `feat(android): add weekly re-encounter and new-entry notice`.
+> 落地时的文件划分与本表不同，按"选择规则可 JVM 单测、Android 依赖留在 app"重排：纯选择与时点计算在 `android/core/sync/src/main/java/com/twomemory/sync/WeeklyReview.kt`，`PeriodicWorkRequest` 与通知落在 `android/app/src/main/java/com/twomemory/app/notifications/`（`WeeklyReviewWorker`、`NewEntryNotice`、`MoonLetterNotifier`、`NotificationPreferences`）。功能范围未变。
+
+- [x] 每周固定时间（默认周日 20:00，可关闭、可改时间）挑出**一条**明显更早的已发布记录（优先约一年前，逐级回退），点开直达该条记录。证据：`WeeklyReviewTest` 8 例 + `NoticeChainTest`；直达用 `MainActivity.EXTRA_OPEN_ENTRY` + `AppNavigation.initialEntryId`。验收记录 22。
+- [x] 找不到符合窗口内任何记录时安静跳过：不提示"本周没有内容"，不用近期记录凑数，不生成任何内容（规格 §3.1 第 14 项）。`pick()` 在 8 天以下存档返回 null，`WeeklyReviewWorker.doWork` 对 null 不发任何通知。
+- [x] 对方发布新记录后，在**本端同步完成时**发一次本地通知，只写"TA 写了一条新的"，不含正文、不含数量、不累积未读数（规格 §3.1 第 16 项）。钩子是 `SyncEngineRegistry.onCycleCompleted`，签名不带条数，任何计数都传不到界面。
+- [x] 两个能力都必须能在设置里一次关闭；关闭后不得留下任何计数或历史。`newEntryNoticeEnabled=false` 时写入路径会 `remove(lastNotifiedEntryId)`；回看关闭时 `WeeklyReviewWorker.cancel` 并让 `pickReviewEntryId` 再读一次开关后静默返回。
+- [x] 自查并在代码评审记录中确认：本任务未引入任何统计、趋势、已读列表或"对方没写"提示（规格 §3.4）。状态恰为两个布尔 + 一个 entryId + 星期/小时 + "问过权限一次"标记，验收记录 22 附 grep 自查（H7）。
+- [x] Commit: `feat(android): add weekly re-encounter and new-entry notice`（`138aaea`，文档 `6352689`）。
+
+> 边界：本任务的绿色是 Robolectric + JVM 证据。通知是否真到点、锁屏上的观感、点开直达是否顺畅仍归 H3/U1，一台具名真机上跑过之前不得写成"设备已验证"。
 
 > Task 11b 与 11c 不阻塞 Task 12；但 11a 必须与 Task 11 同日完成。
 
