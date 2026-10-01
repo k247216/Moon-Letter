@@ -11,7 +11,7 @@
 **Authoritative spec:** `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
 **Standing product principles:** `docs/human-scale-principles.md` — 范围或顺序需要取舍时按该文件第 9 节让路，不得为完成度牺牲记录成本、连续性或可带走性。
 
-**Current truth:** M1 is `NOT VERIFIED`. Existing server and Android tests are component evidence only; `TwoDeviceSyncTest` and `TwoDeviceScenarioTest` are not accepted as end-to-end evidence.
+**Current truth:** M1 is `NOT VERIFIED`. S1–S5 and A1–A3 have accepted development-machine evidence at review baseline `5a38d39`; E1 is only partially proven by the Robolectric two-Room/real-HTTP/real-PostgreSQL harness. H1–H8, E2, D1–D2 and U1–U2 remain incomplete. Historical `TwoDeviceSyncTest`/`TwoDeviceScenarioTest` evidence is still not counted as E2E.
 
 ---
 
@@ -38,9 +38,9 @@
 
 Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难改的决定。可逆的偏好项不在这里问使用者——把它们做成"以后随时能改"（Task 12b），比要求使用者在使用前先配置更符合人类尺度原则第 7、9 节。未获得明确答复时按括号内默认值继续，**但实现方不得自行改换架构方向**。
 
-- [ ] **主数据表示（规格 §7.3）**：确认采用方案 A（PostgreSQL 权威 + 强制全量导出，默认）或方案 B（文件集合本身是权威，数据库退化为索引）。选 B 会重写 Tasks 5–7 的幂等与游标语义，必须先回传影响评估再动工。
+- [x] **主数据表示（规格 §7.3）**：采用方案 A（PostgreSQL 权威 + 强制全量导出）；已体现在当前规格与 Tasks 5–7 实现中。
 - [ ] **开始真实使用的日期**：写下一个具体日期，不晚于 Task 11 通过之日，并在该日期于两台真机开始写真实记录。同时写下每周可投入的时间上限；超出上限时按人类尺度原则第 9 节砍范围，而不是延长日期。
-- [ ] **桌面图标名称**（Android 唯一被迫提前的命名决定，见规格 §8）：给两个候选让使用者挑，或者明确同意"先用现名，以后随版本改"。除此之外，App 内称呼、身份色、封面和措辞**不在此处提问**，由 Task 12b 以可改入口交付；向使用者索取时一律用两个具体选项，不提供成品征求意见。
+- [x] **桌面图标名称**（Android 唯一被迫提前的命名决定，见规格 §8）：使用者已确认「月笺」；App 内称呼、身份色、封面和措辞仍由 Task 12b 提供可修改入口。
 - [ ] Commit: `docs(decisions): fix pre-flight product decisions`.
 
 ## Task 1: Make the server reproducibly bootable
@@ -53,12 +53,12 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/src/test/java/com/twomemory/app/CoupleDiaryApplicationTest.java`
 - Modify: `README.md`
 
-- [ ] Add a context test that supplies an explicit PostgreSQL URL and asserts Flyway has applied the expected schema.
-- [ ] Run `cd server && mvn -Dtest=CoupleDiaryApplicationTest test`; preserve the initial failure caused by missing configuration.
-- [ ] Define datasource, Flyway, actuator health and S3/notification defaults without embedding production secrets. The default profile must fail with a clear missing-database error instead of silently using an unrelated database.
-- [ ] Start PostgreSQL using `docker compose -f infra/compose.yaml up -d postgres`, then run the context test and `mvn spring-boot:run -Dspring-boot.run.profiles=dev`.
-- [ ] Record the health URL, command, exit code and commit in the acceptance record.
-- [ ] Commit: `build(server): add reproducible runtime configuration`.
+- [x] Add a context test that supplies an explicit PostgreSQL URL and asserts Flyway has applied the expected schema.
+- [x] Run `cd server && mvn -Dtest=CoupleDiaryApplicationTest test`; preserve the initial failure caused by missing configuration.
+- [x] Define datasource, Flyway, actuator health and S3/notification defaults without embedding production secrets. The default profile must fail with a clear missing-database error instead of silently using an unrelated database.
+- [x] Start PostgreSQL using `docker compose -f infra/compose.yaml up -d postgres`, then run the context test and `mvn spring-boot:run -Dspring-boot.run.profiles=dev`.
+- [x] Record the health URL, command, exit code and commit in the acceptance record.
+- [x] Commit: `703aa3a build(server): add reproducible runtime configuration`.
 
 ## Task 2: Replace trusted headers with device-session authentication
 
@@ -77,15 +77,15 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/src/main/java/com/twomemory/app/media/MediaController.java`
 - Modify: `server/src/main/java/com/twomemory/app/sync/SyncController.java`
 
-- [ ] Write real-database tests proving bootstrap works only on an empty installation with `BOOTSTRAP_SECRET`, a second bootstrap is rejected, an invalid bearer token receives 401, and a guessed `X-User-Id` grants no access.
+- [x] Write real-database tests proving bootstrap works only on an empty installation with `BOOTSTRAP_SECRET`, a second bootstrap is rejected, an invalid bearer token receives 401, and a guessed `X-User-Id` grants no access.
 - [ ] 标记 bootstrap 密钥已消费：bootstrap 成功后同一 `BOOTSTRAP_SECRET` 永久失效并有测试证明。否则恢复演练中的"删库重建"会让任何可达该端口的人抢先把空间建走。
 - [ ] Write `SessionRecoveryTest` proving that with **no valid session existing at all**（模拟两台设备都不可用），一个仅在本机可执行的管理命令能吊销残留会话、为指定成员签发新会话，且新会话可以通过真实 HTTP 拉取到该空间的全部既有数据。这是规格 §5.4 的锁死防护，缺了它，一次换机或系统重置就等于永久失去存档。
 - [ ] Implement `SessionAdminCommand` as a local-only CLI (or an endpoint guarded by a distinct `RECOVERY_SECRET` that is never equal to `BOOTSTRAP_SECRET`); record issue/revoke/restore in an audit row containing no token material.
-- [ ] Add `device_session` with token hash, user/couple foreign keys, created/last-used/revoked timestamps; never persist plaintext tokens. Enforce at most one active session per member in M1 and rotate it on device replacement.
-- [ ] Return an opaque token only when creating a session. Use `Authorization: Bearer`; disable form login and HTTP Basic; allow only health, bootstrap and pair endpoints explicitly.
-- [ ] Remove production use of `AuthenticatedUser.fromHeader` and make controllers read the authenticated principal.
-- [ ] Run `cd server && mvn -Dtest=BootstrapAuthenticationTest test`.
-- [ ] Commit: `feat(auth): add bootstrap and device bearer sessions`.
+- [x] Add `device_session` with token hash, user/couple foreign keys, created/last-used/revoked timestamps; never persist plaintext tokens. Enforce at most one active session per member in M1 and rotate it on device replacement.
+- [x] Return an opaque token only when creating a session. Use `Authorization: Bearer`; disable form login and HTTP Basic; allow only health, bootstrap and pair endpoints explicitly.
+- [x] Remove production use of `AuthenticatedUser.fromHeader` and make controllers read the authenticated principal.
+- [x] Run `cd server && mvn -Dtest=BootstrapAuthenticationTest test`.
+- [x] Commit: `787ce73 feat(auth): add bootstrap and device bearer sessions`.
 
 ## Task 3: Implement one-time partner pairing
 
@@ -96,12 +96,12 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/src/main/java/com/twomemory/app/couple/CoupleDtos.java`
 - Modify: `server/src/test/java/com/twomemory/app/couple/CoupleApiTest.java`
 
-- [ ] Add tests for a cryptographically random token, 15-minute expiry, single use, two-member maximum and token non-disclosure after creation.
-- [ ] Store only the token hash. Generate at least 128 bits with `SecureRandom`; revoke on successful pairing and on replacement.
-- [ ] Make pairing create the second member and its first device session transactionally.
-- [ ] Delete or migrate the old enumerable pairing-code path; do not keep two active mechanisms.
-- [ ] Run `cd server && mvn -Dtest=CoupleApiTest test`.
-- [ ] Commit: `feat(couple): secure one-time partner pairing`.
+- [x] Add tests for a cryptographically random token, 15-minute expiry, single use, two-member maximum and token non-disclosure after creation.
+- [x] Store only the token hash. Generate at least 128 bits with `SecureRandom`; revoke on successful pairing and on replacement.
+- [x] Make pairing create the second member and its first device session transactionally.
+- [x] Delete or migrate the old enumerable pairing-code path; do not keep two active mechanisms.
+- [x] Run `cd server && mvn -Dtest=CoupleApiTest,PairingFlowTest test`.
+- [x] Commit: `34e7f3e feat(couple): secure one-time partner pairing`.
 
 ## Task 4: Enforce actor ownership in every business operation
 
@@ -115,11 +115,11 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/src/test/java/com/twomemory/app/media/MediaServiceTest.java`
 
 - [ ] Add negative tests for reading another space, publishing another user's draft, editing another author's shared block, modifying another profile and referencing non-ready or foreign media.
-- [ ] Pass the authenticated actor into every service mutation; remove nullable-user overloads and controller paths that discard identity.
-- [ ] Define the shared-entry rule directly in service code: one author owns each perspective block; the partner may append their own block but cannot update the first author's block.
-- [ ] Call `MediaService.requireReady` for every media reference at publication.
-- [ ] Run the focused entry/media tests, then `cd server && mvn test`.
-- [ ] Commit: `fix(server): enforce actor and media authorization`.
+- [x] Pass the authenticated actor into every service mutation; remove nullable-user overloads and controller paths that discard identity.
+- [x] Define the shared-entry rule directly in service code: one author owns each perspective block; the partner may append their own block but cannot update the first author's block.
+- [x] Call `MediaService.requireReady` for every media reference at publication.
+- [x] Run the focused entry/media tests, then `cd server && mvn test`.
+- [x] Commit: `1b6c41b fix(server): enforce actor and media authorization`.
 
 ## Task 5: Make mutations typed, idempotent and transactionally observable
 
@@ -131,12 +131,12 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/src/main/java/com/twomemory/app/entry/EntryService.java`
 - Modify: `server/src/test/java/com/twomemory/app/sync/SyncApiTest.java`
 
-- [ ] Write tests showing a typed `CREATE_PERSONAL_ENTRY` changes the entry tables, a duplicate `(couple_id, operation_id)` has one visible effect and returns the saved response, and the same ID with different payload is rejected.
-- [ ] Replace arbitrary client-supplied change payload insertion with a closed operation-type dispatcher and validated DTOs.
-- [ ] Wrap idempotency claim, business mutation, revision creation, change append and response storage in one `@Transactional` boundary.
-- [ ] Prove an injected failure before commit leaves neither business data nor change rows nor a completed idempotency response.
-- [ ] Run `cd server && mvn -Dtest=SyncApiTest test`.
-- [ ] Commit: `feat(sync): dispatch typed idempotent operations`.
+- [x] Write tests showing a typed `CREATE_PERSONAL_ENTRY` changes the entry tables, a duplicate `(couple_id, operation_id)` has one visible effect and returns the saved response, and the same ID with different payload is rejected.
+- [x] Replace arbitrary client-supplied change payload insertion with a closed operation-type dispatcher and validated DTOs.
+- [x] Wrap idempotency claim, business mutation, revision creation, change append and response storage in one `@Transactional` boundary.
+- [x] Prove an injected failure before commit leaves neither business data nor change rows nor a completed idempotency response.
+- [x] Run `cd server && mvn -Dtest=SyncApiTest,TypedSyncOperationTest test`.
+- [x] Commit: `7f84d70 feat(sync): dispatch typed idempotent operations`.
 
 ## Task 6: Replace the unsafe global cursor with a per-couple ordered feed
 
@@ -147,12 +147,12 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/src/test/java/com/twomemory/app/db/SchemaConstraintTest.java`
 - Create: `server/src/test/java/com/twomemory/app/sync/ChangeFeedOrderingTest.java`
 
-- [ ] Add a concurrency test that holds transaction A, commits B, then releases A; prove a client cannot advance past an unseen committed change.
-- [ ] Add `couple_sync_state` and `(couple_id, space_sequence)` uniqueness. Lock the couple state row while allocating the next sequence inside the mutation transaction.
-- [ ] Return pages ordered by `space_sequence` with `next_cursor` equal to the highest fully returned sequence and an explicit `has_more`.
-- [ ] Remove reliance on a global identity as a client cursor.
-- [ ] Run the ordering and schema tests repeatedly, then the full server suite.
-- [ ] Commit: `fix(sync): serialize per-couple change sequences`.
+- [x] Add a concurrency test that holds transaction A, commits B, then releases A; prove a client cannot advance past an unseen committed change.
+- [x] Add `couple_sync_state` and `(couple_id, space_sequence)` uniqueness. Lock the couple state row while allocating the next sequence inside the mutation transaction.
+- [x] Return pages ordered by `space_sequence` with `next_cursor` equal to the highest fully returned sequence and an explicit `has_more`.
+- [x] Remove reliance on a global identity as a client cursor.
+- [x] Run the ordering and schema tests repeatedly, then the full server suite.
+- [x] Commit: `7fa0bd5 fix(sync): serialize per-couple change sequences`.
 
 ## Task 7: Add a real server recording-loop E2E test
 
@@ -162,12 +162,12 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `server/pom.xml`
 - Modify: `docs/testing/m1-acceptance.md`
 
-- [ ] Use `@SpringBootTest(webEnvironment = RANDOM_PORT)` with real PostgreSQL via Testcontainers or an explicit isolated `TEST_DB_URL`; send real HTTP requests with two bearer tokens.
+- [x] Use `@SpringBootTest(webEnvironment = RANDOM_PORT)` with real PostgreSQL via Testcontainers or an explicit isolated `TEST_DB_URL`; send real HTTP requests with two bearer tokens.
 - [ ] Cover bootstrap, pairing, device A personal draft/publish, device B pull, duplicate retry, unauthorized third token, shared dual perspectives, pagination and process-level server restart where feasible.
-- [ ] Rename the existing `FakeServer` test to identify it as a model/unit test, or remove it if redundant. It must not appear in the E2E count.
+- [x] Rename the existing `FakeServer` test to identify it as a model/unit test, or remove it if redundant. It must not appear in the E2E count.
 - [ ] Run `cd server && mvn -Dtest=SelfUseRecordingLoopE2ETest test`, then `mvn test`.
-- [ ] Record database type, command, test count, exit code and commit.
-- [ ] Commit: `test(server): add real HTTP PostgreSQL recording loop`.
+- [x] Record database type, command, test count, exit code and commit.
+- [x] Commit: `f410974 test(server): add real HTTP PostgreSQL recording loop`.
 
 ## Task 8: Establish a compiling Android and instrumented-test foundation
 
@@ -179,13 +179,13 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `android/feature/timeline/src/main/java/com/twomemory/timeline/TimelineScreen.kt`
 - Create: `android/gradle.properties`
 
-- [ ] Run `cd android && ./gradlew :app:assembleDebug :app:testDebugUnitTest`; keep the first compiler/configuration failures as evidence.
-- [ ] **测试装置选型先定，不要先做：** 以 Robolectric 在 JVM 上运行**两个真实 Room 数据库 + 真实 Retrofit 到真实 Spring Boot** 作为 `Room → Outbox → HTTP → PostgreSQL → Change Feed → 第二个 Room` 的主要证明手段；模拟器侧只保留一个最小 `connectedDebugAndroidTest` smoke 和 Task 14 的录像。跨两个独立应用数据目录的 instrumented 双端测试在单人开发中极不稳定（共享 localhost 服务、两个 app 实例、网络注入），而它要证明的链路并不需要模拟器。**这是证明成本的选择，不是降低标准**：Robolectric 侧必须用真 Room、真 HTTP、真 PostgreSQL，仍不得调用 service 或使用内存假服务。
-- [ ] Enable Compose where Compose code exists, configure the instrumentation runner and dependencies, fix incorrect imports, align JVM targets and configure JUnit consistently.
-- [ ] 静态审查已确认、需在此任务内一并修掉的缺陷（不必重新发现）：缺少 `android/gradle.properties`（`android.useAndroidX` 从未设置）；除 `app` 外 5 个含 Compose 代码的模块没有 `buildFeatures { compose = true }`；`PersonalEditorScreen.kt:12` 的 `verticalScroll` import 包名错误；`ui-test-junit4` 无版本号而 Compose BOM 只加在 `implementation` 上；9 个模块均无 `testInstrumentationRunner`；feature/app 的 androidTest 缺 junit4 与 `androidx.test:core`；`core:sync` 声明了 JUnit 5 但从未 `useJUnitPlatform()`；`app` 模块不依赖 `:core:database`/`:core:network`/`:core:sync`，因此 WorkManager 根本不在 APK 里；`AndroidManifest.xml` 无 `android:theme` 且 `res/values` 无 `styles.xml`。
+- [x] Run `cd android && ./gradlew :app:assembleDebug :app:testDebugUnitTest`; keep the first compiler/configuration failures as evidence.
+- [x] **测试装置选型先定，不要先做：** 以 Robolectric 在 JVM 上运行**两个真实 Room 数据库 + 真实 Retrofit 到真实 Spring Boot** 作为 `Room → Outbox → HTTP → PostgreSQL → Change Feed → 第二个 Room` 的主要证明手段；模拟器侧只保留一个最小 `connectedDebugAndroidTest` smoke 和 Task 14 的录像。跨两个独立应用数据目录的 instrumented 双端测试在单人开发中极不稳定（共享 localhost 服务、两个 app 实例、网络注入），而它要证明的链路并不需要模拟器。**这是证明成本的选择，不是降低标准**：Robolectric 侧必须用真 Room、真 HTTP、真 PostgreSQL，仍不得调用 service 或使用内存假服务。
+- [x] Enable Compose where Compose code exists, configure the instrumentation runner and dependencies, fix incorrect imports, align JVM targets and configure JUnit consistently.
+- [x] 静态审查已确认、需在此任务内一并修掉的缺陷（不必重新发现）：缺少 `android/gradle.properties`（`android.useAndroidX` 从未设置）；除 `app` 外 5 个含 Compose 代码的模块没有 `buildFeatures { compose = true }`；`PersonalEditorScreen.kt:12` 的 `verticalScroll` import 包名错误；`ui-test-junit4` 无版本号而 Compose BOM 只加在 `implementation` 上；9 个模块均无 `testInstrumentationRunner`；feature/app 的 androidTest 缺 junit4 与 `androidx.test:core`；`core:sync` 声明了 JUnit 5 但从未 `useJUnitPlatform()`；`app` 模块不依赖 `:core:database`/`:core:network`/`:core:sync`，因此 WorkManager 根本不在 APK 里；`AndroidManifest.xml` 无 `android:theme` 且 `res/values` 无 `styles.xml`。
 - [ ] Run `./gradlew :app:assembleDebug testDebugUnitTest` and one minimal `connectedDebugAndroidTest` on a named API 37 device.
-- [ ] Document JDK, SDK, emulator/device model and Android version; do not commit `local.properties`.
-- [ ] Commit: `build(android): establish verified app and test baseline`.
+- [x] Document JDK, SDK, emulator/device model and Android version; do not commit `local.properties`.
+- [x] Commit: `319b6b6 build(android): establish verified app and test baseline`.
 
 ## Task 9: Implement Room store and persistent outbox first
 
@@ -196,13 +196,13 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `android/core/database/src/main/java/com/twomemory/database/LocalEntryWriter.kt`
 - Create: `android/core/database/src/main/java/com/twomemory/database/RoomSyncStore.kt`
 - Modify: `android/core/database/src/androidTest/java/com/twomemory/database/LocalEntryWriterTest.kt`
-- Create: `android/core/database/src/androidTest/java/com/twomemory/database/RoomSyncStoreTest.kt`
+- Create: `android/core/database/src/test/java/com/twomemory/database/RoomSyncStoreTest.kt`
 
-- [ ] Test that entry plus outbox commit atomically, a killed/reopened database retains pending operations, duplicate pulled changes are harmless, and applying a page plus cursor is one transaction.
-- [ ] Implement all `SyncStore` behavior against DAOs; remove in-memory production stores and constant cursor values.
-- [ ] Use two separate temporary Room database files in instrumentation tests to represent two devices.
-- [ ] Run `cd android && ./gradlew :core:database:connectedDebugAndroidTest`.
-- [ ] Commit: `feat(android): persist entries outbox and sync cursor in Room`.
+- [x] Test that entry plus outbox commit atomically, a killed/reopened database retains pending operations, duplicate pulled changes are harmless, and applying a page plus cursor is one transaction.
+- [x] Implement all `SyncStore` behavior against DAOs; remove in-memory production stores and constant cursor values.
+- [x] Use two separate temporary Room database files in the accepted Robolectric JVM harness to represent two devices.
+- [x] Run `cd android && ./gradlew :core:database:testDebugUnitTest`（5/5；模拟器 smoke 仍由 Task 8/14 的未勾项约束）。
+- [x] Commit: `ebb4f4a feat(android): persist entries outbox and sync cursor in Room`.
 
 ## Task 10: Connect Retrofit and the synchronization engine
 
@@ -215,12 +215,12 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `android/app/src/main/java/com/twomemory/app/TwoMemoryApp.kt`
 - Modify: `android/app/src/main/java/com/twomemory/app/AppNavigation.kt`
 
-- [ ] Add tests for FIFO push, saved idempotency ID reuse after timeout, pull-until-`has_more=false`, atomic cursor updates, exponential retry and 401 stopping with a re-pair message.
-- [ ] Implement bearer injection, typed serialization, timeouts and error mapping with Retrofit/OkHttp.
+- [ ] Add tests for strict FIFO push, saved idempotency ID reuse after timeout, pull-until-`has_more=false`, atomic cursor updates, exponential retry and 401 stopping with a re-pair message. **复核备注：现有测试覆盖单条成功/重试，但没有证明第一条可重试失败后第二条不会发送；当前实现仍会继续循环。**
+- [x] Implement bearer injection, typed serialization, timeouts and error mapping with Retrofit/OkHttp.
 - [ ] Wire the real `RoomSyncStore`, API and worker in the application module. Trigger sync on app start, foreground return, manual refresh and network recovery.
-- [ ] Keep background WorkManager as best effort; do not claim one-minute delivery and do not make FCM a dependency.
-- [ ] Run `cd android && ./gradlew :core:sync:testDebugUnitTest :app:assembleDebug`.
-- [ ] Commit: `feat(android): wire Room Retrofit synchronization`.
+- [x] Keep background WorkManager as best effort; do not claim one-minute delivery and do not make FCM a dependency.
+- [x] Run `cd android && ./gradlew :core:sync:testDebugUnitTest :app:assembleDebug`.
+- [x] Commit: `453d978 feat(android): wire Room Retrofit synchronization`.
 
 ## Task 11: Prove the personal-text two-device vertical slice
 
@@ -229,15 +229,15 @@ Task 0 只处理**单向门**：一旦有真实内容或已发布 APK 就很难�
 - Modify: `android/feature/editor/src/main/java/com/twomemory/editor/PersonalEditorScreen.kt`
 - Modify: `android/feature/timeline/src/main/java/com/twomemory/timeline/TimelineViewModel.kt`
 - Modify: `android/feature/timeline/src/main/java/com/twomemory/timeline/TimelineScreen.kt`
-- Modify: `android/core/sync/src/test/java/com/twomemory/sync/TwoDeviceScenarioTest.kt`
-- Create: `android/app/src/androidTest/java/com/twomemory/app/TwoDeviceRecordingLoopTest.kt`
+- Delete: `android/core/sync/src/test/java/com/twomemory/sync/TwoDeviceScenarioTest.kt`
+- Create: `android/app/src/test/java/com/twomemory/app/TwoDeviceRecordingLoopTest.kt`
 
-- [ ] Remove hardcoded production timeline/editor data. Create and edit through Room; observe timeline from Room only.
-- [ ] Build an instrumented harness with two independent Room databases and the real HTTP server. Device A writes while offline, reconnects and pushes; device B pulls and exposes the exact entry from its own database.
-- [ ] Cover reverse reconnect, duplicate timeout retry and app-process recreation. Replace the current identical-string assertion; retain it only if renamed as a serialization unit test.
-- [ ] Run the real server, then `./gradlew :app:connectedDebugAndroidTest` and preserve logs.
-- [ ] Gate: do not begin Tasks 12–13 until this task is green.
-- [ ] Commit: `feat(m1): complete personal text two-device slice`.
+- [x] Remove hardcoded production timeline/editor data. Create and edit through Room; observe timeline from Room only.
+- [x] Build the accepted Robolectric harness with two independent Room database files and a real HTTP server. Device A writes while offline, reconnects and pushes; device B pulls and exposes the exact entry from its own database.
+- [x] Cover reverse reconnect, duplicate timeout retry and app-process recreation. Replace the current identical-string assertion; retain it only if renamed as a serialization unit test.
+- [x] Run the real server, then `./gradlew :app:testDebugUnitTest`; preserve the two-Room/real-HTTP/real-PostgreSQL evidence. 真机 smoke 与 UI 录像仍由 Task 8/11a/14 未勾项约束。
+- [x] Gate: the JVM vertical slice is green; do not begin Tasks 12–13 until Task 11a 的真机使用和 H4 会话恢复也完成。
+- [x] Commit: `8491f67 feat(sync): two-device recording loop end-to-end`.
 
 ## Task 11a: Start using it for real (same day Task 11 goes green)
 
