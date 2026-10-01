@@ -19,6 +19,11 @@ class DesignSystemContractTest {
             MoonLetterTabs.map { it.label },
             MoonLetterTabs.map { it.contentDescription },
         )
+        assertEquals(TwoMemoryIcons.Image, MoonLetterTabs[0].icon)
+        assertEquals(TwoMemoryIcons.Camera, MoonLetterTabs[1].icon)
+        assertEquals(TwoMemoryIcons.Add, MoonLetterTabs[2].icon)
+        assertEquals(TwoMemoryIcons.Location, MoonLetterTabs[3].icon)
+        assertEquals(TwoMemoryIcons.Music, MoonLetterTabs[4].icon)
     }
 
     @Test

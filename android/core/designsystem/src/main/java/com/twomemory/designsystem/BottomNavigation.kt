@@ -30,11 +30,11 @@ data class BottomTab(
 )
 
 val MoonLetterTabs = listOf(
-    BottomTab("timeline", "时光", TwoMemoryIcons.Home),
-    BottomTab("album", "相册", TwoMemoryIcons.Album),
+    BottomTab("timeline", "时光", TwoMemoryIcons.Image),
+    BottomTab("album", "相册", TwoMemoryIcons.Camera),
     BottomTab("create", "＋记录", TwoMemoryIcons.Add),
     BottomTab("map", "地图", TwoMemoryIcons.Location),
-    BottomTab("couple", "我们", TwoMemoryIcons.Couple),
+    BottomTab("couple", "我们", TwoMemoryIcons.Music),
 )
 
 @Composable
