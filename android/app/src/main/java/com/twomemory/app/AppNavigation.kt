@@ -44,6 +44,9 @@ import com.twomemory.timeline.TimelineViewModel
 import kotlinx.coroutines.flow.combine
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private fun com.twomemory.database.EntryEntity.toTimelineItem(
     preview: String?,
@@ -73,6 +76,87 @@ private fun photoOf(blocks: List<com.twomemory.database.EntryBlockEntity>) =
     blocks.firstOrNull { it.type == "IMAGE" && (it.assetId != null || it.entryPath != null) }?.let { block ->
         com.twomemory.model.TimelinePhoto(block.entryPath, block.assetId)
     }
+
+private fun occurredLabels(entry: com.twomemory.database.EntryEntity): Triple<String, String, String> {
+    val zone = runCatching { ZoneId.of(entry.occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
+    val local = java.time.Instant.ofEpochMilli(entry.occurredAtEpochMillis).atZone(zone)
+    return Triple(
+        local.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)),
+        local.format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA)),
+        local.format(DateTimeFormatter.ofPattern("yyyy年M月", Locale.CHINA)),
+    )
+}
+
+private fun authorLabel(
+    entry: com.twomemory.database.EntryEntity,
+    currentUserId: java.util.UUID?,
+    names: SyncSession.Names,
+) = if (currentUserId?.toString() == entry.authorId) {
+    names.own.ifBlank { "我" }
+} else {
+    names.partner.ifBlank { "伴侣" }
+}
+
+private fun localPathOf(block: com.twomemory.database.EntryBlockEntity): String? =
+    payloadOf(block).optString("localPath").takeIf { it.isNotBlank() && java.io.File(it).isFile }
+
+private fun albumMediaOf(
+    entries: List<com.twomemory.database.EntryEntity>,
+    blocks: List<com.twomemory.database.EntryBlockEntity>,
+    currentUserId: java.util.UUID?,
+    names: SyncSession.Names,
+): List<AlbumMediaUi> {
+    val entryById = entries.associateBy { it.id }
+    return blocks.asSequence()
+        .filter { it.type == "IMAGE" || it.type == "VIDEO" }
+        .mapNotNull { block ->
+            val entry = entryById[block.entryId] ?: return@mapNotNull null
+            if (entry.state != "PUBLISHED" || entry.deleted) return@mapNotNull null
+            val (date, time, month) = occurredLabels(entry)
+            AlbumMediaUi(
+                id = block.id,
+                entryId = block.entryId,
+                monthLabel = month,
+                dateLabel = date,
+                timeLabel = time,
+                author = authorLabel(entry, currentUserId, names),
+                kind = block.type,
+                localPath = localPathOf(block),
+                assetId = block.assetId,
+            )
+        }
+        .toList()
+}
+
+private fun cityStoriesOf(
+    entries: List<com.twomemory.database.EntryEntity>,
+    blocks: List<com.twomemory.database.EntryBlockEntity>,
+    currentUserId: java.util.UUID?,
+    names: SyncSession.Names,
+): List<CityStoryUi> {
+    val entryById = entries.associateBy { it.id }
+    val blocksByEntry = blocks.groupBy { it.entryId }
+    return blocks.asSequence()
+        .filter { it.type == "LOCATION" }
+        .mapNotNull { block ->
+            val entry = entryById[block.entryId] ?: return@mapNotNull null
+            if (entry.state != "PUBLISHED" || entry.deleted) return@mapNotNull null
+            val payload = payloadOf(block)
+            val city = payload.optString("city").ifBlank { payload.optString("name") }.trim()
+            if (city.isBlank()) return@mapNotNull null
+            val (date, _, _) = occurredLabels(entry)
+            CityStoryUi(
+                id = block.id,
+                entryId = block.entryId,
+                city = city,
+                dateLabel = date,
+                title = entry.title?.takeIf { it.isNotBlank() },
+                preview = previewOf(blocksByEntry[entry.id].orEmpty()).orEmpty(),
+                author = authorLabel(entry, currentUserId, names),
+            )
+        }
+        .toList()
+}
 
 /** The copy this phone kept, when the record's picture is still readable here. */
 private val com.twomemory.database.EntryBlockEntity.entryPath: String?
@@ -209,6 +293,8 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
     val coupleViewModel = remember { CoupleViewModel() }
     var cachedNames by remember { mutableStateOf(SyncSession.loadNames(context)) }
     val database = remember { AppDatabase.build(context) }
+    val roomEntries by database.entryDao().observeTimeline().collectAsState(initial = emptyList())
+    val roomBlocks by database.entryDao().observeBlocks().collectAsState(initial = emptyList())
     val timelineViewModel = remember {
         val dao = database.entryDao()
         TimelineViewModel(
@@ -250,6 +336,22 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
     }
     LaunchedEffect(cachedNames) {
         timelineViewModel.updateNames(own = cachedNames.own, partner = cachedNames.partner)
+    }
+    val albumMedia = remember(roomEntries, roomBlocks, cachedNames) {
+        albumMediaOf(
+            entries = roomEntries,
+            blocks = roomBlocks,
+            currentUserId = SyncSession.load(context)?.userId,
+            names = cachedNames,
+        )
+    }
+    val cityStories = remember(roomEntries, roomBlocks, cachedNames) {
+        cityStoriesOf(
+            entries = roomEntries,
+            blocks = roomBlocks,
+            currentUserId = SyncSession.load(context)?.userId,
+            names = cachedNames,
+        )
     }
 
     // Unpublished text is kept off the critical path: restore on entry, keep
@@ -423,8 +525,8 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
                         WeeklyReviewWorker.schedule(context, force = true)
                     },
                 )
-                "album" -> AlbumPreviewScreen()
-                "map" -> CityMapPreviewScreen()
+                "album" -> AlbumPreviewScreen(media = albumMedia, onOpenEntry = { openEntryId = it })
+                "map" -> CityMapPreviewScreen(stories = cityStories, onOpenEntry = { openEntryId = it })
             }
         }
     }
