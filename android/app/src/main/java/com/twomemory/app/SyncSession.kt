@@ -13,13 +13,6 @@ import com.twomemory.sync.SyncWorker
 import java.util.UUID
 
 /**
- * Default points at the development machine's LAN address so a real phone on
- * the same network reaches the server without typing an URL. Emulator builds
- * override this to 10.0.2.2 when needed.
- */
-const val DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"
-
-/**
  * Session state persisted in SharedPreferences: the device token, couple id
  * and server base URL. Populated by the setup screen, read here to build the
  * real sync pipeline. The token is sealed with an AndroidKeyStore key on
@@ -27,7 +20,9 @@ const val DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"
  */
 object SyncSession {
 
-    const val DEFAULT_BASE_URL = DEFAULT_DEV_BASE_URL
+    /** Prefills the setup field on a debug build; blank on a release build. */
+    val DEFAULT_BASE_URL: String
+        get() = ServerAddress.resolve(null, BuildConfig.DEBUG).orEmpty()
 
     private const val PREFS = "moon_letter_session"
 
@@ -108,12 +103,14 @@ object SyncSession {
         val coupleId = prefs.getString("coupleId", null)
         val userId = prefs.getString("userId", null)
         if (stored.isNullOrBlank() || coupleId.isNullOrBlank() || userId.isNullOrBlank()) return null
+        val baseUrl = ServerAddress.resolve(prefs.getString("baseUrl", null), BuildConfig.DEBUG)
+            ?: return null
         return runCatching {
             Session(
                 token = TokenCipher.unseal(stored),
                 coupleId = UUID.fromString(coupleId),
                 userId = UUID.fromString(userId),
-                baseUrl = prefs.getString("baseUrl", null) ?: DEFAULT_BASE_URL,
+                baseUrl = baseUrl,
             )
         }.getOrElse {
             prefs.edit().clear().apply()
