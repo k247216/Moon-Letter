@@ -239,9 +239,31 @@ class LocalEntryWriter(private val database: AppDatabase) {
             put("blockId", block.id.toString())
             put("type", block.type.name)
             put("orderKey", block.orderKey)
-            if (text != null) put("text", text) else put("payload", block.payload)
+            if (text != null) put("text", text) else put("payload", wirePayload(block))
             if (block.assetId != null) put("assetId", block.assetId.toString())
         }
+    }
+
+    /**
+     * What leaves the device for a non-text block. A local file path names a
+     * location inside this app's private storage: it means nothing on the other
+     * phone, and the picture itself arrives through the asset id, so the path
+     * would only ever travel further than the photo it points at.
+     */
+    private fun wirePayload(block: com.twomemory.model.LocalBlockCommand): String =
+        if (block.type != com.twomemory.model.BlockType.IMAGE) {
+            block.payload
+        } else {
+            org.json.JSONObject()
+                .put("mime", mimeTypeOf(block.payload))
+                .toString()
+        }
+
+    private fun mimeTypeOf(payload: String): String = try {
+        org.json.JSONObject(payload).optString("mime", "image/jpeg").ifBlank { "image/jpeg" }
+    } catch (notJson: org.json.JSONException) {
+        // A non-JSON image payload is a bare path; it must not be echoed onward.
+        "image/jpeg"
     }
 }
 

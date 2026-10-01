@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -134,7 +135,7 @@ class MediaGatedOutboxTest {
     }
 
     @Test
-    fun aPictureOnlyEntryCarriesBothItsLocalFileAndItsAsset() = runBlocking {
+    fun aReleasedPictureCarriesItsAssetButNeverItsLocalPath() = runBlocking {
         val image = imageBlock(1)
         val entryId = writer.save(command(image))
         assertEquals(1, database.outboxDao().mediaPendingForEntity(entryId.toString()).size)
@@ -145,12 +146,23 @@ class MediaGatedOutboxTest {
         val operation = store.pendingOperations(limit = 50).single()
         assertEquals("CREATE_ENTRY", operation.action)
         assertEquals(mapOf(1L to assetId.toString()), assetIdsByOrderKey(operation.payload))
-        val block = JSONObject(operation.payload).getJSONArray("blocks").getJSONObject(0)
+        assertEquals(0, database.outboxDao().mediaPendingForEntity(entryId.toString()).size)
+
+        // A device file path is neither meaningful on the other phone nor hers to
+        // receive: it names a location inside this app's private storage.
+        assertFalse(operation.payload, operation.payload.contains("localPath"))
+        assertEquals(
+            "image/jpeg",
+            JSONObject(JSONObject(operation.payload).getJSONArray("blocks").getJSONObject(0)
+                .getString("payload")).getString("mime"),
+        )
+
+        // Room keeps it: the upload worker reads the file from there.
         assertEquals(
             "/data/user/0/com.twomemory.app/files/photos/${image.id}.png",
-            JSONObject(block.getString("payload")).getString("localPath"),
+            JSONObject(database.entryDao().blocks(entryId.toString())
+                .first { it.type == "IMAGE" }.payload).getString("localPath"),
         )
-        assertEquals(0, database.outboxDao().mediaPendingForEntity(entryId.toString()).size)
     }
 
     @Test
