@@ -107,7 +107,12 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
                     )
                 }
             } catch (e: SetupHttpException) {
-                mutate { it.copy(busy = false, error = "服务器返回 HTTP ${e.code}：检查密钥或地址") }
+                val reason = when (e.code) {
+                    403 -> "初始化密钥不对，请核对后重试"
+                    409 -> "这个空间已经初始化过了：请在另一台手机上改用「我是伴侣」+ 配对令牌进入"
+                    else -> "服务器返回 HTTP ${e.code}"
+                }
+                mutate { it.copy(busy = false, error = reason) }
             } catch (e: Exception) {
                 mutate { it.copy(busy = false, error = "连不上服务器：${e.message ?: "网络错误"}") }
             }
@@ -130,7 +135,12 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
                     )
                 }
             } catch (e: SetupHttpException) {
-                mutate { it.copy(busy = false, error = "配对失败（HTTP ${e.code}）：令牌可能已用过或过期") }
+                val reason = when (e.code) {
+                    409 -> "配对令牌已用过或已过期：请在第一台手机上重新获取"
+                    403 -> "配对令牌无效，请核对后重试"
+                    else -> "服务器返回 HTTP ${e.code}"
+                }
+                mutate { it.copy(busy = false, error = reason) }
             } catch (e: Exception) {
                 mutate { it.copy(busy = false, error = "连不上服务器：${e.message ?: "网络错误"}") }
             }
