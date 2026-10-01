@@ -29,6 +29,7 @@
 - `docs/handoff/2026-09-30-cross-machine-m1-handoff.md`
 - `docs/testing/m1-acceptance.md`
 - `docs/testing/open-day-runbook.md`（开档当天的操作顺序与真机门清单）
+- `docs/testing/real-use-log.md`（逐项真机验证清单 + 真机结果与计时数字记在这里）
 - `docs/reviews/2026-10-01-m1-round-review.md`
 - `docs/design/reference/`
 - `docs/design/brand/`
