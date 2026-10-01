@@ -176,6 +176,7 @@ fun CoupleScreen(
 ) {
     var editingName by remember { mutableStateOf(false) }
     var pickingHour by remember { mutableStateOf(false) }
+    var showingSettings by remember { mutableStateOf(false) }
     val draft = state.draftName.trim()
     val canSave = draft.isNotEmpty() && draft != state.ownName && !state.savingName
     Column(
@@ -187,7 +188,7 @@ fun CoupleScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("我们", style = TwoMemoryTypography.display, modifier = Modifier.weight(1f))
-            IconButton(onClick = {}, enabled = false) {
+            IconButton(onClick = { showingSettings = true }) {
                 Icon(TwoMemoryIcons.Settings, contentDescription = "设置")
             }
         }
@@ -428,6 +429,22 @@ fun CoupleScreen(
             style = TwoMemoryTypography.caption,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = .42f),
             modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 2.dp),
+        )
+    }
+    if (showingSettings) {
+        AlertDialog(
+            onDismissRequest = { showingSettings = false },
+            icon = { Icon(TwoMemoryIcons.Settings, contentDescription = null) },
+            title = { Text("月笺设置") },
+            text = {
+                Text(
+                    "主题、头像、名字、回看与通知都在这个页面直接修改。服务端账户和双端同步设置会在绑定/配对链路中处理。",
+                    style = TwoMemoryTypography.body,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showingSettings = false }) { Text("知道了") }
+            },
         )
     }
 }

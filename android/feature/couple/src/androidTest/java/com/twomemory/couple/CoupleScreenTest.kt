@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.twomemory.designsystem.MoonLetterTheme
 import org.junit.Rule
@@ -43,5 +44,18 @@ class CoupleScreenTest {
         }
         composeRule.onNodeWithText("纪念日与倒计时").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("打开纪念日与倒计时").assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsIconExplainsWhereLocalControlsLive() {
+        composeRule.setContent {
+            CoupleScreen(
+                state = CoupleUiState(),
+                onOwnNameChange = {},
+                onThemeChange = {},
+            )
+        }
+        composeRule.onNodeWithContentDescription("设置").performClick()
+        composeRule.onNodeWithText("月笺设置").assertIsDisplayed()
     }
 }
