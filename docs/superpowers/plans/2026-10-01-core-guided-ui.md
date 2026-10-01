@@ -32,22 +32,23 @@
 
 **Files:**
 - Modify: `android/core/designsystem/src/main/java/com/twomemory/designsystem/TwoMemoryTheme.kt`
-- Modify: `android/core/designsystem/src/main/java/com/twomemory/designsystem/TwoMemoryColors.kt`
-- Modify: `android/core/designsystem/src/main/java/com/twomemory/designsystem/TwoMemoryTypography.kt`
+- Modify: `android/core/designsystem/src/main/java/com/twomemory/designsystem/ColorTokens.kt`
+- Modify: `android/core/designsystem/src/main/java/com/twomemory/designsystem/TypeTokens.kt`
 - Modify: `android/core/designsystem/src/main/java/com/twomemory/designsystem/TwoMemoryIcons.kt`
 - Modify: `android/core/designsystem/src/main/java/com/twomemory/designsystem/BottomNavigation.kt`
 - Create: `android/core/designsystem/src/main/java/com/twomemory/designsystem/MoonLetterUiState.kt`
-- Test: `android/core/designsystem/src/androidTest/java/com/twomemory/designsystem/DesignSystemContractTest.kt`
+- Modify: `android/core/designsystem/build.gradle.kts`
+- Test: `android/core/designsystem/src/test/java/com/twomemory/designsystem/DesignSystemContractTest.kt`
 
 **Interfaces:**
 - Produces `MoonLetterRecordStatus` with `DRAFT`, `LOCAL_SAVED`, `PENDING_SYNC`, `SYNCED`, `SYNC_FAILED` and user-facing Chinese labels.
 - Produces `MoonLetterTabs` with exact keys/labels and semantic content descriptions.
 - Produces shared colors/typography/spacing used by all later pages; no feature module defines a competing palette.
 
-- [ ] **Step 1: Write the failing design-system contract test** asserting five tab labels/order, all icon content descriptions, minimum body font size 14sp, and all record-status labels.
-- [ ] **Step 2: Run the design-system test on the SDK machine and record the expected failures.** This Mac does not run Gradle.
+- [ ] **Step 1: Write the failing JVM design-system contract test** asserting five tab labels/order, all icon content descriptions, minimum body font size 14sp, and all record-status labels.
+- [ ] **Step 2: Run the focused JVM test on the SDK machine and record the expected failures.** This Mac does not run Gradle.
 - [ ] **Step 3: Implement the tokens and status model** in the listed files; use one thin-line icon family and keep warm-beige/pure-white as modes of the same structure.
-- [ ] **Step 4: Re-run the focused test on the SDK machine; expected result is PASS with no default Material navigation labels leaking through.**
+- [ ] **Step 4: Re-run the focused JVM test on the SDK machine; expected result is PASS with no default Material navigation labels leaking through.**
 - [ ] **Step 5: Commit** `feat(ui): establish guided visual contract`.
 
 ### Task 2: Rebuild the continuous home timeline

@@ -23,7 +23,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
-data class BottomTab(val key: String, val label: String, val icon: ImageVector)
+data class BottomTab(
+    val key: String,
+    val label: String,
+    val icon: ImageVector,
+    val contentDescription: String = label,
+)
 
 val MoonLetterTabs = listOf(
     BottomTab("timeline", "时光", TwoMemoryIcons.Home),
@@ -61,10 +66,10 @@ fun MoonLetterBottomNavigation(selectedKey: String, onSelect: (BottomTab) -> Uni
                             modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(tab.icon, contentDescription = tab.label, tint = Color.White, modifier = Modifier.size(28.dp))
+                            Icon(tab.icon, contentDescription = tab.contentDescription, tint = Color.White, modifier = Modifier.size(28.dp))
                         }
                     } else {
-                        Icon(tab.icon, contentDescription = tab.label, tint = tint, modifier = Modifier.size(26.dp))
+                        Icon(tab.icon, contentDescription = tab.contentDescription, tint = tint, modifier = Modifier.size(26.dp))
                     }
                     Text(tab.label, style = TwoMemoryTypography.caption, color = tint)
                 }
