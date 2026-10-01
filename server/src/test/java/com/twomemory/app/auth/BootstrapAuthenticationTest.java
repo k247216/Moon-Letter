@@ -21,7 +21,8 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Task 2 acceptance: bootstrap works only once with the deployment secret,
+ * Task 2 acceptance: the deployment secret opens the founding member's slot —
+ * creating it on an empty installation and reclaiming it on an installed one —
  * the issued bearer token authenticates real HTTP requests, an invalid
  * bearer token receives 401, and a guessed X-User-Id grants no access.
  *
@@ -84,13 +85,26 @@ class BootstrapAuthenticationTest {
         assertThat(userId).isNotBlank();
         assertThat(coupleId).isNotBlank();
 
-        // 3. A second bootstrap is rejected permanently.
-        ResponseEntity<Map> second = postBootstrap(BOOTSTRAP_SECRET, "阿屿");
-        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        // 3. A repeated bootstrap on an installed space reclaims the founding
+        //    member's own slot rather than minting a second identity: the same
+        //    userId and coupleId come back, the token is rotated, and the name
+        //    already on the profile is kept (a reinstall is not a rename).
+        ResponseEntity<Map> reclaim = postBootstrap(BOOTSTRAP_SECRET, "阿屿");
+        assertThat(reclaim.getStatusCode())
+                .as("reclaim response body: %s", reclaim.getBody())
+                .isEqualTo(HttpStatus.CREATED);
+        assertThat(reclaim.getBody().get("userId")).isEqualTo(userId);
+        assertThat(reclaim.getBody().get("coupleId")).isEqualTo(coupleId);
+        String reclaimedToken = (String) reclaim.getBody().get("token");
+        assertThat(reclaimedToken).isNotBlank().isNotEqualTo(token);
 
-        // 4. The issued bearer token authenticates the space read.
-        ResponseEntity<Map> authorized = exchangeWithBearer("/api/v1/couple/" + coupleId, token);
+        // 4. The newest issued bearer token authenticates the space read, while
+        //    the superseded one is dead: recovery cannot leave the lost device
+        //    holding a working session.
+        ResponseEntity<Map> authorized = exchangeWithBearer("/api/v1/couple/" + coupleId, reclaimedToken);
         assertThat(authorized.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(exchangeWithBearer("/api/v1/couple/" + coupleId, token).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
 
         // 5. An invalid bearer token receives 401.
         ResponseEntity<Map> invalid = exchangeWithBearer("/api/v1/couple/" + coupleId, "not-a-real-token");

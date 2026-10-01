@@ -26,7 +26,7 @@ record MemberView(UUID userId, ProfileView profile) {
 record CoupleView(UUID id, SpaceStatus status, List<MemberView> members) {
 }
 
-record CreateSpaceResult(CoupleView couple, String pairingToken) {
+record CreateSpaceResult(CoupleView couple, String pairingToken, String pairingTokenKind) {
 }
 
 record PairResult(CoupleView couple, String deviceToken, UUID userId) {

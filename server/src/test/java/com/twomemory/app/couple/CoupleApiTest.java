@@ -45,7 +45,7 @@ class CoupleApiTest {
     @Test
     void ownerCreatesSpace() throws Exception {
         CoupleView view = view(SPACE, SpaceStatus.UNPAIRED, OWNER);
-        when(coupleService.createSpace(OWNER)).thenReturn(new CreateSpaceResult(view, TOKEN));
+        when(coupleService.createSpace(OWNER)).thenReturn(new CreateSpaceResult(view, TOKEN, "INVITE"));
 
         mvc.perform(post("/api/v1/couple")
                         .with(TestAuth.deviceSession(OWNER, SPACE))
@@ -95,7 +95,7 @@ class CoupleApiTest {
     void ownerCanReplaceAnOutstandingPairingToken() throws Exception {
         CoupleView view = view(SPACE, SpaceStatus.UNPAIRED, OWNER);
         when(coupleService.regeneratePairingToken(OWNER, SPACE))
-                .thenReturn(new CreateSpaceResult(view, TOKEN));
+                .thenReturn(new CreateSpaceResult(view, TOKEN, "INVITE"));
 
         mvc.perform(post("/api/v1/couple/{coupleId}/pairing-token", SPACE)
                         .with(TestAuth.deviceSession(OWNER, SPACE)))

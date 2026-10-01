@@ -22,6 +22,11 @@ public class CoupleService {
 
     private static final Duration PAIRING_TOKEN_LIFETIME = Duration.ofMinutes(15);
     private static final String PLACEHOLDER_DISPLAY_NAME = "未命名";
+    private static final int SPACE_MEMBER_CAPACITY = 2;
+
+    /** Reopens an existing member's slot; invites someone the space does not have. */
+    static final String TOKEN_KIND_REJOIN = "REJOIN";
+    static final String TOKEN_KIND_INVITE = "INVITE";
 
     private final JdbcTemplate jdbcTemplate;
     private final SpaceAccessPolicy accessPolicy;
@@ -58,23 +63,25 @@ public class CoupleService {
                 """, coupleId, ownerId);
         ensureProfile(ownerId);
 
-        String pairingToken = allocatePairingToken(coupleId);
-        return new CreateSpaceResult(readSpace(ownerId, coupleId), pairingToken);
+        return new CreateSpaceResult(readSpace(ownerId, coupleId),
+                issueOutstandingToken(coupleId, null), TOKEN_KIND_INVITE);
     }
 
     /**
-     * Consumes a one-time pairing token on behalf of a not-yet-existing
-     * partner: creates the second member, its profile and its first device
-     * session in one transaction. The raw session token is returned once.
-     * displayName is what she types for herself on her own device, blank keeps
-     * the placeholder for callers that pair without a name.
+     * Consumes a one-time pairing token. A plain token creates the second
+     * member, its profile and its first device session; a token that names a
+     * member slot reopens that slot, because the phone holding it is the same
+     * person who already wrote records under that id. The raw session token is
+     * returned once either way. displayName is what she types for herself on
+     * her own device, blank keeps the placeholder for callers that pair without
+     * a name.
      */
     @Transactional
     public PairResult pair(String pairingToken, String displayName) {
         String normalized = normalizePairingToken(pairingToken);
         String tokenHash = sha256(normalized);
         PairingRow pairing = jdbcTemplate.query("""
-                SELECT id, couple_id, expires_at, consumed_at
+                SELECT id, couple_id, expires_at, consumed_at, rejoin_user_id
                 FROM space_pairing_code
                 WHERE token_hash = ?
                 FOR UPDATE
@@ -86,11 +93,11 @@ public class CoupleService {
 
         jdbcTemplate.queryForObject("SELECT id FROM couple_space WHERE id = ? FOR UPDATE",
                 UUID.class, pairing.coupleId());
-        Integer memberCount = jdbcTemplate.queryForObject("""
-                SELECT count(*) FROM couple_member
-                WHERE couple_id = ? AND left_at IS NULL AND deleted_at IS NULL
-                """, Integer.class, pairing.coupleId());
-        if (memberCount != null && memberCount >= 2) {
+        if (pairing.rejoinUserId() != null) {
+            return consumeRejoinToken(pairing);
+        }
+
+        if (activeMembers(pairing.coupleId()).size() >= SPACE_MEMBER_CAPACITY) {
             throw new ConflictException("couple space is full");
         }
 
@@ -102,27 +109,48 @@ public class CoupleService {
                 """, pairing.coupleId(), partnerId);
         jdbcTemplate.update("UPDATE couple_space SET status = 'ACTIVE', updated_at = now() WHERE id = ?",
                 pairing.coupleId());
-        jdbcTemplate.update("UPDATE space_pairing_code SET consumed_at = now() WHERE id = ?", pairing.id());
+        markConsumed(pairing.id());
         ensureProfile(partnerId, displayName);
         String deviceToken = deviceSessionService.issueSession(partnerId, pairing.coupleId());
         return new PairResult(readSpace(partnerId, pairing.coupleId()), deviceToken, partnerId);
     }
 
     /**
-     * Replaces an outstanding pairing token: revokes every unconsumed token
-     * of the space and issues a fresh one. The raw token is returned once.
+     * A lost or reinstalled phone coming back as the member it already was.
+     * Only that member's sessions are revoked, so recovering one device never
+     * logs the other one out, and the stored display name is left alone: the
+     * name the other phone shows was chosen once, not re-declared per install.
+     */
+    private PairResult consumeRejoinToken(PairingRow pairing) {
+        UUID memberId = pairing.rejoinUserId();
+        boolean activeMember = activeMembers(pairing.coupleId()).contains(memberId);
+        if (!activeMember) {
+            throw new ConflictException("pairing token no longer matches a member of this space");
+        }
+        markConsumed(pairing.id());
+        String deviceToken = deviceSessionService.issueReplacementSession(memberId, pairing.coupleId());
+        return new PairResult(readSpace(memberId, pairing.coupleId()), deviceToken, memberId);
+    }
+
+    /**
+     * Replaces an outstanding pairing token with a fresh one and says what that
+     * token is for. A space with a free slot issues an invitation; a full space
+     * has nobody left to invite, so its token reopens the other member's slot —
+     * which is exactly what a phone that was uninstalled or lost needs.
      */
     @Transactional
     public CreateSpaceResult regeneratePairingToken(UUID actorId, UUID coupleId) {
         accessPolicy.requireMember(actorId, coupleId);
         jdbcTemplate.queryForObject("SELECT id FROM couple_space WHERE id = ? FOR UPDATE",
                 UUID.class, coupleId);
-        jdbcTemplate.update("""
-                UPDATE space_pairing_code SET consumed_at = now()
-                WHERE couple_id = ? AND consumed_at IS NULL
-                """, coupleId);
-        String pairingToken = allocatePairingToken(coupleId);
-        return new CreateSpaceResult(readSpace(actorId, coupleId), pairingToken);
+        List<UUID> members = activeMembers(coupleId);
+        UUID rejoinTarget = members.size() < SPACE_MEMBER_CAPACITY
+                ? null
+                : members.stream().filter(member -> !member.equals(actorId)).findFirst()
+                        .orElseThrow(() -> new ConflictException("no other member to rejoin"));
+        String pairingToken = issueOutstandingToken(coupleId, rejoinTarget);
+        return new CreateSpaceResult(readSpace(actorId, coupleId), pairingToken,
+                rejoinTarget == null ? TOKEN_KIND_INVITE : TOKEN_KIND_REJOIN);
     }
 
     public CoupleView readSpace(UUID userId, UUID coupleId) {
@@ -238,14 +266,35 @@ public class CoupleService {
                 """, userId, name);
     }
 
-    private String allocatePairingToken(UUID coupleId) {
+    /**
+     * Issues the space's one outstanding token, revoking whatever was still
+     * waiting to be used: an old code left live beside a new one is a way for a
+     * superseded invitation to kick a member off later.
+     */
+    private String issueOutstandingToken(UUID coupleId, UUID rejoinUserId) {
+        jdbcTemplate.update("""
+                UPDATE space_pairing_code SET consumed_at = now()
+                WHERE couple_id = ? AND consumed_at IS NULL
+                """, coupleId);
         String token = deviceSessionService.generateToken();
         jdbcTemplate.update("""
-                INSERT INTO space_pairing_code(id, couple_id, token_hash, expires_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO space_pairing_code(id, couple_id, token_hash, expires_at, rejoin_user_id)
+                VALUES (?, ?, ?, ?, ?)
                 """, UUID.randomUUID(), coupleId, sha256(token),
-                java.sql.Timestamp.from(Instant.now().plus(PAIRING_TOKEN_LIFETIME)));
+                java.sql.Timestamp.from(Instant.now().plus(PAIRING_TOKEN_LIFETIME)), rejoinUserId);
         return token;
+    }
+
+    private void markConsumed(UUID pairingId) {
+        jdbcTemplate.update("UPDATE space_pairing_code SET consumed_at = now() WHERE id = ?", pairingId);
+    }
+
+    private List<UUID> activeMembers(UUID coupleId) {
+        return jdbcTemplate.queryForList("""
+                SELECT user_id FROM couple_member
+                WHERE couple_id = ? AND left_at IS NULL AND deleted_at IS NULL
+                ORDER BY joined_at, user_id
+                """, UUID.class, coupleId);
     }
 
     private CoupleView mapCouple(ResultSet rs) throws SQLException {
@@ -271,7 +320,8 @@ public class CoupleService {
                 rs.getObject("id", UUID.class),
                 rs.getObject("couple_id", UUID.class),
                 rs.getTimestamp("expires_at").toInstant(),
-                rs.getTimestamp("consumed_at") == null ? null : rs.getTimestamp("consumed_at").toInstant());
+                rs.getTimestamp("consumed_at") == null ? null : rs.getTimestamp("consumed_at").toInstant(),
+                rs.getObject("rejoin_user_id", UUID.class));
     }
 
     private static String sha256(String value) {
@@ -288,6 +338,6 @@ public class CoupleService {
         }
     }
 
-    private record PairingRow(UUID id, UUID coupleId, Instant expiresAt, Instant consumedAt) {
+    private record PairingRow(UUID id, UUID coupleId, Instant expiresAt, Instant consumedAt, UUID rejoinUserId) {
     }
 }
