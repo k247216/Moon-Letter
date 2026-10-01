@@ -11,7 +11,7 @@
 **Authoritative spec:** `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
 **Standing product principles:** `docs/human-scale-principles.md` — 范围或顺序需要取舍时按该文件第 9 节让路，不得为完成度牺牲记录成本、连续性或可带走性。
 
-**Current truth:** M1 is `NOT VERIFIED`；台账 **70/118**（复核基线时为 62/118）。S1–S5 与 A1–A3 有已接受的开发机证据；H4 的本地恢复命令与真库测试（Task 2 第 82、83 项）、严格 FIFO 与取消传播的 outbox 重试链、Keystore 密封的会话令牌、响应式时间线和 Task 11c 的每周回看/新记录通知此后已落地。仍未完成的是需要设备的证据（E1 真机互见、E2 故障恢复、H1–H8、D/U 视觉对照）与 Task 11a/11b、12/12b、13、14 的剩余子项，另加一份实现偏差清单：`EntryMode` 的遗留命名与 `RoomSyncStore.mapState`、发布草稿时 `baseVersion` 固定 0、硬编码开发机地址与 cleartext、图片无磁盘缓存、无 Room migration 测试。历史 `TwoDeviceSyncTest`/`TwoDeviceScenarioTest` 证据仍不计为 E2E。开档（真实内容第一天）的操作顺序见 `docs/testing/open-day-runbook.md`。
+**Current truth:** M1 is `NOT VERIFIED`；台账 **70/118**（复核基线时为 62/118）。S1–S5 与 A1–A3 有已接受的开发机证据；H4 的本地恢复命令与真库测试（Task 2 第 82、83 项）、严格 FIFO 与取消传播的 outbox 重试链、Keystore 密封的会话令牌、响应式时间线和 Task 11c 的每周回看/新记录通知此后已落地。仍未完成的是需要设备的证据（E1 真机互见、E2 故障恢复、H1–H8、D/U 视觉对照）与 Task 11a/11b、12/12b、13、14 的剩余子项，另加一份实现偏差清单：`EntryMode` 的遗留命名与 `RoomSyncStore.mapState`、发布草稿时 `baseVersion` 固定 0（与 create 同批入队时是对的，出现"发布早已单独创建的旧草稿"路径时必须改）、图片无磁盘缓存、主题不跨端同步、无 Room migration 测试。历史 `TwoDeviceSyncTest`/`TwoDeviceScenarioTest` 证据仍不计为 E2E。开档（真实内容第一天）的操作顺序见 `docs/testing/open-day-runbook.md`。
 
 ---
 

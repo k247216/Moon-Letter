@@ -369,3 +369,19 @@
 - **文档修正清单**（都按代码现状改，未凭印象）：README 删掉不存在的 `RECOVERY_SECRET` 前置条件、改为记录本地 CLI 恢复与 `BOOTSTRAP_SECRET` 可重复找回自己槽位的语义与其代价（该密钥现在是长期凭据，泄露＝第一位成员整槽被接管，服务端端口不得公网可达）；README 服务端启动改成 jar + 环境变量注入并写明 `mvn spring-boot:run --moon-letter.…` 传不进应用这条真机 403 根因；复核报告追加 §6 后续状态表（P0 与四条 P1 的技术部分逐条给提交号，同时写明「仍然成立的部分」是所有需要设备的证据）；交接快照 §3 五条问题标为已闭合、§4 顺序标出第 4 项才是当前第一优先级、§2 表里「服务器 8080 运行中」和「时间线仍非持续响应式」两处过时表述已改；计划 Task 2 第 82/83 项勾选并附证据与边界（真机失联演练仍归 H4），Task 11c 六项勾选并记录文件划分偏差（`core/sync/WeeklyReview.kt` + `app/notifications/WeeklyReviewWorker.kt`，非计划里的单个 `core/sync/WeeklyReviewWorker.kt`）。
 - **一处故意不勾**：Task 2「bootstrap 密钥已消费」保持未勾选，并写明它被使用者的决定取代——重装后必须仍能用同一密钥找回自己的位置，与一次性密钥互斥。把代价和约束写在同一行，避免下一个人把它当漏项补掉。
 - **本轮未做**：真机一切（E1 互见、E2 断网、H1 计时、H3 到点、H4 双端演练、D1 异机还原、U1/U2 视觉）；legacy 偏差清单（`CAPSULE_LOCKED/ARCHIVED`、`RoomSyncStore.mapState`、发布草稿时 `baseVersion` 固定 0、硬编码 `DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"`、cleartext、图片无磁盘缓存、IMAGE payload 带本机绝对路径、主题不跨端同步、无 Room migration 测试）——这些是下一件事，开档前只挑会影响真实数据的那部分先修。
+
+### 记录 24：开档前的两处链路风险——本机路径外泄与发布版里的开发机地址（2026-10-01）
+
+- **Commits**：`5f0c0e6 fix(android): keep a device file path off the wire`、`b52c969 fix(android): stop falling back to the development machine in a release build`，docs 提交另计；`git rev-list --count origin/m1-stable-recording-loop..HEAD` 实测**本地领先 16 个提交**（docs 提交之前），推送仍逐次授权。
+- **选择标准只有一条**：开档之后哪两处会让**她的**数据或她的手机出问题。其余偏差（枚举命名、`mapState`、主题不跨端、图片磁盘缓存）是质量债，不阻塞开档，留在后面。
+
+- **一、IMAGE payload 把本机私有目录路径送出去了**。`LocalEntryWriter.blockJson` 对非文字块原样转发 Room 里存的 payload，而图片块的 payload 是 `{"localPath":"/data/user/0/com.twomemory.app/files/…","mime":"image/jpeg"}`。后果不是"不好看"：这条字符串进了 `sync_change` 行、进对端手机的 `entry_blocks`，**永久留在变更流里**（变更流是追加式的，改一处要重放全部）。照片本身走 assetId，路径在对方手机上不对应任何文件，纯泄露。
+  - 红灯：把 `aPictureOnlyEntryCarriesBothItsLocalFileAndItsAsset` 改写成 `aReleasedPictureCarriesItsAssetButNeverItsLocalPath`——它原先**断言的就是泄露行为**（`JSONObject(block.getString("payload")).getString("localPath")` 等于本机路径），这正是"测试绿着但契约是错的"。新断言：线上不含 `localPath`、mime 仍在、**Room 里仍然保留**（上传 worker 要从那里读文件）。首跑 `assertFalse` 参数顺序写反导致编译红，改 `assertFalse(String, boolean)` 后是行为红。
+  - 绿灯：`wirePayload` 只发 `{"mime": …}`；payload 不是 JSON 时（裸路径）也不再回显，落到固定 mime。**契约形状未变**：服务端 `blockTextPayload` 本来就接受字符串或对象，仍按字符串发送，服务端零改动。
+  - 顺带核对：`ServerAddress` 之后确认对端渲染不依赖 `localPath`（`AppNavigation.entryPath` 对空串返回 null → `EntryPhoto.load(localPath=null, assetId)` 走下载），`TwoDevicePictureAndCommentLoopTest` 全绿即双 Room 环路与主题渲染未受影响。
+- **二、发布版 APK 里硬编码着开发机的局域网 IP**。`const val DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"` 同时是绑定页的预填值和 `SyncSession.load()` 在**没有已存地址时**的回退值。她的 IP 每天变；预填值错了她改一下就行，真正的问题是回退值：release 版一旦 prefs 里没有 baseUrl，就会安静地去连一台不存在的机器，表现成"同步转圈、记录像丢了"，而这正是这个产品最不能出现的观感。
+  - 新增 `ServerAddress.resolve(stored, isDebugBuild)`：存过的地址优先；**只有 debug 构建**才回退到开发机；release 没有地址就返回 null。`SyncSession.load` 收到 null 时 `return null` → 落回绑定页问一次，而不是拿猜测的地址去连（**故意不清 prefs**：那条会话记录没坏，缺的只是配置，清掉等于把她的令牌扔了）。
+  - `app/build.gradle.kts` 开 `buildConfig = true` 以取 `BuildConfig.DEBUG`。测试 3 例（存过的优先 / debug 回退 / release 无地址）；绑定页 `canSubmit` 已要求 `serverUrl.isNotBlank()`，所以 release 预填空串只会让她输入一次。
+- **修正记录 23 的一处误判**：那份清单把 cleartext 列为遗留偏差，实际 `app/src/debug/AndroidManifest.xml` 里才有 `usesCleartextTraffic`，`src/main` 已无该标志（`3a50c8f` 就修好了）。记录 23 是当轮证据，不回头改；正确表述写在这里。
+- **数字**：Android JVM 单测 **73 例全绿**（含新增 3 例与改写的媒体门禁用例），`:app:assembleDebug` 成功；服务端本轮**未改动**，仍是 63 例全绿。
+- **仍然未做**：真机一切；`baseVersion` 语义（create 与 publish 同批入队时固定 0 是**对的**，服务端只对 PUBLISH 校验 `rowVersion`，其余动作不看它；风险在于将来出现"发布一条早已单独创建过的旧草稿"这条路径时必须改成本地记录的版本号，届时 `SyncSession.publish` 是唯一入口）；图片磁盘缓存；主题跨端；Room migration 测试；`EntryMode.COLLABORATIVE` 命名（服务端与 Postgres `entry_mode` 枚举同名同值，改名是数据层迁移不是改注释，**开档前不做**）。
