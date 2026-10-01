@@ -202,3 +202,11 @@
 - **绿灯**：`JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn test` → `Tests run: 53, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`，EXIT=0。
 - **环境**：Windows 11；OpenJDK 21.0.2；Maven 3.9.15；Docker `postgres:18-alpine`（容器 `infra-postgres-1`，5432）；测试库 `moon_letter_*_test` 各自独立。注意系统默认 `java` 为 25，会导致 surefire 的 Mockito/Byte Buddy agent 初始化失败，必须显式指定 JDK 21。
 - **未完成**：发布链（服务端 `PUBLISH_ENTRY` 类型化操作 + 客户端真正发布 + `EntryView` 暴露版本供 `baseVersion`）、个人草稿可见性边界、以及由它们挡住的 H1/H2/E1 真机证据。
+
+### 记录 15：PUBLISH_ENTRY 进入类型化同步通道（2026-10-01）
+
+- **红灯**：新增 `SharedPerspectiveSyncTest.personalDraftPublishesThroughSyncOperationWithOnePublishRow`（同一真库 moon_letter_shared_test + 真 HTTP）首跑 `Tests run: 1, Failures: 1`，服务端返回 `unknown operation type: PUBLISH_ENTRY`。同一次运行确认 `CREATE_PERSONAL_ENTRY` 的响应体已携带 `rowVersion`，即客户端有能力提交 `baseVersion`，无需为此扩 DTO。
+- **实现**：`OperationType` 增 `PUBLISH_ENTRY`；`publishEntry` 要求 `baseVersion` 并调用 `EntryService.publish`（作者本人 + 版本不匹配即冲突，不静默覆盖更新的修订）；因 `EntryService.publish` 自己追加 PUBLISH 变更行，按记录 14 的归属规则声明 `mutationOwnsChangeRow=true`，控制器不再补第二条。`PublishResult` 从 `EntryDtos` 移为独立公共 record（Java 要求公共类型独占文件，与同包 `EntryView.java`、`ApplyChangesResult.java` 一致）。
+- **顺带发现的测试缺陷**：`sharedEntryAppendAndCommentsReachPartnerThroughChangeFeed` 原先按下标断言变更流的前三条记录，而该库在同一上下文内被多个测试共享、变更流会累积——加入新测试后 `changes.get(1)` 断言即失效。已改为按本条 entryId 过滤后再断言顺序与实体类型，测试不再依赖执行顺序。
+- **绿灯**：`JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn test` → `Tests run: 54, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`，EXIT=0。一次发布在 `sync_change` 中恰好一行 `ENTRY/PUBLISH`。
+- **仍未完成（客户端与服务端语义各半）**：Android 侧「发布」仍只做本地 `saveDraft`，没有 `PUBLISH_ENTRY` 出箱操作，因此**真机上发布至今没有发生过一次**；且 `EntryService.publish` 追加的 PUBLISH 载荷只有 `{entryId, revisionNo}`，下一步个人草稿不再进入变更流时必须改为携带完整条目载荷，否则对端无法重建从未见过的记录。Gate E1/H1/H2 继续 NOT VERIFIED。

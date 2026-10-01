@@ -13,9 +13,6 @@ record BlockView(UUID id, BlockType type, long orderKey, UUID updatedBy,
 record PublishRequest(long baseVersion) {
 }
 
-record PublishResult(EntryView entry, int revisionNo) {
-}
-
 record ApplyChangesRequest(int baseRevision, List<BlockMutation> mutations) {
 }
 

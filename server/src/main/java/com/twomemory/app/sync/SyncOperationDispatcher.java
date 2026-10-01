@@ -8,6 +8,7 @@ import com.twomemory.app.entry.CreateEntryCommand;
 import com.twomemory.app.entry.EntryMode;
 import com.twomemory.app.entry.EntryService;
 import com.twomemory.app.entry.EntryView;
+import com.twomemory.app.entry.PublishResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
@@ -29,7 +30,8 @@ public class SyncOperationDispatcher {
         CREATE_PERSONAL_ENTRY,
         CREATE_SHARED_ENTRY,
         APPEND_BLOCK,
-        ADD_COMMENT;
+        ADD_COMMENT,
+        PUBLISH_ENTRY;
 
         static OperationType from(String raw) {
             if (raw == null || raw.isBlank()) {
@@ -71,7 +73,33 @@ public class SyncOperationDispatcher {
             case CREATE_SHARED_ENTRY -> createEntry(actorId, coupleId, payload, EntryMode.COLLABORATIVE);
             case APPEND_BLOCK -> appendBlock(actorId, payload);
             case ADD_COMMENT -> addComment(actorId, payload);
+            case PUBLISH_ENTRY -> publishEntry(actorId, payload);
         };
+    }
+
+    /**
+     * PUBLISH_ENTRY moves the author's own draft to PUBLISHED. The client sends the
+     * rowVersion its local copy was built from, so a stale base is rejected as a
+     * conflict instead of silently overwriting a newer revision. EntryService.publish
+     * owns the PUBLISH change row, so this outcome declares no second one.
+     * Constraint for the draft-isolation step: once personal drafts stop entering the
+     * feed, this PUBLISH row must carry the full entry payload or a pulling device
+     * cannot rebuild the record it has never seen.
+     */
+    private DispatchOutcome publishEntry(UUID actorId, String payload) {
+        JsonNode root = parsePayload(payload);
+        UUID entryId = parseUuid(root.path("entryId"));
+        JsonNode baseVersion = root.path("baseVersion");
+        if (!baseVersion.canConvertToLong()) {
+            throw new SyncValidationException("baseVersion is required to publish");
+        }
+        PublishResult result = entryService.publish(entryId, actorId, baseVersion.asLong());
+        try {
+            return new DispatchOutcome(entryId, "ENTRY", "PUBLISH",
+                    objectMapper.writeValueAsString(result.entry()), true);
+        } catch (Exception exception) {
+            throw new IllegalStateException("could not serialize published entry", exception);
+        }
     }
 
     private DispatchOutcome createEntry(UUID actorId, UUID coupleId, String payload, EntryMode mode) {

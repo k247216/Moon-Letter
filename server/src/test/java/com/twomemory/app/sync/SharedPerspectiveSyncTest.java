@@ -162,16 +162,20 @@ class SharedPerspectiveSyncTest {
                 Integer.class, coupleId);
         assertThat(commentFeedRows).isEqualTo(1);
 
-        // 5. A pulls the change feed: the first three changes are
-        //    CREATE (A's entry), UPDATE (B's block), COMMENT ADD.
-        JsonNode feed = objectMapper.valueToTree(pullChanges(TOKEN_A).getBody());
-        JsonNode changes = feed.path("changes");
-        assertThat(changes.size()).isGreaterThanOrEqualTo(3);
-        assertThat(changes.get(0).path("operation").asText()).isEqualTo("CREATE");
-        assertThat(changes.get(0).path("entityType").asText()).isEqualTo("ENTRY");
-        assertThat(changes.get(1).path("operation").asText()).isEqualTo("UPDATE");
-        assertThat(changes.get(2).path("entityType").asText()).isEqualTo("COMMENT");
-        assertThat(changes.get(2).path("operation").asText()).isEqualTo("ADD");
+        // 5. A pulls the change feed: the rows about this entry, in order. The feed is
+        //    shared with other tests in this database, so positions are not meaningful.
+        java.util.List<JsonNode> own = new java.util.ArrayList<>();
+        for (JsonNode change : objectMapper.valueToTree(pullChanges(TOKEN_A).getBody()).path("changes")) {
+            if (entryId.toString().equals(change.path("entityId").asText())) {
+                own.add(change);
+            }
+        }
+        assertThat(own).hasSizeGreaterThanOrEqualTo(3);
+        assertThat(own.get(0).path("operation").asText()).isEqualTo("CREATE");
+        assertThat(own.get(0).path("entityType").asText()).isEqualTo("ENTRY");
+        assertThat(own.get(1).path("operation").asText()).isEqualTo("UPDATE");
+        assertThat(own.get(2).path("entityType").asText()).isEqualTo("COMMENT");
+        assertThat(own.get(2).path("operation").asText()).isEqualTo("ADD");
 
         // 6. Both members read the same entry: two blocks, B's block intact.
         JsonNode viewA = objectMapper.valueToTree(getEntry(entryId, TOKEN_A).getBody());
@@ -196,6 +200,46 @@ class SharedPerspectiveSyncTest {
         assertThat(secondAppend.getBody().get("replayed")).isEqualTo(true);
         JsonNode viewAfterReplay = objectMapper.valueToTree(getEntry(entryId, TOKEN_A).getBody());
         assertThat(viewAfterReplay.path("blocks").size()).isEqualTo(3);
+    }
+
+    @Test
+    void personalDraftPublishesThroughSyncOperationWithOnePublishRow() throws Exception {
+        UUID entryId = UUID.randomUUID();
+        String createPayload = objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "authorId", userA.toString(),
+                "title", "第一次真正的发布",
+                "occurredAt", "2026-10-01T12:00:00Z",
+                "occurredTimezone", "Asia/Shanghai",
+                "blocks", java.util.List.of(Map.of(
+                        "blockId", UUID.randomUUID().toString(),
+                        "type", "TEXT",
+                        "orderKey", 0,
+                        "text", "正文。"))));
+        ResponseEntity<Map> created = postOperation("CREATE_PERSONAL_ENTRY", createPayload, TOKEN_A);
+        assertThat(created.getStatusCode()).as("create: %s", created.getBody()).isEqualTo(HttpStatus.OK);
+
+        long rowVersion = objectMapper.readTree(extractBody(created)).path("rowVersion").asLong(-1);
+        assertThat(rowVersion)
+                .as("the create response must carry the version a client publishes against")
+                .isNotEqualTo(-1L);
+
+        String publishPayload = objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "baseVersion", rowVersion));
+        ResponseEntity<Map> published = postOperation("PUBLISH_ENTRY", publishPayload, TOKEN_A);
+        assertThat(published.getStatusCode()).as("publish: %s", published.getBody())
+                .isEqualTo(HttpStatus.OK);
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT state FROM entry WHERE id = ?", String.class, entryId))
+                .isEqualTo("PUBLISHED");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM sync_change WHERE couple_id = ? AND entity_type = 'ENTRY'"
+                        + " AND operation = 'PUBLISH' AND entity_id = ?",
+                Integer.class, coupleId, entryId))
+                .as("one publish is one change row")
+                .isEqualTo(1);
     }
 
     private UUID firstBlockIdOf(UUID entryId) {
