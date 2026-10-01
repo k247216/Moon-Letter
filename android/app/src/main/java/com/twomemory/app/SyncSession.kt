@@ -39,6 +39,34 @@ object SyncSession {
 
     data class Session(val token: String, val coupleId: UUID, val userId: UUID, val baseUrl: String)
 
+    data class Names(val own: String, val partner: String)
+
+    /** Persisted display names; blank when never fetched. */
+    fun loadNames(context: Context): Names {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return Names(
+            own = prefs.getString("ownName", null).orEmpty(),
+            partner = prefs.getString("partnerName", null).orEmpty(),
+        )
+    }
+
+    /** Best-effort fetch of real display names from the space profile. */
+    suspend fun refreshNames(context: Context) {
+        val session = load(context) ?: return
+        runCatching {
+            val space = com.twomemory.network.RetrofitSessionApi.create()
+                .readSpace(session.baseUrl, session.token, session.coupleId)
+            val own = space.members.firstOrNull { it.userId == session.userId }?.profile?.displayName.orEmpty()
+            val partner = space.members.firstOrNull { it.userId != session.userId }?.profile?.displayName.orEmpty()
+            if (own.isNotBlank() || partner.isNotBlank()) {
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString("ownName", own)
+                    .putString("partnerName", partner)
+                    .apply()
+            }
+        }
+    }
+
     /**
      * Returns null (and clears the damaged record) when anything is missing
      * or corrupt, so the app falls back to the binding screen instead of

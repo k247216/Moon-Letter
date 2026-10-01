@@ -24,6 +24,18 @@ data class BootstrapResultDto(
 
 data class CoupleViewDto(val id: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"))
 
+data class ProfileViewDto(val displayName: String = "")
+
+data class MemberViewDto(
+    val userId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+    val profile: ProfileViewDto = ProfileViewDto(),
+)
+
+data class SpaceViewDto(
+    val id: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+    val members: List<MemberViewDto> = emptyList(),
+)
+
 data class PairingTokenResultDto(val couple: CoupleViewDto = CoupleViewDto(), val pairingToken: String = "")
 
 data class PairRequestDto(val token: String)
@@ -48,6 +60,9 @@ interface SessionApi {
     suspend fun pairingToken(baseUrl: String, bearer: String, coupleId: UUID): PairingTokenResultDto
 
     suspend fun pair(baseUrl: String, pairingToken: String): PairResultDto
+
+    /** Reads the space with member profiles (display names for the timeline). */
+    suspend fun readSpace(baseUrl: String, bearer: String, coupleId: UUID): SpaceViewDto
 }
 
 internal interface SessionRetrofitApi {
@@ -62,6 +77,9 @@ internal interface SessionRetrofitApi {
 
     @POST("api/v1/couple/pair")
     suspend fun pair(@Body body: PairRequestDto): Response<PairResultDto>
+
+    @GET("api/v1/couple/{coupleId}")
+    suspend fun readSpace(@Path("coupleId") coupleId: UUID): Response<SpaceViewDto>
 }
 
 class RetrofitSessionApi private constructor(
@@ -89,6 +107,15 @@ class RetrofitSessionApi private constructor(
     override suspend fun pair(baseUrl: String, pairingToken: String): PairResultDto =
         withContext(Dispatchers.IO) {
             val response = api(baseUrl).pair(PairRequestDto(pairingToken))
+            if (!response.isSuccessful) {
+                throw SetupHttpException(response.code(), response.errorBody()?.string().orEmpty().take(200))
+            }
+            response.body() ?: throw SetupHttpException(response.code(), "empty body")
+        }
+
+    override suspend fun readSpace(baseUrl: String, bearer: String, coupleId: UUID): SpaceViewDto =
+        withContext(Dispatchers.IO) {
+            val response = api(baseUrl, bearer).readSpace(coupleId)
             if (!response.isSuccessful) {
                 throw SetupHttpException(response.code(), response.errorBody()?.string().orEmpty().take(200))
             }

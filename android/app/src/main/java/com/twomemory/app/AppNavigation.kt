@@ -146,8 +146,15 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
     val editorViewModel = remember { EditorViewModel() }
     val editorState by editorViewModel.state.collectAsState()
 
+    // Real display names win over the placeholder couple state: fetch them
+    // from the server profile, then label every author by their actual name.
     LaunchedEffect(coupleState.ownName, coupleState.partnerName) {
-        timelineViewModel.updateNames(coupleState.ownName, coupleState.partnerName)
+        SyncSession.refreshNames(context)
+        val saved = SyncSession.loadNames(context)
+        timelineViewModel.updateNames(
+            own = saved.own.ifBlank { coupleState.ownName },
+            partner = saved.partner.ifBlank { coupleState.partnerName },
+        )
     }
 
     // Unpublished text is kept off the critical path: restore on entry, keep

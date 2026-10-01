@@ -38,6 +38,10 @@ abstract class EntryDao {
     @Query("SELECT * FROM entries WHERE deleted = 0 ORDER BY occurredAtEpochMillis DESC, id DESC LIMIT 100")
     abstract suspend fun timelineSnapshot(): List<EntryEntity>
 
+    /** Live timeline stream: re-emits on every local write or pulled change. */
+    @Query("SELECT * FROM entries WHERE deleted = 0 ORDER BY occurredAtEpochMillis DESC, id DESC LIMIT 100")
+    abstract fun observeTimelineSnapshot(): Flow<List<EntryEntity>>
+
     @Query(
         "SELECT * FROM entry_blocks WHERE type = 'IMAGE' AND assetId IS NULL AND deleted = 0",
     )
