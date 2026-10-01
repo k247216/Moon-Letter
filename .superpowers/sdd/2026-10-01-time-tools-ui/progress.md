@@ -7,3 +7,5 @@ Task 2 ruling: capsule text is never displayed before its unlock date; export UI
 Task 3 ruling: focused Compose tests and screenshots remain pending on the SDK machine. Local verification is `git diff --check` and source inspection only.
 
 Implementation note: the local-cache export action is real text sharing from published Room entries; date-range/all scopes remain explicit waiting states until the server export task supplies versioned JSON/Markdown/media ZIP endpoints. Anniversary metadata is cached locally with an honest waiting-sync label; capsule plaintext is intentionally not written to ordinary preferences.
+
+Task 4 ruling: “过去的今天” filters an earlier year with the same month/day; “本周小结” filters the current Monday–Sunday window. Both show source records and navigate by original entry ID. They do not expose relationship statistics, scores, or generated summaries.

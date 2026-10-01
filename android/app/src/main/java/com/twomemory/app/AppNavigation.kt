@@ -48,8 +48,11 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
 private fun com.twomemory.database.EntryEntity.toTimelineItem(
@@ -160,6 +163,61 @@ private fun cityStoriesOf(
                 title = entry.title?.takeIf { it.isNotBlank() },
                 preview = previewOf(blocksByEntry[entry.id].orEmpty()).orEmpty(),
                 author = authorLabel(entry, currentUserId, names),
+            )
+        }
+        .toList()
+}
+
+private fun reviewMemoriesOf(
+    entries: List<com.twomemory.database.EntryEntity>,
+    blocks: List<com.twomemory.database.EntryBlockEntity>,
+    currentUserId: java.util.UUID?,
+    names: SyncSession.Names,
+): List<ReviewMemoryUi> {
+    val today = LocalDate.now()
+    val weekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    val nextWeek = weekStart.plusDays(7)
+    val blocksByEntry = blocks.groupBy { it.entryId }
+    return entries.asSequence()
+        .filter { it.state == "PUBLISHED" && !it.deleted }
+        .mapNotNull { entry ->
+            val zone = runCatching { ZoneId.of(entry.occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
+            val local = java.time.Instant.ofEpochMilli(entry.occurredAtEpochMillis).atZone(zone)
+            val localDate = local.toLocalDate()
+            val pastToday = localDate.year < today.year && localDate.month == today.month && localDate.dayOfMonth == today.dayOfMonth
+            val inWeek = !localDate.isBefore(weekStart) && localDate.isBefore(nextWeek)
+            val prefix = when {
+                pastToday -> "past:"
+                inWeek -> "week:"
+                else -> return@mapNotNull null
+            }
+            val ownBlocks = blocksByEntry[entry.id].orEmpty()
+            val mediaKinds = ownBlocks.mapNotNull { block ->
+                when (block.type) {
+                    "IMAGE" -> "照片"
+                    "VIDEO" -> "视频"
+                    "AUDIO" -> "语音"
+                    "MUSIC" -> "音乐"
+                    else -> null
+                }
+            }.distinct()
+            val city = ownBlocks.firstOrNull { it.type == "LOCATION" }?.let { block ->
+                val payload = payloadOf(block)
+                payload.optString("city")
+                    .ifBlank { payload.optString("cityName") }
+                    .ifBlank { payload.optString("name") }
+                    .takeIf { it.isNotBlank() }
+            }
+            val (date, time, _) = occurredLabels(entry)
+            ReviewMemoryUi(
+                id = prefix + entry.id,
+                dateLabel = date,
+                timeLabel = time,
+                author = authorLabel(entry, currentUserId, names),
+                title = entry.title?.takeIf { it.isNotBlank() },
+                body = previewOf(ownBlocks).orEmpty(),
+                mediaKinds = mediaKinds,
+                city = city,
             )
         }
         .toList()
@@ -278,6 +336,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
     var selectedKey by remember { mutableStateOf("timeline") }
     var editingMode by remember { mutableStateOf<EntryMode?>(null) }
     var toolRoute by remember { mutableStateOf<CoupleToolRoute?>(null) }
+    var reviewRoute by remember { mutableStateOf<MemoryReviewRoute?>(null) }
     val visualPrefs = remember { context.getSharedPreferences("moon_letter_visuals", android.content.Context.MODE_PRIVATE) }
     var coverUri by remember { mutableStateOf(visualPrefs.getString("coverUri", null)) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -356,6 +415,14 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
     }
     val cityStories = remember(roomEntries, roomBlocks, cachedNames) {
         cityStoriesOf(
+            entries = roomEntries,
+            blocks = roomBlocks,
+            currentUserId = SyncSession.load(context)?.userId,
+            names = cachedNames,
+        )
+    }
+    val reviewMemories = remember(roomEntries, roomBlocks, cachedNames) {
+        reviewMemoriesOf(
             entries = roomEntries,
             blocks = roomBlocks,
             currentUserId = SyncSession.load(context)?.userId,
@@ -516,6 +583,17 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
         return
     }
 
+    reviewRoute?.let { route ->
+        BackHandler { reviewRoute = null }
+        MemoryReviewScreen(
+            route = route,
+            memories = reviewMemories,
+            onBack = { reviewRoute = null },
+            onOpenEntry = { openEntryId = it },
+        )
+        return
+    }
+
     Scaffold(
         bottomBar = {
             MoonLetterBottomNavigation(selectedKey) { tab ->
@@ -586,6 +664,8 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
                     onOpenAnniversary = { toolRoute = CoupleToolRoute.ANNIVERSARY },
                     onOpenCapsule = { toolRoute = CoupleToolRoute.CAPSULE },
                     onOpenExport = { toolRoute = CoupleToolRoute.EXPORT },
+                    onOpenPastToday = { reviewRoute = MemoryReviewRoute.PAST_TODAY },
+                    onOpenWeeklySummary = { reviewRoute = MemoryReviewRoute.WEEKLY_SUMMARY },
                 )
                 "album" -> AlbumPreviewScreen(media = albumMedia, onOpenEntry = { openEntryId = it })
                 "map" -> CityMapPreviewScreen(stories = cityStories, onOpenEntry = { openEntryId = it })

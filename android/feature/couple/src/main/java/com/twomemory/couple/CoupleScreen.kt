@@ -82,6 +82,8 @@ fun CoupleRoute(
     onOpenAnniversary: () -> Unit = {},
     onOpenCapsule: () -> Unit = {},
     onOpenExport: () -> Unit = {},
+    onOpenPastToday: () -> Unit = {},
+    onOpenWeeklySummary: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -143,6 +145,8 @@ fun CoupleRoute(
         onOpenAnniversary = onOpenAnniversary,
         onOpenCapsule = onOpenCapsule,
         onOpenExport = onOpenExport,
+        onOpenPastToday = onOpenPastToday,
+        onOpenWeeklySummary = onOpenWeeklySummary,
     )
 }
 
@@ -167,6 +171,8 @@ fun CoupleScreen(
     onOpenAnniversary: () -> Unit = {},
     onOpenCapsule: () -> Unit = {},
     onOpenExport: () -> Unit = {},
+    onOpenPastToday: () -> Unit = {},
+    onOpenWeeklySummary: () -> Unit = {},
 ) {
     var editingName by remember { mutableStateOf(false) }
     var pickingHour by remember { mutableStateOf(false) }
@@ -269,6 +275,22 @@ fun CoupleScreen(
                         label = { Text("纯白") },
                     )
                 }
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 1.dp,
+        ) {
+            Column {
+                Text(
+                    "回看与小结",
+                    style = TwoMemoryTypography.body,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp),
+                )
+                SettingsRow(TwoMemoryIcons.Time, "过去的今天", "找回更早年份同一天的真实记录", onClick = onOpenPastToday)
+                SettingsRow(TwoMemoryIcons.Calendar, "本周小结", "组合本周文字、照片、音乐和城市，不调用 AI", onClick = onOpenWeeklySummary)
             }
         }
         Surface(

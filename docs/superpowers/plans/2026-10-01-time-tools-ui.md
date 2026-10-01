@@ -21,3 +21,9 @@
 - Compose tests cover route labels, locked capsule semantics, export scope and back affordance.
 - Record the data/API contracts the SDK machine must provide; do not mark M1/V4 complete from UI tests.
 - This Mac only runs `git diff --check`; Gradle/device verification remains on the SDK machine.
+
+## Task 4 — Add deterministic review surfaces
+
+- Add “过去的今天” and “本周小结” entries to the profile page.
+- Derive them from published Room entries using local calendar rules; preserve source entry IDs so every card opens the original detail.
+- Show media/city tags as source evidence, never counts, scores, or AI-generated prose.
