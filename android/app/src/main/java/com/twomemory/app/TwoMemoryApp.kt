@@ -17,7 +17,18 @@ import com.twomemory.designsystem.TwoMemoryTheme
 @Composable
 fun TwoMemoryApp() {
     val context = LocalContext.current
-    var theme by remember { mutableStateOf(MoonLetterTheme.WARM_BEIGE) }
+    val profilePrefs = remember {
+        context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE)
+    }
+    var theme by remember {
+        mutableStateOf(
+            runCatching {
+                MoonLetterTheme.valueOf(
+                    profilePrefs.getString("theme", MoonLetterTheme.WARM_BEIGE.name).orEmpty(),
+                )
+            }.getOrDefault(MoonLetterTheme.WARM_BEIGE),
+        )
+    }
 
     // Sync on app start and every foreground return (best effort; the
     // WorkManager path stays the background fallback).

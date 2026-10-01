@@ -59,14 +59,18 @@ object SyncSession {
     }
 
     /** Saves a personal draft through Room + outbox, then triggers a sync. */
-    suspend fun saveDraft(context: Context, state: com.twomemory.editor.EditorUiState) {
+    suspend fun saveDraft(
+        context: Context,
+        state: com.twomemory.editor.EditorUiState,
+        mode: com.twomemory.model.EntryMode = com.twomemory.model.EntryMode.PERSONAL,
+    ) {
         val session = load(context) ?: error("设备尚未绑定：请先完成 bootstrap 与配对")
         val payload = org.json.JSONObject().put("text", state.body).toString()
         com.twomemory.database.LocalEntryWriter(AppDatabase.build(context)).save(
             com.twomemory.model.LocalEntryCommand(
                 coupleId = session.coupleId,
                 authorId = session.userId,
-                mode = com.twomemory.model.EntryMode.PERSONAL,
+                mode = mode,
                 occurredAt = state.occurrenceTime,
                 occurredTimezone = state.timezone,
                 title = state.title.ifBlank { null },

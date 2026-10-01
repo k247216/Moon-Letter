@@ -1,6 +1,9 @@
 package com.twomemory.editor
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,25 +12,33 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.twomemory.designsystem.PaperSurface
+import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.model.EntryMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -51,10 +62,16 @@ fun PersonalEditorScreen(
     onTitleChange: (String) -> Unit,
     onBodyChange: (String) -> Unit,
     onPublish: () -> Unit,
+    onClose: () -> Unit = {},
+    mode: EntryMode = EntryMode.PERSONAL,
+    onModeChange: (EntryMode) -> Unit = {},
 ) {
     Scaffold(
         bottomBar = {
-            Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
+            Column(
+                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                    .navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
                 state.error?.let {
                     Text(
                         it,
@@ -63,57 +80,114 @@ fun PersonalEditorScreen(
                     )
                     Spacer(Modifier.size(8.dp))
                 }
-                Button(
-                    onClick = onPublish,
-                    enabled = !state.saving && state.hasContent,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        when {
-                            state.saving -> "保存中…"
-                            state.saved -> "已保存"
-                            else -> "发布这篇记录"
-                        }
-                    )
-                }
+                EditorAttachmentToolbar()
             }
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding).padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding)
+                .padding(horizontal = 22.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text("写下此刻", style = TwoMemoryTypography.title)
-            Text(
-                state.occurrenceTime.atZone(ZoneId.of(state.timezone)).format(occurrenceFormatter),
-                style = TwoMemoryTypography.caption,
-            )
-            PaperSurface(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = state.title,
-                        onValueChange = onTitleChange,
-                        placeholder = { Text("给今天留一句标题") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = state.body,
-                        onValueChange = onBodyChange,
-                        placeholder = { Text("今天的心情、做过的事，慢慢写下来…") },
-                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人记录正文" },
-                        minLines = 8,
-                    )
-                }
+            EditorTopBar(state, onClose, onPublish)
+            RecordModeSwitch(mode, onModeChange)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(R.drawable.moonletter_avatar_xiaoman),
+                    contentDescription = "小满头像",
+                    modifier = Modifier.size(54.dp).clip(androidx.compose.foundation.shape.CircleShape),
+                )
+                Spacer(Modifier.width(12.dp))
+                Text("小满", style = TwoMemoryTypography.title, color = MaterialTheme.colorScheme.primary)
             }
-            EditorAttachmentToolbar()
-            Spacer(Modifier.size(80.dp))
+            BasicTextField(
+                value = state.title,
+                onValueChange = onTitleChange,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = TwoMemoryTypography.title.copy(color = MaterialTheme.colorScheme.onSurface),
+                singleLine = true,
+                decorationBox = { inner ->
+                    Box {
+                        if (state.title.isBlank()) Text("给这一刻起个名字", style = TwoMemoryTypography.title,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f))
+                        inner()
+                    }
+                },
+            )
+            BasicTextField(
+                value = state.body,
+                onValueChange = onBodyChange,
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "个人记录正文" },
+                textStyle = TwoMemoryTypography.body.copy(color = MaterialTheme.colorScheme.onSurface),
+                minLines = 12,
+                decorationBox = { inner ->
+                    Box {
+                        if (state.body.isBlank()) Text(
+                            "今天的心情、做过的事，慢慢写下来……",
+                            style = TwoMemoryTypography.body,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f),
+                        )
+                        inner()
+                    }
+                },
+            )
+            Spacer(Modifier.size(100.dp))
         }
     }
 }
 
 @Composable
-fun EditorAttachmentToolbar() {
+private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
+            Icon(TwoMemoryIcons.Close, contentDescription = "关闭编辑器")
+        }
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center) {
+            Icon(TwoMemoryIcons.Time, contentDescription = null, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(7.dp))
+            Text(
+                state.occurrenceTime.atZone(ZoneId.of(state.timezone)).format(occurrenceFormatter),
+                style = TwoMemoryTypography.body,
+            )
+        }
+        TextButton(onClick = onPublish, enabled = !state.saving && state.hasContent) {
+            Text(
+                when {
+                    state.saving -> "保存中"
+                    state.saved -> "已保存"
+                    else -> "完成"
+                },
+                color = if (state.hasContent) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+@Composable
+fun RecordModeSwitch(mode: EntryMode, onModeChange: (EntryMode) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)).padding(1.dp),
+    ) {
+        listOf(EntryMode.PERSONAL to "我的记录", EntryMode.COLLABORATIVE to "共同记录").forEach { (item, label) ->
+            val selected = mode == item
+            Box(
+                modifier = Modifier.weight(1f).clip(RoundedCornerShape(27.dp)).clickable { onModeChange(item) }
+                    .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(label, style = TwoMemoryTypography.body,
+                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+@Composable
+fun EditorAttachmentToolbar(onAttachmentClick: ((String) -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -127,7 +201,11 @@ fun EditorAttachmentToolbar() {
             "城市" to TwoMemoryIcons.Location,
             "更多" to TwoMemoryIcons.More,
         ).forEach { (label, icon) ->
-            IconButton(onClick = {}, modifier = Modifier.semantics { contentDescription = label }) {
+            IconButton(
+                onClick = { onAttachmentClick?.invoke(label) },
+                enabled = onAttachmentClick != null,
+                modifier = Modifier.semantics { contentDescription = "$label（暂未开放）" },
+            ) {
                 Icon(icon, contentDescription = label)
             }
         }

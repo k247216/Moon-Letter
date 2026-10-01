@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class CoupleUiState(
-    val ownName: String = "我",
-    val partnerName: String = "对方",
+    val ownName: String = "小满",
+    val partnerName: String = "阿屿",
     val ownAvatar: String? = null,
     val partnerAvatar: String? = null,
     val theme: MoonLetterTheme = MoonLetterTheme.WARM_BEIGE,
@@ -23,6 +23,9 @@ class CoupleViewModel : ViewModel() {
     fun updateOwnName(value: String) { mutableState.value = mutableState.value.copy(ownName = value) }
     fun updateOwnAvatar(uri: String) { mutableState.value = mutableState.value.copy(ownAvatar = uri) }
     fun updateTheme(theme: MoonLetterTheme) { mutableState.value = mutableState.value.copy(theme = theme) }
+    fun restore(ownName: String, ownAvatar: String?, theme: MoonLetterTheme) {
+        mutableState.value = mutableState.value.copy(ownName = ownName, ownAvatar = ownAvatar, theme = theme)
+    }
     fun keepOldCoverUntilUploadSuccess(newUri: String?, uploadSucceeded: Boolean) {
         if (uploadSucceeded) mutableState.value = mutableState.value.copy(coverUri = newUri)
     }

@@ -18,8 +18,9 @@ data class TimelineEntryUi(
     val timeLabel: String,
     val author: String,
     val title: String?,
-    val body: String,
+    val body: String = "",
     val shared: Boolean = false,
+    val mine: Boolean = false,
 )
 
 /**
@@ -31,6 +32,9 @@ class TimelineViewModel(
     private val loader: (suspend () -> List<TimelineItem>)? = null,
     private val currentUserId: UUID? = null,
 ) : ViewModel() {
+
+    private var ownName: String = "小满"
+    private var partnerName: String = "阿屿"
 
     private val mutableEntries = MutableStateFlow<List<TimelineEntryUi>>(emptyList())
     val entries: StateFlow<List<TimelineEntryUi>> = mutableEntries.asStateFlow()
@@ -46,6 +50,12 @@ class TimelineViewModel(
         }
     }
 
+    fun updateNames(own: String, partner: String) {
+        ownName = own.ifBlank { "小满" }
+        partnerName = partner.ifBlank { "阿屿" }
+        refresh()
+    }
+
     private fun TimelineItem.toUi(): TimelineEntryUi {
         val zone = runCatching { ZoneId.of(occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
         val local = occurredAt.atZone(zone)
@@ -57,14 +67,14 @@ class TimelineViewModel(
             dateLabel = date,
             timeLabel = time,
             author = when {
-                mine -> "我"
-                mode == com.twomemory.model.EntryMode.COLLABORATIVE -> "共同"
-                else -> "TA"
+                mine -> ownName
+                else -> partnerName
             },
             title = title?.takeIf { it.isNotBlank() },
             // Body must be the real content text; title is rendered separately.
             body = preview ?: title.orEmpty(),
             shared = mode == com.twomemory.model.EntryMode.COLLABORATIVE,
+            mine = mine,
         )
     }
 }
