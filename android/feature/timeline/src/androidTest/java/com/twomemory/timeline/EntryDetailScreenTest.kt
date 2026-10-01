@@ -45,19 +45,19 @@ class EntryDetailScreenTest {
     }
 
     @Test
-    fun missingRecordExplainsItIsWaitingForSync() {
+    fun missingRecordExplainsThisPhoneHasNotReadItYet() {
         composeRule.setContent {
             TwoMemoryTheme {
                 EntryDetailScreen(null, onBack = {}, onDraftChange = {}, onSend = {})
             }
         }
-        composeRule.onNodeWithText("正在等待同步，这条记录还不在这台手机上").assertIsDisplayed()
+        composeRule.onNodeWithText("正在打开…这台手机还没有读到这条记录").assertIsDisplayed()
     }
 
     @Test
     fun detailRendersCitySnapshotInsteadOfHidingItBehindAPlaceholder() {
         val state = EntryDetailUi(
-            header = TimelineEntryUi("entry-city", "2026年10月1日", "22:07", "小满", "杭州", body = null, shared = false, mine = true),
+            header = TimelineEntryUi("entry-city", "2026年10月1日", "22:07", "小满", "杭州", body = "", shared = false, mine = true),
             blocks = listOf(
                 EntryBlockUi(
                     id = "city-1",

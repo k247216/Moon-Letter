@@ -79,7 +79,7 @@ fun EntryDetailScreen(
     ) { padding ->
         if (state == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("正在等待同步，这条记录还不在这台手机上", style = TwoMemoryTypography.body)
+                Text("正在打开…这台手机还没有读到这条记录", style = TwoMemoryTypography.body)
             }
             return@Scaffold
         }
@@ -140,7 +140,7 @@ private fun DetailBlock(block: EntryBlockUi) {
     val author = block.author
     val payload = runCatching { org.json.JSONObject(block.payload.orEmpty()) }.getOrNull()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        author?.let { Text("$it的视角", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted) }
+        author?.let { Text("${it}的视角", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted) }
         when {
             block.type == BlockType.IMAGE && (block.assetId != null || block.localPath != null) -> {
                 EntryPhoto(localPath = block.localPath, assetId = block.assetId, modifier = Modifier.fillMaxWidth().height(220.dp), contentDescription = "记录里的照片")

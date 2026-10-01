@@ -132,7 +132,7 @@ class EntryDetailViewModel(
             draft = onScreen?.draft.orEmpty(),
             sending = onScreen?.sending == true,
             error = onScreen?.error,
-            status = if (entry.unsent) MoonLetterRecordStatus.DRAFT else MoonLetterRecordStatus.SYNCED,
+            status = if (entry.state == com.twomemory.model.EntryState.DRAFT) MoonLetterRecordStatus.DRAFT else MoonLetterRecordStatus.SYNCED,
         )
     }
 }

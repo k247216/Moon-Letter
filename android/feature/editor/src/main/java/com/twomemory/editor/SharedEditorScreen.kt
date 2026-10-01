@@ -148,7 +148,7 @@ private fun ReadOnlyAuthorBlock(name: String, body: String) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             AuthorMark(name, 34.dp, Color(0xFF6F8268))
             Spacer(Modifier.width(8.dp))
-            Text("$name的视角", style = TwoMemoryTypography.caption, color = Color(0xFF6F8268))
+            Text("${name}的视角", style = TwoMemoryTypography.caption, color = Color(0xFF6F8268))
         }
         Text(body, style = TwoMemoryTypography.body)
         Text("仅 TA 可以修改", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .52f))
