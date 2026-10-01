@@ -301,3 +301,28 @@
   2. `CoupleScreen` 无头像时仍用参考图里的两张角色插画作为默认像（真名已经走 `Text(name)`）。它属于「我们自己的画」这一视觉意图，未改；若她希望默认就是名字首字母，是一行改动。
   3. 全表 `observeBlocks()` 对两个用户是刻意的取舍；记录数增长到千级才需要考虑按需订阅。
   4. 本轮未触碰 #7（每周回看、新记录本地通知）与 #9 清单；`baseVersion` 固定 0、`DEFAULT_DEV_BASE_URL` 硬编码 IP、图片无磁盘缓存、IMAGE payload 外泄本机路径、主题不跨设备、无 Room 迁移测试等仍在。
+
+### 记录 21：卸载重装后回不去——配对数据与恢复链路（2026-10-01）
+
+- **Commits**：`52b1f59`（服务端恢复语义 + V10 迁移 + 新验收测试）、`9d3ca4c`（Android 侧「我们」页生成配对码与绑定页文案），docs 提交另计。本轮之后**推送仍需单独授权**。
+- **用户报的现场**：「卸载软件之后重新生成的秘钥还留存，应该能重新生成才对」。
+- **实测根因（不是密钥没留存，是三道门同时关上）**：dev 库 `moon_letter` 当时是「空间已满 2 位 / outstanding 配对码 0 / 活跃会话 2」。① `POST /api/v1/bootstrap` 的语义是「安装只能初始化一次」，只要 `app_user` 非空就 409；② `POST /api/v1/couple/pair` 见满员空间直接 409 `couple space is full`；③ 客户端只在 bootstrap 成功后展示一次配对码，**之后再也没有再生成的入口**（`SyncSession` 里根本没有这条调用）。唯一剩下的出路是 `SessionAdminCommand` CLI，而它要求传 `userId`——丢手机的人不知道自己是谁。三者合起来 = 完全锁死。
+- **恢复语义（服务端）**：
+  - 密钥从「一次性创建空间」改为「打开创始成员自己的槽位」：安装已有成员时，`reclaimFoundingMember` 取最早未删除空间的最早活跃成员，`INSERT … ON CONFLICT (user_id) DO NOTHING` 保profile，`issueReplacementSession` 发新会话，返回**原来的 userId / coupleId**。密钥的权力没有变大（它本来就能建整个空间），但现在它同时是创始设备的恢复凭据。
+  - 配对码有两种，**由服务器按活跃成员数决定**，客户端不需要也不该自己猜：有空位 = `INVITE`（新建第二位成员），已满 = `REJOIN`（`space_pairing_code.rejoin_user_id` 绑定另一位成员的 user_id，V10 新增可空列 + 部分索引）。对用户仍然只有一个概念「配对码」。
+  - `consumeRejoinToken` 先校验目标仍是该空间活跃成员，再只吊销**她自己的**会话，返回**同一个 userId**——已有记录的归属不断；另一台手机的会话不受影响（这是「恢复一台不会把另一台踢下线」的实测点）。
+  - 容量判断改为按 `couple_member` 活跃成员数计算，不再读 `couple_space.status`（`createSpace` 从不维护它，满员空间照样是 `UNPAIRED`）。
+  - `issueOutstandingToken` 在插入新码前把该空间所有未消费码置 `consumed_at`，一个空间**只留一个**有效码；旧码留在世上等于一张过期门票随时能把人踢下线。
+  - 两条恢复路径都**不改名**：改名是 rename 入口的职责，重装不是改名。（正常开档流程不受影响：`INVITE` 配对走 `ensureProfile(partnerId, displayName)`，她打的称呼会落库。）
+- **客户端补的是「缺失的那一步」**：`我们` 页新增「换手机或重新配对」——按需生成配对码、可长按复制、并把服务器给的 kind 一起显示；`REJOIN` 时明说这个码认的是另一位成员自己的位置。生成失败会**清掉屏上旧码**（请求新码已经让它作废，留着就是假信息）。`PairingTokenResultDto.pairingTokenKind` 贯通到 `SetupScreen`，绑定页文案不再声称「空间已建好」（同一次调用可能是在恢复已有空间），409 文案改成现在真实的原因。
+- **服务端绿灯**：`JAVA_HOME=/e/jdk21-extract/jdk-21.0.2 mvn -o test` → **56 条全绿**。新增 `DeviceReplacementPairingTest`（真实 HTTP + 独立库 `moon_letter_replace_test`：INVITE/REJOIN 判定、重复 bootstrap 返回同一身份、旧会话 401 而伴侣仍 200、REJOIN 回到同一 userId、码单次使用与轮换后失效、`couple_member`/`app_user` 恒为 2、恢复不覆盖已改的名字）；`BootstrapAuthenticationTest` 第 3 步从「第二次 bootstrap 永久 409」改写为新语义；`CoupleApiTest` 跟随 `CreateSpaceResult` 新字段。
+- **我自己写出来的一盏假红灯**：`pairStatus()` 期望 409，却报「expected success, got 409」——`TestRestTemplate` 对 4xx **返回 ResponseEntity 而不抛异常**，我让它穿过 `ok()` 断言，于是服务端行为正确、测试助手错误。改为直接读状态码，顺手删掉 `readSpaceStatus()` 里永远不会触发的 `catch`。
+- **Android 绿灯**：`./gradlew --offline testDebugUnitTest :app:assembleDebug` → **BUILD SUCCESSFUL，48 条单元测试 0 失败 0 错误**（上轮 44 + 本轮 4：`CoupleViewModelTest` 5→8、`SetupViewModelTest` 2→3）。新增的是「拿到的码带上服务器给的槽位」「生成失败把屏上旧码一起丢掉」「藏起来不向服务器发任何请求」「绑定页把 kind 一路带到待配对面板」。
+- **真 HTTP 演练（与 JVM 证据分开记）**：把 dev 库**克隆**成 `moon_letter_rehearse`（`CREATE DATABASE … TEMPLATE moon_letter`，当时源库 0 连接），服务器指向克隆库跑在 18080，用 curl 跑用户现场状态：错密钥 403 → 重复 bootstrap **201** 并 reclaim 到 `e4706489`（存名 `k` 未被改写）→ 生成的码 `kind=REJOIN` → 用它 pair 得到**同一个** `5f644891`（`未命名` 保留，成员数仍 2）→ 已用码重放 409。演练后 `DROP DATABASE moon_letter_rehearse`，脚本删除，**dev 库未被写**（源库与克隆库 `entry` 均为 0，与记录 19 的清空一致）。这台机器上 8080 当前**没有服务在跑**。
+- **必须知道的边界 / 未做**：
+  1. **第二位成员重装不能用密钥找回自己**（密钥只认创始槽位），必须由另一台还在的手机生成 `REJOIN` 码；两台同时丢则先密钥回到第一位、再当场生成码找第二位——这条顺序已在演练里跑通。
+  2. `REJOIN` 码是 **bearer 凭据**：拿到它的那台手机在 15 分钟窗口内就是她。单次使用 + 只能覆盖一个已存在的槽位，但**它必须直接发给对面那台手机**，不要发到群里、不要截图外传。这是本设计接受的代价，也是开档当天要交代她的一句。
+  3. `app_user` 非空但空间里一个活跃成员都不剩时，bootstrap 只会 409「no member left to recover」，**没有自助重置入口**。现无任何代码路径把成员置为 `left_at`/`deleted_at`，所以不可达；将来加「离开空间」时必须同时补这条，否则整个安装永久锁死。
+  4. 恢复动作不写 `session_admin_audit`（该表目前只由 CLI 写），所以「谁在什么时候把谁的会话换掉了」在库里查不到。自用两人场景暂不补，但它是一条可审计性缺口。
+  5. **落地需要的动作**：服务端要用本轮构建**重启**（V10 列在 dev 库已存在，但运行中的进程必须是新代码）；两台手机要装新 APK。开档当天仍是「两台都清除应用数据 → 第一位初始化 → 另一位用新生成的码配对」。
+  6. 未在真机验证：长按复制、`REJOIN` 说明文案的实际读感、以及「另一台手机生成码 → 本机粘贴」这条双手协作的真实耗时（门槛第 5/6 项的一部分，用户已明确接受真机成本后续再精进）。界面复刻与视觉细节本轮刻意只做够用即可，另有其人负责。
