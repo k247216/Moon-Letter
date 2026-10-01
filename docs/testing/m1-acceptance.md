@@ -502,3 +502,14 @@
 - **顺带记录一条规格陈旧**：`2026-10-01-guided-ui-and-feature-completion-design.md:61` 的页面状态清单仍写着 `同步失败，点击重试`，那个状态已在记录 38 里删除；代码现在的八个可达标签以 `MoonLetterUiState.kt` 为准。
 - **绿灯口径**：Android JVM **110 例 / 0 失败 / 0 跳过**（app 28、core:database 19、core:sync 19、feature:timeline 13、feature/couple 11、**feature/editor 8（本轮新增 `OccurrenceTimeTest`）**、core:model 6、core:network 3、core:designsystem 3），`:app:assembleDebug` 通过（APK 20,994,195 字节），`compileDebugAndroidTestKotlin` 全模块通过。
 - **必须知道的边界（未真机验证）**：以上全部是 JVM 证据。真机上还没验过：日期 + 时间两栏在一个 AlertDialog 里单手是否选得动（`TimePicker` 在小屏上会撑出滚动，本轮只加了 `verticalScroll`）；Android 8–16 上 `ZoneId.systemDefault().id` 是否总能被服务端和对方手机解析（服务端只存字符串，不做校验）；以及 ≤10 秒 / ≤4 次交互的门槛——选时间是**多出来的可选动作**，默认路径的交互数没变，但真实秒数仍要在两人手机上量过才算。一条刻意改过时间的记录在对方手机上究竟读回哪一天，同样只有真机两条链路能证明。
+
+### 记录 40：把剩下的死控件和「装了却没用」的头像清掉（2026-10-02）
+
+- **回看页的两个假筛选**：`MemoryReviewScreens.ReviewMemoryCard` 用 `FilterChip(selected = true, onClick = {})` 显示媒体类型和城市。`selected = true` 的 FilterChip 会画勾选态、可点、有涟漪，但它不筛选任何东西——是「看起来能点、点了没反应」的控件。改成同形状的静态 `MemoryTag`（Surface + caption），信息一条不少，承诺少了一层。
+- **时间轴的装饰评论图标**：每张卡片底部固定画一个 `TwoMemoryIcons.Comment` 配「打开这段记录」，无论这条记录有没有回应。评论数不在 `TimelineEntryUi` 里，而按红线也不打算把计数搬上卡片，所以图标直接删掉，只留一句中性的「打开这段记录」。
+- **相册的「视频」筛选永远筛出空**：媒体链路端到端只有图片——`LocalEntryWriter` 的 `awaitsAsset()` 只认 `BlockType.IMAGE`，`MediaUploadManager.uploadPendingImages` 只取 `imageBlocksWithoutAsset()` 且 `kind = "IMAGE"`，规格 `2026-10-01-guided-ui-and-feature-completion-design.md:15` 自己写着「服务端媒体校验只接受图片」，相册整页排在 V2。所以那个 chip 点下去只能落到空态，而空态文案还在讲照片。指导图 `shared-album.png` 要三个筛选位，因此 chip 保留但按规格的「未接通显示禁用原因」处理：没有非图片媒体时它是 `enabled = false` 并跟一行「视频上传还没有接通，所以这里现在只有照片。」；标题不再写「照片和视频都回到它们原来的记录里」。等 V2 接通媒体链路，`videoInAlbum` 自己会把 chip 变回可点。
+- **详情页的视频/语音占位检查后保留**：`EntryDetailScreen.blockTypeLabel` 写的是「视频将在媒体功能接通后播放」，并且 `MediaTile` 的视频分支写「视频 · 点开原记录」（点开的确实是原记录，规格 `:89` 要求相册不是孤立文件夹）。两句都是边界说明而不是假承诺，本轮不动，避免和视觉负责人正在复刻的参考图抢文案。
+- **头像选了等于没选**：`CoupleScreen` 让用户挑自己的头像，写进 `moon_letter_profile` 的 `ownAvatar`，但时间轴和记录详情是 `painterResource(if (mine) xiaoman else ayu)` 硬编码——换头像只影响它自己那一页。而且 `mine` 决定图标的含义是「谁在看谁就是小满」，与她给自己起的名字对不上。现在 `AppNavigation` 读同一个偏好文件、按 `selectedKey` 变化重读、按 URI 变化解码一次，时间轴与详情共用新的 `AuthorAvatar`：**自己的行用选定的那张图**，对方仍然用插画——服务端有 `avatar_asset_id`（`CoupleDtos`/`CoupleService`），但客户端从来没上传过头像资产，`UpdateProfileRequest` 只用 `displayName`，所以「对方的头像」现在还没有链路，画一张没选过的脸是另一种假。
+- **§6 边界**：只动 `feature/timeline`（`TimelineScreen`/`EntryDetailScreen` + 新 `AuthorAvatar`）、`app` 的三个页面文件和本文档。没动 `core/*`、服务端、表结构或迁移。
+- **绿灯口径**：Android JVM **110 例 / 0 失败**（模块分布同记录 39，本轮没有新的 JVM 可测逻辑），`:app:assembleDebug` 通过（APK 20,996,669 字节，02:05），`compileDebugAndroidTestKotlin` 全模块通过——它是唯一能编译到 `AuthorAvatar`/`MemoryTag` 调用的检查。
+- **必须知道的边界**：本轮四条改动全在 Compose 渲染层，**JVM 测试一行也证明不了**：静态标签是否还读得像标签、禁用 chip 的灰度是否够明显、选定的头像裁成圆后是否好看、切换 tab 后头像才更新（`LaunchedEffect(selectedKey)`）是否会被当成卡顿，都要真机看。头像 URI 是持久化权限的 content URI，重装会失效——`remember(ownAvatarUri)` 解码失败时退回插画，不会空出一块。

@@ -443,6 +443,22 @@ fun AppNavigation(
             }.getOrNull()
         }
     }
+    // The profile page stores the face it picked; nothing else reads it back, so the
+    // avatar would only ever change the one page it was chosen on.
+    val profilePrefs = remember {
+        context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE)
+    }
+    var ownAvatarUri by remember { mutableStateOf(profilePrefs.getString("ownAvatar", null)) }
+    LaunchedEffect(selectedKey) { ownAvatarUri = profilePrefs.getString("ownAvatar", null) }
+    val ownAvatarBitmap = remember(ownAvatarUri) {
+        ownAvatarUri?.let { value ->
+            runCatching {
+                context.contentResolver.openInputStream(Uri.parse(value)).use { stream ->
+                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
+                }
+            }.getOrNull()
+        }
+    }
     val coupleViewModel = remember { CoupleViewModel() }
     var cachedNames by remember { mutableStateOf(SyncSession.loadNames(context)) }
     val database = remember { AppDatabase.build(context) }
@@ -693,6 +709,7 @@ fun AppNavigation(
             onRetryDelivery = {
                 openUuid?.let { id -> toolScope.launch { SyncSession.retrySync(context, id) } }
             },
+            ownAvatar = ownAvatarBitmap,
         )
         return
     }
@@ -819,6 +836,7 @@ fun AppNavigation(
                     coverBitmap = coverBitmap,
                     onChangeCover = { coverPicker.launch(arrayOf("image/*")) },
                     onOpen = { openEntryId = it },
+                    ownAvatar = ownAvatarBitmap,
                 )
                 "couple" -> CoupleRoute(
                     viewModel = coupleViewModel,

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -34,12 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.EntryPhoto
 import com.twomemory.designsystem.MoonLetterRecordStatus
-import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
@@ -51,9 +49,18 @@ fun EntryDetailRoute(
     onBack: () -> Unit,
     delivery: MoonLetterRecordStatus? = null,
     onRetryDelivery: () -> Unit = {},
+    ownAvatar: ImageBitmap? = null,
 ) {
     val state by viewModel.state.collectAsState()
-    EntryDetailScreen(state, onBack, viewModel::updateDraft, viewModel::sendComment, delivery, onRetryDelivery)
+    EntryDetailScreen(
+        state,
+        onBack,
+        viewModel::updateDraft,
+        viewModel::sendComment,
+        delivery,
+        onRetryDelivery,
+        ownAvatar,
+    )
 }
 
 @Composable
@@ -64,6 +71,7 @@ fun EntryDetailScreen(
     onSend: () -> Unit,
     delivery: MoonLetterRecordStatus? = null,
     onRetryDelivery: () -> Unit = {},
+    ownAvatar: ImageBitmap? = null,
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -95,7 +103,7 @@ fun EntryDetailScreen(
                 .padding(horizontal = 24.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
-            RecordHeader(state.header, delivery ?: state.status, onRetryDelivery)
+            RecordHeader(state.header, delivery ?: state.status, onRetryDelivery, ownAvatar)
             state.blocks.forEach { block -> DetailBlock(block) }
             Comments(state)
             Spacer(Modifier.height(96.dp))
@@ -108,6 +116,7 @@ private fun RecordHeader(
     header: TimelineEntryUi,
     status: MoonLetterRecordStatus,
     onRetryDelivery: () -> Unit,
+    ownAvatar: ImageBitmap?,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -117,11 +126,7 @@ private fun RecordHeader(
     ) {
         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.foundation.Image(
-                    painter = painterResource(if (header.mine) R.drawable.moonletter_avatar_xiaoman else R.drawable.moonletter_avatar_ayu),
-                    contentDescription = "${header.author}的头像",
-                    modifier = Modifier.size(38.dp).clip(CircleShape),
-                )
+                AuthorAvatar(header.mine, ownAvatar, 38.dp, "${header.author}的头像")
                 Spacer(Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(header.author, style = TwoMemoryTypography.title, color = if (header.mine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF6F8268))

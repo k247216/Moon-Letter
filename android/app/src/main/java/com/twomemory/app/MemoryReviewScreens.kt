@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -131,13 +130,24 @@ private fun ReviewMemoryCard(memory: ReviewMemoryUi, onOpenEntry: (String) -> Un
             memory.title?.let { Text(it, style = TwoMemoryTypography.title) }
             if (memory.body.isNotBlank()) Text(memory.body, style = TwoMemoryTypography.body, maxLines = 4)
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                memory.mediaKinds.forEach { kind ->
-                    FilterChip(selected = true, onClick = {}, label = { Text(kind) })
-                }
-                memory.city?.let {
-                    FilterChip(selected = true, onClick = {}, label = { Text(it) })
-                }
+                memory.mediaKinds.forEach { kind -> MemoryTag(kind) }
+                memory.city?.let { MemoryTag(it) }
             }
         }
+    }
+}
+
+/** A fact about the record, not a control: nothing here filters or opens anything. */
+@Composable
+private fun MemoryTag(text: String) {
+    Surface(
+        shape = RoundedCornerShape(9.dp),
+        color = TwoMemoryColors.WarmBeigeLine.copy(alpha = .38f),
+    ) {
+        Text(
+            text,
+            style = TwoMemoryTypography.caption,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+        )
     }
 }

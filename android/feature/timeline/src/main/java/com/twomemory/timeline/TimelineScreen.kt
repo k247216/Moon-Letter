@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.twomemory.designsystem.EntryPhoto
@@ -59,9 +60,10 @@ fun TimelineRoute(
     coverBitmap: ImageBitmap? = null,
     onChangeCover: () -> Unit = {},
     onOpen: (String) -> Unit = {},
+    ownAvatar: ImageBitmap? = null,
 ) {
     val entries by viewModel.entries.collectAsState()
-    TimelineScreen(entries, coverBitmap, onChangeCover, onOpen)
+    TimelineScreen(entries, coverBitmap, onChangeCover, onOpen, ownAvatar)
 }
 
 @Composable
@@ -70,6 +72,8 @@ fun TimelineScreen(
     coverBitmap: ImageBitmap? = null,
     onChangeCover: () -> Unit = {},
     onOpen: (String) -> Unit = {},
+    /** The face this phone's owner picked; my own rows must not show a stock illustration. */
+    ownAvatar: ImageBitmap? = null,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background),
@@ -82,7 +86,7 @@ fun TimelineScreen(
             entries.groupBy { it.dateLabel }.forEach { (day, dayEntries) ->
                 item(key = "day-$day") { DayStitchHeader(day, Modifier.padding(horizontal = 24.dp)) }
                 items(dayEntries, key = { it.id }) { entry ->
-                    TimelineRow(entry = entry, onOpen = onOpen, modifier = Modifier.padding(horizontal = 24.dp))
+                    TimelineRow(entry = entry, onOpen = onOpen, ownAvatar = ownAvatar, modifier = Modifier.padding(horizontal = 24.dp))
                     Spacer(Modifier.height(22.dp))
                 }
             }
@@ -201,7 +205,12 @@ private fun StitchDivider(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TimelineRow(entry: TimelineEntryUi, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun TimelineRow(
+    entry: TimelineEntryUi,
+    onOpen: (String) -> Unit,
+    ownAvatar: ImageBitmap?,
+    modifier: Modifier = Modifier,
+) {
     Row(modifier = modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.Top) {
         Box(modifier = Modifier.width(18.dp).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
             Canvas(Modifier.fillMaxHeight().width(2.dp)) {
@@ -234,12 +243,7 @@ private fun TimelineRow(entry: TimelineEntryUi, onOpen: (String) -> Unit, modifi
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = painterResource(if (entry.mine) R.drawable.moonletter_avatar_xiaoman else R.drawable.moonletter_avatar_ayu),
-                        contentDescription = "${entry.author}的头像",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(32.dp).clip(CircleShape),
-                    )
+                    AuthorAvatar(entry.mine, ownAvatar, 32.dp, "${entry.author}的头像")
                     Spacer(Modifier.width(9.dp))
                     Text(entry.author, style = TwoMemoryTypography.title, color = if (entry.mine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF6F8268))
                     if (entry.shared) {
@@ -269,12 +273,28 @@ private fun TimelineRow(entry: TimelineEntryUi, onOpen: (String) -> Unit, modifi
                     )
                 }
                 Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(TwoMemoryIcons.Comment, contentDescription = "评论", tint = TwoMemoryColors.WarmBeigeMuted, modifier = Modifier.size(19.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("打开这段记录", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
-                }
+                Text("打开这段记录", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
             }
         }
+    }
+}
+
+/**
+ * The face this phone's owner chose in 我们, for their own records. The partner's side
+ * stays an illustration because an avatar has no upload or profile path yet — showing
+ * a chosen face for someone who never picked one would be a different kind of wrong.
+ */
+@Composable
+internal fun AuthorAvatar(mine: Boolean, ownAvatar: ImageBitmap?, size: Dp, contentDescription: String) {
+    val shape = Modifier.size(size).clip(CircleShape)
+    if (mine && ownAvatar != null) {
+        Image(bitmap = ownAvatar, contentDescription = contentDescription, contentScale = ContentScale.Crop, modifier = shape)
+    } else {
+        Image(
+            painter = painterResource(if (mine) R.drawable.moonletter_avatar_xiaoman else R.drawable.moonletter_avatar_ayu),
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Crop,
+            modifier = shape,
+        )
     }
 }

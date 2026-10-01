@@ -94,14 +94,26 @@ fun AlbumPreviewScreen(
             Icon(TwoMemoryIcons.Album, contentDescription = "共同相册", tint = MaterialTheme.colorScheme.primary)
         }
         Text(
-            "照片和视频都回到它们原来的记录里",
+            "照片都回到它们原来的记录里",
             style = TwoMemoryTypography.body,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = .62f),
         )
+        val videoInAlbum = media.any { it.kind != "IMAGE" }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = filter == "ALL", onClick = { filter = "ALL" }, label = { Text("全部") })
             FilterChip(selected = filter == "IMAGE", onClick = { filter = "IMAGE" }, label = { Text("照片") })
-            FilterChip(selected = filter == "VIDEO", onClick = { filter = "VIDEO" }, label = { Text("视频") })
+            if (videoInAlbum) {
+                FilterChip(selected = filter == "VIDEO", onClick = { filter = "VIDEO" }, label = { Text("视频") })
+            } else {
+                FilterChip(selected = false, enabled = false, onClick = {}, label = { Text("视频") })
+            }
+        }
+        if (!videoInAlbum) {
+            Text(
+                "视频上传还没有接通，所以这里现在只有照片。",
+                style = TwoMemoryTypography.caption,
+                color = TwoMemoryColors.WarmBeigeMuted,
+            )
         }
         if (visibleMedia.isEmpty()) {
             AlbumEmptyState(Modifier.fillMaxWidth().weight(1f))
@@ -143,7 +155,7 @@ private fun AlbumEmptyState(modifier: Modifier) {
             Text("照片会在这里按月份长出来", style = TwoMemoryTypography.title, textAlign = TextAlign.Center)
             Spacer(Modifier.height(10.dp))
             Text(
-                "带照片或视频的记录保存后，这里会自动出现；相册不会复制或伪造一份新的回忆。",
+                "带照片的记录保存后，这里会自动出现；相册不会复制或伪造一份新的回忆。",
                 style = TwoMemoryTypography.body,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
                 textAlign = TextAlign.Center,
