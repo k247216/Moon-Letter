@@ -7,8 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.UUID;
 
@@ -34,7 +34,7 @@ public class BootstrapService {
 
     @Transactional
     public BootstrapController.BootstrapResult bootstrap(String secret, String displayName) {
-        if (configuredSecret == null || configuredSecret.isBlank() || !configuredSecret.equals(secret)) {
+        if (!secretsMatch(configuredSecret, secret)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "invalid bootstrap secret");
         }
         Integer userCount = jdbcTemplate.queryForObject("SELECT count(*) FROM app_user", Integer.class);
@@ -64,5 +64,14 @@ public class BootstrapService {
         String rawToken = deviceSessionService.issueSession(userId, coupleId);
 
         return new BootstrapController.BootstrapResult(userId.toString(), coupleId.toString(), rawToken);
+    }
+
+    static boolean secretsMatch(String configuredSecret, String suppliedSecret) {
+        if (configuredSecret == null || configuredSecret.isBlank() || suppliedSecret == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                configuredSecret.getBytes(StandardCharsets.UTF_8),
+                suppliedSecret.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -1,8 +1,8 @@
 # 月笺（Moon Letter）跨机器开发交接
 
-更新时间：2026-10-01（并入 `docs/human-scale-principles.md`、Task 0、Task 11a/11b/11c 与 Robolectric 优先的证明方式）
+更新时间：2026-10-01（本机复核基线 `5a38d39`）
 当前分支：`m1-stable-recording-loop`
-当前结论：**M1 NOT VERIFIED；Task 1 已落地（服务可启动），但记录闭环、认证与 Android 链路仍是架构骨架，不是可交付闭环。**
+当前结论：**M1 NOT VERIFIED；S1–S5、A1–A3 的开发机证据已由本机静态复核接受，E1 仅 JVM 链路部分通过，H1–H8、E2、D1–D2、U1–U2 均未通过。**
 
 ## 1. 权威资料与冲突处理
 
@@ -12,7 +12,8 @@
 2. `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
 3. `docs/superpowers/plans/2026-10-01-self-use-m1-implementation.md`
 4. `docs/testing/m1-acceptance.md`
-5. `docs/design/reference/` 与 `docs/design/brand/`
+5. `docs/reviews/2026-10-01-m1-round-review.md`
+6. `docs/design/reference/` 与 `docs/design/brand/`
 
 `2026-09-30-couple-diary-design.md` 和 `2026-09-30-m1-stable-recording-loop.md` 已降为历史参考。发生冲突时，以 2026-10-01 的规格与执行计划为准；两份文档未覆盖的取舍，按 `docs/human-scale-principles.md` 的顺序裁决。不得继续实现跨作者同块合并、依赖 FCM 的秒级承诺或旧的伪 E2E 验收。
 
@@ -32,26 +33,25 @@
 - 双端闭环以 JVM 上的 Robolectric 夹具（两个真实 Room 数据库 + 真实 Retrofit 到真实 Spring Boot）为主要证明手段，真机/模拟器用于冒烟和 Task 14 录像；
 - 完成服务端、Android、真实双端同步、备份导出和设备视觉验证；
 - 每个任务提交独立 commit，并把证据写回 `docs/testing/m1-acceptance.md`；
-- 待定项按执行计划 Task 0 处理：主数据表示未答复时走默认方案 A 并在回传中标注；**开始真实使用的日期（卡 Task 11a）与桌面图标名称（卡打包）不能默认**，必须按 §8 格式回传索取。称呼、身份色、封面与措辞不要提前索取，由 Task 12b 交付为应用内可改项。
+- Task 0 已确定 PostgreSQL 权威和桌面名称「月笺」；仍待使用者确定真实使用开始日期与每周投入上限。称呼、身份色、封面与措辞不要提前索取，由 Task 12b 交付为应用内可改项。
 
 ## 3. 当前代码事实
 
-已有内容包括 PostgreSQL/Flyway V1–V5、服务端 controller/service 雏形、Android 多模块结构、Room entity/DAO 接口、同步状态机骨架、Compose 页面骨架和六张批准视觉稿。
+当前已落地并获本机复核接受：
 
-以下内容尚未成立，开发机不得视为已完成：
+- Task 1–7 的服务端启动、bearer 会话、一次性配对、actor 归属、类型化幂等操作、每空间游标和真实 HTTP/PostgreSQL E2E；
+- Task 8–11 的 Android 构建、Room/outbox/cursor、Retrofit/WorkManager 接线和 Robolectric 两 Room 真实服务端竖切；
+- 无会话时的 bootstrap/配对入口与时间线返回刷新。
 
-- Task 1 已落地（`application.yml` + `application-dev.yml` + actuator health，验收 Gate S1 = PASS），但这只证明服务能在开发机启动，不证明认证、同步或数据链；
-- Spring Security 和真实登录/初始化未接入，`X-User-Id` 可被客户端任意伪造；
-- 发布、修改和冲突路径存在丢失 actor/成员校验的问题；
-- `/sync/operations` 只写客户端 payload，未调用真实业务变更；业务 service 也未稳定追加 change feed；
-- 全局 identity cursor 在并发事务逆序提交时可能永久漏变更；
-- Android 没有完整 Retrofit/OkHttp、Room `SyncStore` 和 app 级依赖接线，cursor 仍可能使用常量；
-- UI 仍包含硬编码演示数据；
-- Android 构建与 instrumented test 尚无可信通过证据；
-- 服务端 `TwoDeviceSyncTest` 使用 `FakeServer`，Android `TwoDeviceScenarioTest` 仅做字符串断言，均不是端到端验收；
-- 历史“28 tests pass”只能保留为组件级证据，不能推导 M1 完成；
-- **Task 2 正在本机工作树进行中，尚未提交**：`auth/SecurityConfig.java`、`auth/BootstrapController.java`、`auth/BootstrapService.java`、`auth/DeviceSessionAuthenticationFilter.java`、`V6__device_sessions_and_bootstrap.sql`、`auth/AuthenticatedUser.java` 的改动、各 controller 改读 principal，以及 `src/test/.../auth/BootstrapAuthenticationTest.java`。开发机在看到这批代码的 commit 之前**不要开始 Task 2**，否则会出现两套并行的认证实现；提交后先比对再决定是否继续。
-- 现有 V1–V5 迁移与本规格存在多处冲突（枚举值、字段长度约束、幂等键、change 序号、配对码路径、对象存储 `head()` 占位）。逐项清单见规格 §6.5，任何冲突必须在写代码前先改迁移或改规格，不能靠运行时代码绕过。
+仍未成立且禁止误标为完成：
+
+- **H4 会话恢复**：无 `SessionAdminCommand`、`SessionRecoveryTest` 或可执行恢复入口；两台设备同时丢失会话会锁死存档；
+- Android 严格 FIFO、协程取消传播和 WorkManager 自动重试仍有缺陷，见本轮复核报告；
+- bearer token 仍明文保存在普通 SharedPreferences，开发 HTTP/IP 配置尚未与真实使用构建分离；
+- `connectedDebugAndroidTest` 与真机 smoke 未运行，E1 没有真机 UI 互见录像；
+- Task 11a/11b/11c/12/12b/13/14 未完成，H1–H8、E2、D1–D2、U1–U2 均未通过；
+- 当前时间线不是持续观察 Room，停留页面期间同步完成不会立即刷新；
+- 详细证据接受范围和风险排序以 `docs/reviews/2026-10-01-m1-round-review.md` 为准。
 
 ## 4. 产品实现边界
 
@@ -71,7 +71,7 @@
 
 | 阶段 | 对应计划 | 退出条件 |
 |---|---|---|
-| 0 前置决策 | Task 0 | 只定单向门：主数据表示（未答复按默认方案 A，选 B 须先回传 Task 5–7 返工评估）；开始真实使用的日期在 Task 11a 前定稿；Android 桌面图标名称给两个候选。其余偏好项**不提前问使用者**，改为交付可改能力 |
+| 0 前置决策 | Task 0 | 主数据表示已定方案 A，桌面名称已定「月笺」；只剩开始真实使用日期与每周投入上限，必须在 Task 11a 前定稿。其余偏好项**不提前问使用者**，改为交付可改能力 |
 | A 可运行与安全边界 | Task 1–4 | 服务可启动；bootstrap/配对/token 生效；会话恢复路径可用；越权测试通过 |
 | B 正确服务端同步 | Task 5–7 | typed operation、同事务 change、空间有序 cursor、真实 HTTP/PostgreSQL E2E 通过 |
 | C Android 本地链 | Task 8–10 | APK 构建；Room/outbox/cursor 持久化；Retrofit 与真实依赖接通 |
@@ -97,7 +97,7 @@
 - 390 × 844 是截图对比基准但不是固定尺寸。禁止把参考 PNG 直接铺成界面背景。
 - 相册和地图在 M1 必须是明确的未开放状态，不能用演示卡片造成已完成功能的错觉。
 - 六张参考图是方向，不是像素基线。视觉验收在**真实设备**上进行，判据只有三条：像纸、像使用者自己的东西、不像软件（规格 §8）。
-- 名称、双方身份色、封面文案和提醒措辞由使用者决定，规格与参考图在这些项目上让位。**决定权体现为"随时能在应用内改"（Task 12b），不体现为"使用前必须先选"**：默认值必须开箱可用，空白不算交付。唯一需要提前问的是 Android 桌面图标名称（launcher 安装时读取，用户无法自由输入），给两个候选即可。向使用者提问时一律给两个具体方案让其挑选，不开放式征求评价。
+- 桌面名称已定为「月笺」；双方身份色、封面文案和提醒措辞由使用者决定，规格与参考图在这些项目上让位。**决定权体现为"随时能在应用内改"（Task 12b），不体现为"使用前必须先选"**：默认值必须开箱可用，空白不算交付。
 
 ## 7. 开发环境与云端配置
 
@@ -143,11 +143,12 @@
 
 ## 9. 当前下一步
 
-Task 1 已提交（`build(server): add reproducible runtime configuration`，Gate S1 = PASS）。下一个任务是 **Task 2：设备会话认证**，且必须连同规格 §5.4 的会话恢复路径与“库中不存在任何有效会话”的恢复演练一起做，不能只完成 bootstrap 和 bearer。
+严格按以下顺序继续，不直接跳到 Task 12 或视觉完善：
 
-Task 0 不阻塞 Task 2–10：主数据表示按默认的**方案 A（PostgreSQL 权威）**实现即可，若要改选方案 B 必须先评估 Task 5–7 的返工再动工。但两项决定分别卡住后续节点：
+1. 补齐 Task 2 未完成部分：`SessionAdminCommand`、`SessionRecoveryTest`、审计记录和全会话丢失恢复演练。bootstrap 密钥常量时间比较与无用默认用户自动配置已在本轮本机复核中修正。
+2. 修复 Android outbox 严格 FIFO、协程取消传播和 `SyncWorker` push 失败返回 retry，并补回归测试。
+3. 使用 Android Keystore 保护设备 token，把 cleartext 与硬编码服务器地址限制到开发构建，并处理损坏会话回退。
+4. 在具名真机补 connected smoke；确定开始真实使用日期后执行 Task 11a，建立 `real-use-log.md`。
+5. 再继续 Task 11b/11c、Task 12/12b、Task 13、Task 14。
 
-- **开始真实使用的日期与每周投入上限**决定 Task 11a 能否同日执行；
-- **桌面图标名称**需要在打包前给一次候选答复；应用内称呼、身份色、封面与措辞不提前索取，由 Task 12b 以可改入口交付，未实现它就不能声称 §6 的所有权规则成立。
-
-另一个未回答的问题：**伴侣的手机是 Android 还是 iPhone。** 当前所有验收假设双方 Android；若其中一方是 iPhone，Task 11a 之后的设备与录像证据方案必须先在本文件更新，不能靠模拟器代替 iOS 侧的真实体验。
+主数据表示已确定为方案 A，桌面名称已确定为「月笺」。仍需使用者给出真实使用开始日期与每周投入上限。双方当前验收按 Android 设备设计；若伴侣侧实际为 iPhone，应先调整 Task 11a 的设备方案。

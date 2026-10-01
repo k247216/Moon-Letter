@@ -3,6 +3,7 @@
 状态：**NOT VERIFIED / 未通过验收**
 权威规格：`docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
 执行计划：`docs/superpowers/plans/2026-10-01-self-use-m1-implementation.md`
+本机复核：`docs/reviews/2026-10-01-m1-round-review.md`（基线 `5a38d39`）
 
 ## 1. 当前证据的正确解释
 
@@ -10,7 +11,7 @@
 |---|---|---|
 | 服务端现有 28 个测试通过的历史记录 | 部分 service、controller 映射和数据库约束曾通过组件测试 | 服务可按 README 启动；真实认证；真实 HTTP 双端同步；正确游标并发语义 |
 | `server/.../e2e/TwoDeviceSyncTest.java` | 内存模型中的部分重试/同步想法 | Spring Boot、PostgreSQL、HTTP、真实事务或两台设备；其 `FakeServer` 不能计作 E2E |
-| `android/.../TwoDeviceScenarioTest.kt` | 简单 JVM 数据模型断言 | 两个 Room、Retrofit、WorkManager、服务端或 UI 数据链；相同字符串断言不能计作双端验收 |
+| 已删除的 `android/.../TwoDeviceScenarioTest.kt` | 历史上只有简单 JVM 数据模型断言 | 不能作为两个 Room、Retrofit、WorkManager、服务端或 UI 数据链证据；当前 A3/E1 证据改由 `TwoDeviceRecordingLoopTest` 提供 |
 | Android Room/KSP 与 Compose 源码 | 工程骨架和目标模块已存在 | `assembleDebug`、instrumented test、真机运行或视觉一致性 |
 | 六张 UI 参考图 | 视觉方向（质感、结构、层级）明确 | 当前 App 已按方向实现或已接真实数据；参考稿不是像素基线 |
 
@@ -21,11 +22,11 @@
 | Gate | 必须证明 | 建议命令或材料 | 当前状态 | 证据 |
 |---|---|---|---|---|
 | S1 服务启动 | 干净环境配置、Flyway、health | `mvn spring-boot:run` + health 响应 | **PASS（Task 1）** | 见 §6 记录 1 |
-| S2 认证与隔离 | bootstrap、一次配对、两 token、第三方拒绝 | real HTTP integration test | **PASS（Task 2/3）** | 见 §6 记录 2、3 |
+| S2 认证与隔离 | bootstrap、一次配对、两 token、第三方拒绝 | real HTTP integration test | **PASS（Task 2/3；不含 H4 恢复）** | 见 §6 记录 2–4 与复核报告 |
 | S3 同步正确性 | typed mutation、幂等、业务写入与 change 同事务 | server focused tests | **PASS（Task 5）** | 见 §6 记录 5 |
 | S4 游标并发 | 同空间事务逆序压力下不漏变更 | `ChangeFeedOrderingTest` 重复运行 | **PASS（Task 6）** | 见 §6 记录 6 |
 | S5 Server E2E | `RANDOM_PORT` + real PostgreSQL + real HTTP | `SelfUseRecordingLoopE2ETest` | **PASS（Task 7）** | 见 §6 记录 7 |
-| A1 Android 构建 | 所有模块编译并产出 APK | `./gradlew :app:assembleDebug` | **PASS（Task 8）** | 见 §6 记录 8 |
+| A1 Android 构建 | 所有模块编译并产出 APK | `./gradlew :app:assembleDebug` | **PASS（Task 8 构建；connected smoke 未运行）** | 见 §6 记录 8 与复核报告 |
 | A2 Room/outbox | 本地事务、重启保留、page+cursor 原子提交 | JVM 双 Room 夹具（Robolectric + 真实 Room 数据库文件） | **PASS（Task 9）** | 见 §6 记录 9 |
 | A3 Android 网络链 | Retrofit、真实 Room、真实 server | JVM 夹具内的真实 Retrofit → 真实 Spring Boot/PostgreSQL | **PASS（Task 10/11）** | 见 §6 记录 10、11 |
 | E1 双端闭环 | A 离线写入后在 B 的 Room 与 UI 出现 | 夹具日志（两个 Room + 真实 HTTP）+ 至少一台真机的互见录像；证据须写明配对端用的是真机还是具名模拟器 | **部分通过（Task 11 夹具链路 PASS；真机 UI 互见录像 NOT RUN）** | 见 §6 记录 11 |
@@ -83,7 +84,7 @@
 
 ### 记录 1：Task 1 服务可复现启动（2026-10-01）
 
-- **Commit**：本文件所在提交（`build(server): add reproducible runtime configuration`）。
+- **Commit**：`703aa3a build(server): add reproducible runtime configuration`。
 - **环境**：Windows 11；OpenJDK 21.0.2（`E:\jdk21-extract\jdk-21.0.2`）；Maven 3.9.15；Docker 29.6.2 运行 `postgres:18-alpine`（infra/compose.yaml，卷挂载已修正为 `/var/lib/postgresql`）。
 - **TDD 红灯证据**：`mvn -Dtest=CoupleDiaryApplicationTest test`（配置实现前）→ `Tests run: 3, Errors: 3`，ApplicationContext 加载失败（缺数据源配置）。
 - **中间红灯**：JDK 25 上 surefire 触发 Mockito/Byte Buddy agent 附加失败（`Could not initialize plugin: MockMaker`）；按交接文档要求切换 JDK 21 后消除。surefire 已配置 `-XX:+EnableDynamicAgentLoading`。
@@ -93,7 +94,7 @@
 
 ### 记录 2：Task 2 设备会话认证（2026-10-01）
 
-- **Commit**：`feat(auth): add bootstrap and device bearer sessions`（本文件所在提交）。
+- **Commit**：`787ce73 feat(auth): add bootstrap and device bearer sessions`。
 - **实现**：迁移 `V6__device_sessions_and_bootstrap.sql`（device_session 表、每成员单活跃会话部分唯一索引、display_name 扩到 1–40 字符）；`DeviceSessionAuthenticationFilter`（Bearer → SHA-256 哈希查会话，直接写 401 响应避免 /error 转发覆盖状态码）；`SecurityConfig`（CSRF/表单/Basic 关闭，仅 health、bootstrap、pair、error 公开）；`BootstrapController/Service`（空安装 + BOOTSTRAP_SECRET 才可执行，SecureRandom 256-bit token，仅存哈希）；四个 controller 全部改用 `@AuthenticationPrincipal`，`X-User-Id`/`fromHeader` 从主代码清零。
 - **测试**：新增 `BootstrapAuthenticationTest`（真 PostgreSQL 独立库 `moon_letter_boot_test` + RANDOM_PORT 真 HTTP）：错误密钥 403、首次 bootstrap 201 返回一次性 token、二次 409、无效 bearer 401、伪造 X-User-Id 401、token 读取空间 200。
 - **结果**：`mvn test` → `Tests run: 31, Failures: 0, Errors: 0`，`EXIT=0`。
