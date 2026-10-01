@@ -247,7 +247,11 @@ private fun TimelineRow(entry: TimelineEntryUi, onOpen: (String) -> Unit, modifi
                         Text("共同", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
                     }
                     Spacer(Modifier.weight(1f))
-                    if (entry.unsent) Text("未同步", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                    if (entry.rejected) {
+                        Text("没发出去 · 点开重发", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.error)
+                    } else if (entry.unsent) {
+                        Text("未同步", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                    }
                 }
                 Spacer(Modifier.height(9.dp))
                 entry.title?.let {

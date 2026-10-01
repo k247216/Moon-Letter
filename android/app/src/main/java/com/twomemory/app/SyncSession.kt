@@ -6,10 +6,17 @@ import com.twomemory.app.notifications.NewEntryNotice
 import com.twomemory.app.notifications.WeeklyReviewWorker
 import com.twomemory.database.AppDatabase
 import com.twomemory.database.RoomSyncStore
+import com.twomemory.model.EntrySyncPhase
+import com.twomemory.model.QueuedOperation
+import com.twomemory.model.entrySyncPhase
 import com.twomemory.network.RetrofitCoupleDiaryApi
 import com.twomemory.sync.SyncEngine
 import com.twomemory.sync.SyncEngineRegistry
 import com.twomemory.sync.SyncWorker
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import java.util.UUID
 
 /**
@@ -142,8 +149,9 @@ object SyncSession {
         context: Context,
         state: com.twomemory.editor.EditorUiState,
         mode: com.twomemory.model.EntryMode = com.twomemory.model.EntryMode.PERSONAL,
-    ) {
+    ): UUID {
         val session = load(context) ?: error("设备尚未绑定：请先完成 bootstrap 与配对")
+        val entryId = UUID.randomUUID()
         com.twomemory.database.LocalEntryWriter(AppDatabase.build(context)).save(
             com.twomemory.model.LocalEntryCommand(
                 coupleId = session.coupleId,
@@ -153,9 +161,31 @@ object SyncSession {
                 occurredTimezone = state.timezone,
                 title = state.title.ifBlank { null },
                 blocks = state.blocks(session.userId),
+                entryId = entryId,
             ),
             publish = true,
         )
+        triggerSync(context)
+        return entryId
+    }
+
+    /**
+     * Live delivery state for one record, read from this device's own queue: an
+     * operation leaves the outbox only when the server has taken it, so an empty
+     * queue is the only honest basis for claiming 已同步.
+     */
+    fun observeSyncPhase(context: Context, entryId: UUID): Flow<EntrySyncPhase> =
+        AppDatabase.build(context).outboxDao().observeForEntity(entryId.toString())
+            .map { rows -> entrySyncPhase(rows.map { QueuedOperation(it.state, it.attemptCount) }) }
+            .flowOn(Dispatchers.IO)
+
+    /**
+     * A rejected operation is parked for good by the engine, so this is the only
+     * way such a record ever moves again. It re-queues and immediately syncs.
+     */
+    suspend fun retrySync(context: Context, entryId: UUID) {
+        AppDatabase.build(context).outboxDao()
+            .requeueRejected(entryId.toString(), System.currentTimeMillis())
         triggerSync(context)
     }
 

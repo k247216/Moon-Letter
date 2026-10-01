@@ -63,6 +63,9 @@ fun PersonalEditorScreen(
     onModeChange: (EntryMode) -> Unit = {},
     photoActions: EditorPhotoActions? = null,
     ownName: String = "",
+    /** Real queue state of the record just published; null until something is published. */
+    delivery: MoonLetterRecordStatus? = null,
+    onRetryDelivery: () -> Unit = {},
 ) {
     Scaffold(
         bottomBar = {
@@ -90,7 +93,7 @@ fun PersonalEditorScreen(
         ) {
             EditorTopBar(state, onClose, onPublish)
             RecordModeSwitch(mode, onModeChange)
-            EditorStatus(state.recordStatus)
+            EditorStatus(delivery ?: state.recordStatus, onRetryDelivery)
             val author = ownName.ifBlank { "我" }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AuthorMark(author, 54.dp, MaterialTheme.colorScheme.primary)
@@ -139,15 +142,21 @@ fun PersonalEditorScreen(
 }
 
 @Composable
-private fun EditorStatus(status: MoonLetterRecordStatus) {
-    Text(
-        status.label,
-        style = TwoMemoryTypography.caption,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-    )
+private fun EditorStatus(status: MoonLetterRecordStatus, onRetry: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            status.label,
+            style = TwoMemoryTypography.caption,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+        )
+        if (status == MoonLetterRecordStatus.REJECTED) {
+            Spacer(Modifier.width(6.dp))
+            TextButton(onClick = onRetry) { Text("重新发送") }
+        }
+    }
 }
 
 @Composable

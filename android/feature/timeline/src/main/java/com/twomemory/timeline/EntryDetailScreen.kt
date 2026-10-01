@@ -46,9 +46,14 @@ import com.twomemory.designsystem.TwoMemoryTypography
 import com.twomemory.model.BlockType
 
 @Composable
-fun EntryDetailRoute(viewModel: EntryDetailViewModel, onBack: () -> Unit) {
+fun EntryDetailRoute(
+    viewModel: EntryDetailViewModel,
+    onBack: () -> Unit,
+    delivery: MoonLetterRecordStatus? = null,
+    onRetryDelivery: () -> Unit = {},
+) {
     val state by viewModel.state.collectAsState()
-    EntryDetailScreen(state, onBack, viewModel::updateDraft, viewModel::sendComment)
+    EntryDetailScreen(state, onBack, viewModel::updateDraft, viewModel::sendComment, delivery, onRetryDelivery)
 }
 
 @Composable
@@ -57,6 +62,8 @@ fun EntryDetailScreen(
     onBack: () -> Unit,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
+    delivery: MoonLetterRecordStatus? = null,
+    onRetryDelivery: () -> Unit = {},
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -88,7 +95,7 @@ fun EntryDetailScreen(
                 .padding(horizontal = 24.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
-            RecordHeader(state.header, state.status)
+            RecordHeader(state.header, delivery ?: state.status, onRetryDelivery)
             state.blocks.forEach { block -> DetailBlock(block) }
             Comments(state)
             Spacer(Modifier.height(96.dp))
@@ -97,7 +104,11 @@ fun EntryDetailScreen(
 }
 
 @Composable
-private fun RecordHeader(header: TimelineEntryUi, status: MoonLetterRecordStatus) {
+private fun RecordHeader(
+    header: TimelineEntryUi,
+    status: MoonLetterRecordStatus,
+    onRetryDelivery: () -> Unit,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -121,6 +132,18 @@ private fun RecordHeader(header: TimelineEntryUi, status: MoonLetterRecordStatus
                 StatusChip(status.label)
             }
             header.title?.let { Text(it, style = TwoMemoryTypography.title, fontWeight = FontWeight.Medium) }
+            if (status == MoonLetterRecordStatus.REJECTED) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "服务器没有收下这条内容，TA 那边看不到。",
+                        style = TwoMemoryTypography.caption,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = onRetryDelivery) { Text("重新发送") }
+                }
+            }
         }
     }
 }

@@ -29,7 +29,16 @@ class DesignSystemContractTest {
     @Test
     fun recordStatusHasEveryUserVisibleState() {
         assertEquals(
-            listOf("草稿", "已保存到本机", "等待同步", "已同步", "同步失败，点击重试"),
+            listOf(
+                "草稿",
+                "已保存到本机",
+                "等待同步",
+                "照片还在上传",
+                "发送没成功，正在自动重试",
+                "服务器拒收了这条",
+                "服务器已收下",
+                "这条还没存进手机",
+            ),
             MoonLetterRecordStatus.entries.map { it.label },
         )
     }

@@ -114,7 +114,7 @@ class EditorViewModel : ViewModel() {
                     saving = false,
                     saved = false,
                     error = expected.message ?: "保存失败，请重试",
-                    recordStatus = MoonLetterRecordStatus.SYNC_FAILED,
+                    recordStatus = MoonLetterRecordStatus.LOCAL_WRITE_FAILED,
                 )
             }
         }

@@ -87,6 +87,22 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun aRefusedRecordIsToldApartFromOneStillWaitingItsTurn() {
+        val viewModel = viewModel()
+        val stalled = item(EntryState.DRAFT, me)
+        val waiting = item(EntryState.DRAFT, me)
+        source.value = listOf(stalled, waiting)
+
+        viewModel.updateRejectedIds(setOf(stalled.id.toString()))
+
+        val shown = viewModel.entries.value
+        assertTrue(shown.first().rejected)
+        assertTrue(shown.first().unsent)
+        assertFalse(shown.last().rejected)
+        assertTrue(shown.last().unsent)
+    }
+
+    @Test
     fun aPartnersRecordIsNamedAndBadgedByWhereItCameFrom() {
         val viewModel = viewModel()
         source.value = listOf(

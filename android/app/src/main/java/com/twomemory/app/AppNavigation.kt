@@ -31,6 +31,7 @@ import com.twomemory.couple.PairingCode
 import com.twomemory.couple.RelationshipToolsScreen
 import com.twomemory.database.AppDatabase
 import com.twomemory.designsystem.MoonLetterBottomNavigation
+import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.MoonLetterTheme
 import com.twomemory.designsystem.TwoMemoryTheme
 import com.twomemory.editor.EditorViewModel
@@ -39,12 +40,15 @@ import com.twomemory.editor.SharedEditorRoute
 import com.twomemory.editor.rememberEditorPhotoActions
 import com.twomemory.model.EntryMode
 import com.twomemory.model.EntryState
+import com.twomemory.model.EntrySyncPhase
 import com.twomemory.model.TimelineItem
 import com.twomemory.timeline.EntryDetailRoute
 import com.twomemory.timeline.EntryDetailViewModel
 import com.twomemory.timeline.TimelineRoute
 import com.twomemory.timeline.TimelineViewModel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -256,6 +260,32 @@ private fun com.twomemory.database.CommentEntity.toEntryComment() = com.twomemor
 )
 
 /**
+ * What this phone's own queue says about one record, in the words its badge uses.
+ * Kept separate from the screens so the contract is testable without a device.
+ */
+internal fun recordStatusOf(phase: EntrySyncPhase): MoonLetterRecordStatus = when (phase) {
+    EntrySyncPhase.DELIVERED -> MoonLetterRecordStatus.SYNCED
+    EntrySyncPhase.QUEUED -> MoonLetterRecordStatus.PENDING_SYNC
+    EntrySyncPhase.UPLOADING_MEDIA -> MoonLetterRecordStatus.UPLOADING_MEDIA
+    EntrySyncPhase.RETRYING -> MoonLetterRecordStatus.RETRYING
+    EntrySyncPhase.REJECTED -> MoonLetterRecordStatus.REJECTED
+}
+
+/**
+ * Live badge for a record this device wrote. Null while nothing has been published
+ * here, so a page keeps the badge it derived from the record's own state rather
+ * than claiming delivery the queue has not confirmed.
+ */
+@Composable
+private fun rememberDeliveryStatus(entryId: java.util.UUID?): MoonLetterRecordStatus? {
+    val context = LocalContext.current
+    val phase by remember(entryId) {
+        if (entryId == null) flowOf<EntrySyncPhase?>(null) else SyncSession.observeSyncPhase(context, entryId)
+    }.collectAsState(initial = null)
+    return phase?.let(::recordStatusOf)
+}
+
+/**
  * A share sheet carries its text through a single binder transaction, so an
  * export longer than this is reported on screen instead of crashing the chooser.
  */
@@ -381,6 +411,8 @@ fun AppNavigation(
     }
     var selectedKey by remember { mutableStateOf("timeline") }
     var editingMode by remember { mutableStateOf<EntryMode?>(null) }
+    /** The record this session published; its queue state is what the editor then shows. */
+    var publishedEntryId by remember { mutableStateOf<java.util.UUID?>(null) }
     var toolRoute by remember { mutableStateOf<CoupleToolRoute?>(null) }
     var exportStatus by remember { mutableStateOf<String?>(null) }
     var reviewRoute by remember { mutableStateOf<MemoryReviewRoute?>(null) }
@@ -464,6 +496,12 @@ fun AppNavigation(
     LaunchedEffect(cachedNames) {
         timelineViewModel.updateNames(own = cachedNames.own, partner = cachedNames.partner)
     }
+    // A parked rejection is invisible to the sync engine from now on, so the queue
+    // is the only place the timeline can learn that a row will not fix itself.
+    val rejectedEntityIds by database.outboxDao().observeRejectedEntityIds().collectAsState(initial = emptyList())
+    LaunchedEffect(rejectedEntityIds) {
+        timelineViewModel.updateRejectedIds(rejectedEntityIds.toSet())
+    }
     val albumMedia = remember(roomEntries, roomBlocks, cachedNames) {
         albumMediaOf(
             entries = roomEntries,
@@ -500,6 +538,7 @@ fun AppNavigation(
     /** Opens one record type with its own unsaved draft already in place. */
     val openEditor: (EntryMode) -> Unit = { mode ->
         editorViewModel.reset()
+        publishedEntryId = null
         DraftStore.load(context, mode)?.let {
             editorViewModel.restore(it.title, it.body, it.photos)
         }
@@ -533,28 +572,44 @@ fun AppNavigation(
         }
         BackHandler { closeEditor() }
         val photoActions = rememberEditorPhotoActions(editorViewModel)
+        val delivery = rememberDeliveryStatus(publishedEntryId)
+        val retryDelivery: () -> Unit = {
+            publishedEntryId?.let { id -> toolScope.launch { SyncSession.retrySync(context, id) } }
+        }
         if (mode == EntryMode.PERSONAL) {
             PersonalEditorScreen(
                 state = editorState,
                 onTitleChange = editorViewModel::updateTitle,
                 onBodyChange = editorViewModel::updateBody,
-                onPublish = { editorViewModel.publish { state -> SyncSession.publish(context, state, mode) } },
+                onPublish = {
+                    editorViewModel.publish { state ->
+                        publishedEntryId = SyncSession.publish(context, state, mode)
+                    }
+                },
                 onClose = closeEditor,
                 mode = mode,
                 onModeChange = switchMode,
                 photoActions = photoActions,
                 ownName = cachedNames.own,
+                delivery = delivery,
+                onRetryDelivery = retryDelivery,
             )
         } else {
             SharedEditorRoute(
                 state = editorState,
-                onPublish = { editorViewModel.publish { state -> SyncSession.publish(context, state, mode) } },
+                onPublish = {
+                    editorViewModel.publish { state ->
+                        publishedEntryId = SyncSession.publish(context, state, mode)
+                    }
+                },
                 onTitleChange = editorViewModel::updateTitle,
                 onBodyChange = editorViewModel::updateBody,
                 onClose = closeEditor,
                 onModeChange = switchMode,
                 photoActions = photoActions,
                 ownName = cachedNames.own,
+                delivery = delivery,
+                onRetryDelivery = retryDelivery,
             )
         }
         return
@@ -598,8 +653,17 @@ fun AppNavigation(
         LaunchedEffect(cachedNames) {
             detailViewModel.updateNames(cachedNames.own, cachedNames.partner)
         }
+        val openUuid = remember(entryId) { runCatching { java.util.UUID.fromString(entryId) }.getOrNull() }
+        val delivery = rememberDeliveryStatus(openUuid)
         BackHandler { openEntryId = null }
-        EntryDetailRoute(detailViewModel, onBack = { openEntryId = null })
+        EntryDetailRoute(
+            detailViewModel,
+            onBack = { openEntryId = null },
+            delivery = delivery,
+            onRetryDelivery = {
+                openUuid?.let { id -> toolScope.launch { SyncSession.retrySync(context, id) } }
+            },
+        )
         return
     }
 

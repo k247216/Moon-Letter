@@ -52,6 +52,9 @@ fun SharedEditorRoute(
     ownName: String = "",
     partnerName: String? = state.partnerName,
     partnerBody: String? = state.partnerBody,
+    /** Real queue state of the record just published; null until something is published. */
+    delivery: MoonLetterRecordStatus? = null,
+    onRetryDelivery: () -> Unit = {},
 ) {
     val author = ownName.ifBlank { "我" }
     Scaffold(
@@ -70,7 +73,7 @@ fun SharedEditorRoute(
         ) {
             SharedTopBar(state, onClose, onPublish)
             RecordModeSwitch(EntryMode.COLLABORATIVE, onModeChange)
-            EditorStatus(state.recordStatus)
+            EditorStatus(delivery ?: state.recordStatus, onRetryDelivery)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AuthorMark(author, 48.dp, MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(12.dp))
@@ -127,15 +130,21 @@ fun SharedEditorRoute(
 }
 
 @Composable
-private fun EditorStatus(status: MoonLetterRecordStatus) {
-    Text(
-        status.label,
-        style = TwoMemoryTypography.caption,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-    )
+private fun EditorStatus(status: MoonLetterRecordStatus, onRetry: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            status.label,
+            style = TwoMemoryTypography.caption,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+        )
+        if (status == MoonLetterRecordStatus.REJECTED) {
+            Spacer(Modifier.width(6.dp))
+            TextButton(onClick = onRetry) { Text("重新发送") }
+        }
+    }
 }
 
 @Composable

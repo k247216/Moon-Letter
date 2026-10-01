@@ -26,6 +26,8 @@ data class TimelineEntryUi(
     val mine: Boolean = false,
     /** Still only on this device: published records never stay in DRAFT here. */
     val unsent: Boolean = false,
+    /** What this record still owes the server was refused outright, so it waits forever. */
+    val rejected: Boolean = false,
 )
 
 /**
@@ -39,20 +41,26 @@ class TimelineViewModel(
 ) : ViewModel() {
 
     private val names = MutableStateFlow("" to "")
+    private val rejectedIds = MutableStateFlow<Set<String>>(emptySet())
 
     private val mutableEntries = MutableStateFlow<List<TimelineEntryUi>>(emptyList())
     val entries: StateFlow<List<TimelineEntryUi>> = mutableEntries.asStateFlow()
 
     init {
         viewModelScope.launch {
-            combine(observer(), names) { items, (own, partner) ->
-                items.map { it.toEntryUi(own, partner, currentUserId) }
+            combine(observer(), names, rejectedIds) { items, (own, partner), rejected ->
+                items.map { it.toEntryUi(own, partner, currentUserId, it.id.toString() in rejected) }
             }.collect { mutableEntries.value = it }
         }
     }
 
     fun updateNames(own: String, partner: String) {
         names.value = own.trim() to partner.trim()
+    }
+
+    /** Records this phone still owes the server an operation it refused. */
+    fun updateRejectedIds(ids: Set<String>) {
+        rejectedIds.value = ids
     }
 }
 
@@ -61,6 +69,7 @@ internal fun TimelineItem.toEntryUi(
     ownName: String,
     partnerName: String,
     currentUserId: UUID?,
+    rejected: Boolean = false,
 ): TimelineEntryUi {
     val zone = runCatching { ZoneId.of(occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
     val local = occurredAt.atZone(zone)
@@ -80,5 +89,6 @@ internal fun TimelineItem.toEntryUi(
         shared = mode == com.twomemory.model.EntryMode.COLLABORATIVE,
         mine = mine,
         unsent = state == com.twomemory.model.EntryState.DRAFT,
+        rejected = rejected,
     )
 }
