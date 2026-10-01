@@ -6,8 +6,10 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,8 +60,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.MoonLetterTheme
 import com.twomemory.designsystem.R
+import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
 import java.time.DayOfWeek
 import kotlinx.coroutines.launch
 
@@ -84,6 +88,8 @@ fun CoupleRoute(
     onOpenExport: () -> Unit = {},
     onOpenPastToday: () -> Unit = {},
     onOpenWeeklySummary: () -> Unit = {},
+    anniversaryName: String = "我们的中秋",
+    anniversaryDate: String = "农历八月十五",
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -147,6 +153,8 @@ fun CoupleRoute(
         onOpenExport = onOpenExport,
         onOpenPastToday = onOpenPastToday,
         onOpenWeeklySummary = onOpenWeeklySummary,
+        anniversaryName = anniversaryName,
+        anniversaryDate = anniversaryDate,
     )
 }
 
@@ -173,6 +181,8 @@ fun CoupleScreen(
     onOpenExport: () -> Unit = {},
     onOpenPastToday: () -> Unit = {},
     onOpenWeeklySummary: () -> Unit = {},
+    anniversaryName: String = "我们的中秋",
+    anniversaryDate: String = "农历八月十五",
 ) {
     var editingName by remember { mutableStateOf(false) }
     var pickingHour by remember { mutableStateOf(false) }
@@ -180,7 +190,8 @@ fun CoupleScreen(
     val draft = state.draftName.trim()
     val canSave = draft.isNotEmpty() && draft != state.ownName && !state.savingName
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
+        modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Row(
@@ -192,12 +203,22 @@ fun CoupleScreen(
                 Icon(TwoMemoryIcons.Settings, contentDescription = "设置")
             }
         }
-        Image(
-            painter = painterResource(R.drawable.moonletter_cover_default),
-            contentDescription = "我们的封面",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().height(190.dp),
-        )
+        Box(modifier = Modifier.fillMaxWidth().height(190.dp)) {
+            Image(
+                painter = painterResource(R.drawable.moonletter_cover_default),
+                contentDescription = "我们的封面",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(Modifier.fillMaxSize().background(Color(0x4D18202A)))
+            Column(
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 26.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text("中秋，是我们的纪念日", style = TwoMemoryTypography.title, color = Color.White)
+                Text("把平凡的日子，写成只属于我们的故事", style = TwoMemoryTypography.caption, color = Color.White.copy(alpha = .86f))
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -217,6 +238,24 @@ fun CoupleScreen(
                 fallback = R.drawable.moonletter_avatar_ayu,
                 accent = Color(0xFF6F8268),
             )
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).clickable(onClick = onOpenAnniversary),
+            shape = RoundedCornerShape(20.dp),
+            color = TwoMemoryColors.WarmBeigeAccentSoft.copy(alpha = .58f),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(TwoMemoryIcons.Calendar, contentDescription = null, tint = TwoMemoryColors.WarmBeigeAccent, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(anniversaryName.ifBlank { "我们的中秋" }, style = TwoMemoryTypography.title)
+                    Text(anniversaryDate.ifBlank { "还没有设置日期" }, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                }
+                Icon(TwoMemoryIcons.Chevron, contentDescription = "编辑纪念日", tint = TwoMemoryColors.WarmBeigeMuted)
+            }
         }
         if (editingName) {
             Column(

@@ -723,6 +723,8 @@ fun AppNavigation(
                     onOpenExport = { toolRoute = CoupleToolRoute.EXPORT },
                     onOpenPastToday = { reviewRoute = MemoryReviewRoute.PAST_TODAY },
                     onOpenWeeklySummary = { reviewRoute = MemoryReviewRoute.WEEKLY_SUMMARY },
+                    anniversaryName = toolsPrefs.getString("anniversaryName", "我们的中秋").orEmpty(),
+                    anniversaryDate = toolsPrefs.getString("anniversaryDate", "农历八月十五").orEmpty(),
                 )
                 "album" -> AlbumPreviewScreen(media = albumMedia, onOpenEntry = { openEntryId = it })
                 "map" -> CityMapPreviewScreen(

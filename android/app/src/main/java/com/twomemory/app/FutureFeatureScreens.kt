@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -33,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -43,6 +45,7 @@ import com.twomemory.designsystem.EntryPhoto
 import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
 
 data class AlbumMediaUi(
     val id: String,
@@ -72,14 +75,21 @@ fun AlbumPreviewScreen(
     media: List<AlbumMediaUi> = emptyList(),
     onOpenEntry: (String) -> Unit = {},
 ) {
+    var filter by rememberSaveable { mutableStateOf("ALL") }
+    val visibleMedia = when (filter) {
+        "IMAGE" -> media.filter { it.kind == "IMAGE" }
+        "VIDEO" -> media.filter { it.kind != "IMAGE" }
+        else -> media
+    }
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 22.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(13.dp),
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("共同相册", style = TwoMemoryTypography.display)
-                HandDrawnUnderline(170f)
+                HandDrawnUnderline(150f)
             }
             Icon(TwoMemoryIcons.Album, contentDescription = "共同相册", tint = MaterialTheme.colorScheme.primary)
         }
@@ -88,16 +98,21 @@ fun AlbumPreviewScreen(
             style = TwoMemoryTypography.body,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = .62f),
         )
-        if (media.isEmpty()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = filter == "ALL", onClick = { filter = "ALL" }, label = { Text("全部 ${media.size}") })
+            FilterChip(selected = filter == "IMAGE", onClick = { filter = "IMAGE" }, label = { Text("照片") })
+            FilterChip(selected = filter == "VIDEO", onClick = { filter = "VIDEO" }, label = { Text("视频") })
+        }
+        if (visibleMedia.isEmpty()) {
             AlbumEmptyState(Modifier.fillMaxWidth().weight(1f))
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                media.groupBy { it.monthLabel }.forEach { (month, monthMedia) ->
+                visibleMedia.groupBy { it.monthLabel }.forEach { (month, monthMedia) ->
                     item(key = "month-$month") {
                         Text(month, style = TwoMemoryTypography.title, fontWeight = FontWeight.Medium)
                     }
-                    items(monthMedia.chunked(2), key = { row -> row.joinToString("/") { it.id } }) { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    items(monthMedia.chunked(3), key = { row -> row.joinToString("/") { it.id } }) { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                             row.forEach { item ->
                                 MediaTile(item, onOpenEntry, Modifier.weight(1f))
                             }
@@ -141,22 +156,22 @@ private fun AlbumEmptyState(modifier: Modifier) {
 private fun MediaTile(item: AlbumMediaUi, onOpenEntry: (String) -> Unit, modifier: Modifier) {
     Surface(
         modifier = modifier.clickable { onOpenEntry(item.entryId) },
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Transparent,
         tonalElevation = 0.dp,
     ) {
-        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             if (item.kind == "IMAGE") {
                 EntryPhoto(
                     localPath = item.localPath,
                     assetId = item.assetId,
-                    modifier = Modifier.height(136.dp),
+                    modifier = Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(12.dp)),
                     contentDescription = "${item.author}在${item.dateLabel}的照片",
                 )
             } else {
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(136.dp)
-                        .background(TwoMemoryColors.WarmBeigeLine.copy(alpha = .45f), RoundedCornerShape(18.dp)),
+                    modifier = Modifier.fillMaxWidth().height(112.dp)
+                        .background(TwoMemoryColors.WarmBeigeLine.copy(alpha = .45f), RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -166,8 +181,8 @@ private fun MediaTile(item: AlbumMediaUi, onOpenEntry: (String) -> Unit, modifie
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(item.dateLabel, style = TwoMemoryTypography.caption, modifier = Modifier.weight(1f))
-                Text(item.timeLabel, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                Text(item.dateLabel, style = TwoMemoryTypography.caption, maxLines = 1, modifier = Modifier.weight(1f))
+                Text(item.author, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted, maxLines = 1)
             }
         }
     }
@@ -183,14 +198,33 @@ fun CityMapPreviewScreen(
 ) {
     var showSnapshotDialog by rememberSaveable { mutableStateOf(false) }
     var cityDraft by rememberSaveable { mutableStateOf("") }
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)) {
         Box(
-            modifier = Modifier.fillMaxWidth().height(276.dp).background(Color(0xFFDDE8E1)),
+            modifier = Modifier.fillMaxWidth().height(276.dp).background(Color(0xFFE3ECE4)),
         ) {
             Canvas(Modifier.fillMaxSize()) {
-                drawCircle(Color(0xFFEFF0D8), radius = size.minDimension * .43f, center = Offset(size.width * .28f, size.height * .55f))
+                drawCircle(Color(0xFFF2F0D9), radius = size.minDimension * .43f, center = Offset(size.width * .28f, size.height * .55f))
                 drawCircle(Color(0xFFC9DDD7), radius = size.minDimension * .36f, center = Offset(size.width * .86f, size.height * .18f))
-                drawCircle(Color(0xFF6F8268), radius = 9.dp.toPx(), center = Offset(size.width * .58f, size.height * .58f))
+                drawCircle(Color(0xFFD6E1C7), radius = size.minDimension * .28f, center = Offset(size.width * .62f, size.height * .84f))
+                val route = listOf(
+                    Offset(size.width * .18f, size.height * .62f),
+                    Offset(size.width * .43f, size.height * .37f),
+                    Offset(size.width * .69f, size.height * .58f),
+                    Offset(size.width * .84f, size.height * .30f),
+                )
+                route.zipWithNext().forEach { (from, to) ->
+                    drawLine(
+                        color = TwoMemoryColors.WarmBeigeSage.copy(alpha = .74f),
+                        start = from,
+                        end = to,
+                        strokeWidth = 3.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 7.dp.toPx())),
+                    )
+                }
+                route.take(stories.size.coerceAtMost(route.size)).forEach { point ->
+                    drawCircle(TwoMemoryColors.WarmBeigeAccent, radius = 8.dp.toPx(), center = point)
+                    drawCircle(Color.White.copy(alpha = .86f), radius = 3.dp.toPx(), center = point)
+                }
             }
             Column(modifier = Modifier.padding(26.dp)) {
                 Text("我们的城市", style = TwoMemoryTypography.display)

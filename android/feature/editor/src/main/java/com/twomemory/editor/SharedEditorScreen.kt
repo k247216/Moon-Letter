@@ -31,8 +31,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.TwoMemoryIcons
+import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
 import com.twomemory.model.EntryMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -55,13 +57,14 @@ fun SharedEditorRoute(
     Scaffold(
         bottomBar = {
             Column(
-                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                modifier = Modifier.fillMaxWidth().background(TwoMemoryColors.WarmBeigeNav)
                     .navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
             ) { EditorAttachmentToolbar(onImageClick = photoActions?.pick) }
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding)
+            modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState()).padding(padding)
                 .padding(horizontal = 22.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
@@ -168,8 +171,19 @@ private fun SharedTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
                 style = TwoMemoryTypography.body,
             )
         }
-        TextButton(onClick = if (state.saved) onClose else onPublish, enabled = state.saved || (!state.saving && state.hasContent)) {
-            Text(if (state.saving) "发布中" else if (state.saved) "返回时间轴" else "发布", fontWeight = FontWeight.Medium)
+        val actionEnabled = state.saved || (!state.saving && state.hasContent)
+        TextButton(
+            onClick = if (state.saved) onClose else onPublish,
+            enabled = actionEnabled,
+            modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+                .background(if (actionEnabled) TwoMemoryColors.WarmBeigeAccent else TwoMemoryColors.WarmBeigeLine)
+                .padding(horizontal = 4.dp),
+        ) {
+            Text(
+                if (state.saving) "发布中" else if (state.saved) "返回时间轴" else "发布",
+                color = if (actionEnabled) Color.White else TwoMemoryColors.WarmBeigeMuted,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }

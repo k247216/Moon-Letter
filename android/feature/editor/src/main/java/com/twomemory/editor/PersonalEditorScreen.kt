@@ -41,8 +41,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.TwoMemoryIcons
+import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
 import com.twomemory.model.EntryMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -65,7 +67,7 @@ fun PersonalEditorScreen(
     Scaffold(
         bottomBar = {
             Column(
-                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                modifier = Modifier.fillMaxWidth().background(TwoMemoryColors.WarmBeigeNav)
                     .navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 state.error?.let {
@@ -81,7 +83,8 @@ fun PersonalEditorScreen(
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding)
+            modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState()).padding(padding)
                 .padding(horizontal = 22.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
@@ -162,14 +165,21 @@ private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
                 style = TwoMemoryTypography.body,
             )
         }
-        TextButton(onClick = if (state.saved) onClose else onPublish, enabled = state.saved || (!state.saving && state.hasContent)) {
+        val actionEnabled = state.saved || (!state.saving && state.hasContent)
+        TextButton(
+            onClick = if (state.saved) onClose else onPublish,
+            enabled = actionEnabled,
+            modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                .background(if (actionEnabled) TwoMemoryColors.WarmBeigeAccent else TwoMemoryColors.WarmBeigeLine)
+                .padding(horizontal = 4.dp),
+        ) {
             Text(
                 when {
                     state.saving -> "保存中"
                     state.saved -> "返回时间轴"
                     else -> "完成"
                 },
-                color = if (state.hasContent) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                color = if (actionEnabled) Color.White else TwoMemoryColors.WarmBeigeMuted,
                 fontWeight = FontWeight.Medium,
             )
         }
@@ -178,15 +188,15 @@ private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
 
 @Composable
 fun RecordModeSwitch(mode: EntryMode, onModeChange: (EntryMode) -> Unit) {
-    Row(
+            Row(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)).padding(1.dp),
+            .background(TwoMemoryColors.WarmBeigeLine.copy(alpha = 0.54f)).padding(1.dp),
     ) {
         listOf(EntryMode.PERSONAL to "我的记录", EntryMode.COLLABORATIVE to "共同记录").forEach { (item, label) ->
             val selected = mode == item
             Box(
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(27.dp)).clickable { onModeChange(item) }
-                    .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
+                    .background(if (selected) TwoMemoryColors.WarmBeigeAccentSoft else Color.Transparent)
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -234,7 +244,7 @@ fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
     var explanation by remember { mutableStateOf<EditorAttachmentKind?>(null) }
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         listOf(
@@ -252,13 +262,20 @@ fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
                     if (images) onImageClick?.invoke() else kind?.let { explanation = it }
                 },
                 enabled = images.not() || onImageClick != null,
-                modifier = Modifier.semantics {
+                modifier = Modifier.size(42.dp).semantics {
                     contentDescription = if (images) "添加照片" else "$label（查看说明）"
                 },
             ) {
                 Icon(icon, contentDescription = label)
             }
         }
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "自动保存草稿",
+            style = TwoMemoryTypography.caption,
+            color = TwoMemoryColors.WarmBeigeMuted,
+            maxLines = 1,
+        )
     }
     explanation?.let { kind ->
         AlertDialog(

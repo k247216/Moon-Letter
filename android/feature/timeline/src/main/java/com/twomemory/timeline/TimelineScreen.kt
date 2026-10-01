@@ -44,11 +44,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.twomemory.designsystem.EntryPhoto
 import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
 
 /** Continuous paper timeline. The source of entries remains the Room-backed ViewModel. */
 @Composable
@@ -70,16 +72,20 @@ fun TimelineScreen(
     onOpen: (String) -> Unit = {},
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         item { TimelineHeader(coverBitmap, onChangeCover) }
         if (entries.isEmpty()) {
             item { EmptyTimeline() }
-        }
-        items(entries, key = { it.id }) { entry ->
-            TimelineRow(entry = entry, onOpen = onOpen, modifier = Modifier.padding(horizontal = 24.dp))
-            Spacer(Modifier.height(22.dp))
+        } else {
+            entries.groupBy { it.dateLabel }.forEach { (day, dayEntries) ->
+                item(key = "day-$day") { DayStitchHeader(day, Modifier.padding(horizontal = 24.dp)) }
+                items(dayEntries, key = { it.id }) { entry ->
+                    TimelineRow(entry = entry, onOpen = onOpen, modifier = Modifier.padding(horizontal = 24.dp))
+                    Spacer(Modifier.height(22.dp))
+                }
+            }
         }
         item { Spacer(Modifier.height(32.dp)) }
     }
@@ -88,8 +94,7 @@ fun TimelineScreen(
 @Composable
 private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit) {
     Box(
-        modifier = Modifier.fillMaxWidth().height(198.dp)
-            .background(MaterialTheme.colorScheme.background),
+        modifier = Modifier.fillMaxWidth().height(326.dp),
     ) {
         if (coverBitmap != null) {
             Image(
@@ -98,46 +103,55 @@ private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit)
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-            Box(Modifier.fillMaxSize().background(Color(0x520F1722)))
+        } else {
+            Image(
+                painter = painterResource(R.drawable.moonletter_cover_default),
+                contentDescription = "默认首页封面",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
+        Box(Modifier.fillMaxSize().background(Color(0x660F1722)))
         Column(
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 29.dp, top = 42.dp, end = 58.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 42.dp, end = 44.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text(
                 "我们的时光",
                 style = TwoMemoryTypography.display,
-                color = if (coverBitmap == null) MaterialTheme.colorScheme.onBackground else Color.White,
+                color = Color.White,
+            )
+            Text(
+                "和你一起，把平凡的日子缝成闪闪发光的线。",
+                style = TwoMemoryTypography.title.copy(fontSize = 18.sp, lineHeight = 28.sp),
+                color = Color.White.copy(alpha = .94f),
             )
             Text(
                 "中秋 · 仍在一起写着",
                 style = TwoMemoryTypography.body,
-                color = if (coverBitmap == null) MaterialTheme.colorScheme.onBackground.copy(alpha = .82f) else Color.White.copy(alpha = .88f),
+                color = Color.White.copy(alpha = .82f),
             )
         }
         Row(
-            modifier = Modifier.align(Alignment.TopEnd)
+            modifier = Modifier.align(Alignment.BottomEnd)
                 .clip(RoundedCornerShape(18.dp))
                 .clickable(onClick = onChangeCover)
-                .background(
-                    if (coverBitmap == null) MaterialTheme.colorScheme.surface.copy(alpha = .72f)
-                    else Color.Black.copy(alpha = .28f),
-                )
-                .padding(horizontal = 12.dp, vertical = 9.dp)
-                .padding(top = 30.dp),
+                .background(Color.Black.copy(alpha = .28f))
+                .padding(horizontal = 14.dp, vertical = 9.dp)
+                .padding(bottom = 20.dp, end = 18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 TwoMemoryIcons.Camera,
                 contentDescription = "更换背景图",
-                tint = if (coverBitmap == null) MaterialTheme.colorScheme.onSurface else Color.White,
+                tint = Color.White,
                 modifier = Modifier.size(20.dp),
             )
             Spacer(Modifier.width(6.dp))
             Text(
                 "换一张",
                 style = TwoMemoryTypography.caption,
-                color = if (coverBitmap == null) MaterialTheme.colorScheme.onSurface else Color.White,
+                color = Color.White,
             )
         }
     }
@@ -207,10 +221,10 @@ private fun TimelineRow(entry: TimelineEntryUi, onOpen: (String) -> Unit, modifi
         Spacer(Modifier.width(12.dp))
         Surface(
             modifier = Modifier.weight(1f).semantics { contentDescription = "打开记录" }.clickable { onOpen(entry.id) },
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, TwoMemoryColors.WarmBeigeLine),
-            shadowElevation = 1.dp,
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = .66f),
+            border = BorderStroke(1.dp, TwoMemoryColors.WarmBeigeLine.copy(alpha = .45f)),
+            shadowElevation = 0.dp,
         ) {
             Column(modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
