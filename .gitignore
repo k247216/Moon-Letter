@@ -5,6 +5,7 @@
 
 server/target/
 server/.env
+server/storage/
 
 android/.gradle/
 android/local.properties
