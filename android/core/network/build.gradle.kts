@@ -25,4 +25,9 @@ kotlin {
 
 dependencies {
     implementation(project(":core:model"))
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+    implementation(libs.okhttp)
+    implementation(libs.gson)
+    implementation(libs.kotlinx.coroutines.core)
 }

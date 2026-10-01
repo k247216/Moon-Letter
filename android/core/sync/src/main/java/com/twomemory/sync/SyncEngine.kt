@@ -5,6 +5,7 @@ import com.twomemory.model.RemoteChange
 import com.twomemory.model.SyncStore
 import com.twomemory.network.ChangePage
 import com.twomemory.network.CoupleDiaryApi
+import com.twomemory.network.HttpUnauthorizedException
 import com.twomemory.network.PushResult
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -19,6 +20,7 @@ data class SyncResult(
     val pulled: Int = 0,
     val nextSequence: Long? = null,
     val failed: Throwable? = null,
+    val needsRePair: Boolean = false,
 )
 
 class SyncEngine(
@@ -43,6 +45,10 @@ class SyncEngine(
                         store.markConflict(operation.operationId)
                         conflicts++
                     }
+                    PushResult.Status.UNAUTHORIZED -> {
+                        // Session is gone: stop pushing, surface re-pair to UI.
+                        return SyncResult(needsRePair = true)
+                    }
                     PushResult.Status.RETRYABLE_FAILURE -> {
                         scheduleRetry(operation)
                         retried++
@@ -62,8 +68,36 @@ class SyncEngine(
             store.applyChangesAtomically(coupleId, page.changes, page.nextSequence)
             SyncResult(pulled = page.changes.size, nextSequence = page.nextSequence)
         } catch (failure: Throwable) {
-            SyncResult(failed = failure, nextSequence = cursor)
+            SyncResult(failed = failure, nextSequence = cursor, needsRePair = failure is HttpUnauthorizedException)
         }
+    }
+
+    /** Pulls page after page until the server reports has_more=false. */
+    suspend fun pullAll(): SyncResult {
+        var cursor = try {
+            store.currentCursor(coupleId)
+        } catch (failure: Throwable) {
+            return SyncResult(failed = failure)
+        }
+        var pulled = 0
+        var hasMore = true
+        while (hasMore) {
+            try {
+                val page = api.pull(coupleId, cursor, 200)
+                store.applyChangesAtomically(coupleId, page.changes, page.nextSequence)
+                pulled += page.changes.size
+                cursor = page.nextSequence
+                hasMore = page.hasMore
+            } catch (failure: Throwable) {
+                return SyncResult(
+                    pulled = pulled,
+                    nextSequence = cursor,
+                    failed = failure,
+                    needsRePair = failure is HttpUnauthorizedException,
+                )
+            }
+        }
+        return SyncResult(pulled = pulled, nextSequence = cursor)
     }
 
     private suspend fun scheduleRetry(operation: PendingOperation) {

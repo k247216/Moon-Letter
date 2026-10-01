@@ -1,13 +1,16 @@
 package com.twomemory.sync
 
 import android.content.Context
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import androidx.work.workDataOf
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 fun interface SyncEngineFactory {
     fun create(coupleId: UUID): SyncEngine
@@ -24,21 +27,35 @@ class SyncWorker(
     override suspend fun doWork(): Result {
         val coupleId = inputData.getString(KEY_COUPLE_ID)?.let(UUID::fromString) ?: return Result.failure()
         val engine = SyncEngineRegistry.factory.create(coupleId)
-        val push = engine.pushPending()
-        val pull = engine.pullAfter(inputData.getLong(KEY_CURSOR, 0L))
+        engine.pushPending()
+        val pull = engine.pullAll()
+        // A 401 means re-pair is needed; retrying blindly would not help.
+        if (pull.needsRePair) return Result.failure()
         return if (pull.failed != null) Result.retry() else Result.success()
     }
 
     companion object {
         const val KEY_COUPLE_ID = "couple_id"
-        const val KEY_CURSOR = "cursor"
+
+        /**
+         * Best-effort background sync: needs network, exponential backoff.
+         * Real-time delivery comes from app start / foreground return /
+         * manual refresh, never promised from here.
+         */
         fun enqueue(context: Context, coupleId: UUID) {
             val work = OneTimeWorkRequestBuilder<SyncWorker>()
-                .setInputData(workDataOf(KEY_COUPLE_ID to coupleId.toString()))
+                .setConstraints(
+                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                .setInputData(workDataOf(coupleId))
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "moon-letter-sync-$coupleId", ExistingWorkPolicy.KEEP, work,
+                "moon-letter-sync-$coupleId", ExistingWorkPolicy.REPLACE, work,
             )
         }
+
+        private fun workDataOf(coupleId: UUID) =
+            androidx.work.workDataOf(KEY_COUPLE_ID to coupleId.toString())
     }
 }

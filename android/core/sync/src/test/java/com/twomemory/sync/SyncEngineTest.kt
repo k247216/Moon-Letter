@@ -2,13 +2,19 @@ package com.twomemory.sync
 
 import com.twomemory.model.PendingOperation
 import com.twomemory.model.RemoteChange
+import com.twomemory.model.SyncStore
 import com.twomemory.network.ChangePage
 import com.twomemory.network.CoupleDiaryApi
+import com.twomemory.network.HttpUnauthorizedException
 import com.twomemory.network.PushResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import java.io.IOException
 import java.util.UUID
 
 class SyncEngineTest {
@@ -39,13 +45,64 @@ class SyncEngineTest {
     }
 
     @Test
-    fun pullDoesNotAdvanceCursorWhenRoomApplyFails() = runTest {
+    fun timeoutReuseSameIdempotencyIdThenApply() = runTest {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val store = FakeStore(listOf(operation(operationId)))
+        val api = FakeApi(PushResult.Status.APPLIED)
+        api.throwOnPush = true
+        SyncEngine(api, store, coupleId).pushPending()
+        assertEquals(0, store.applied.size)
+        api.throwOnPush = false
+        val result = SyncEngine(api, store, coupleId).pushPending()
+        assertEquals(1, result.applied)
+        // Both attempts carried the SAME idempotency id.
+        assertEquals(listOf(operationId, operationId), api.pushedIds)
+        assertEquals(listOf(operationId), store.applied)
+    }
+
+    @Test
+    fun pullLoopsUntilHasMoreIsFalse() = runTest {
+        val store = FakeStore(emptyList())
+        val api = FakeApi(PushResult.Status.APPLIED)
+        api.pages = ArrayDeque(listOf(
+            ChangePage(listOf(change(1)), 5, hasMore = true),
+            ChangePage(listOf(change(6), change(7)), 9, hasMore = false),
+        ))
+        val result = SyncEngine(api, store, coupleId).pullAll()
+        assertEquals(3, result.pulled)
+        assertEquals(9L, result.nextSequence)
+        assertEquals(3, store.appliedChanges.size)
+        assertEquals(9L, store.currentCursor(coupleId))
+    }
+
+    @Test
+    fun unauthorized401StopsWithRePairMessage() = runTest {
+        val operationId = UUID.randomUUID()
+        val store = FakeStore(listOf(operation(operationId)))
+        val api = FakeApi(PushResult.Status.UNAUTHORIZED)
+        val pushResult = SyncEngine(api, store, coupleId).pushPending()
+        assertTrue(pushResult.needsRePair)
+        assertTrue(store.applied.isEmpty())
+        assertNull(store.retryAt)
+
+        val pullResult = SyncEngine(api, store, coupleId).pullAll()
+        assertTrue(pullResult.needsRePair)
+        assertNotNull(pullResult.failed)
+        assertTrue(pullResult.failed is HttpUnauthorizedException)
+    }
+
+    @Test
+    fun pullFailureBeforeCommitKeepsCursorUnchanged() = runTest {
         val store = FakeStore(emptyList(), failApply = true)
         val page = ChangePage(listOf(RemoteChange(4, "ENTRY", UUID.randomUUID(), "DELETE", null)), 4, false)
         val result = SyncEngine(FakeApi(PushResult.Status.APPLIED, page), store, coupleId).pullAfter(3)
         assertEquals(3, result.nextSequence)
         assertNotNull(result.failed)
+        assertFalse(result.needsRePair)
     }
+
+    private fun change(sequence: Long) =
+        RemoteChange(sequence, "ENTRY", UUID.randomUUID(), "CREATE", "{}")
 
     private fun operation(id: UUID, attemptCount: Int = 0) = PendingOperation(
         id, coupleId, UUID.randomUUID(), "CREATE_ENTRY", "{}", 0, attemptCount,
@@ -55,8 +112,20 @@ class SyncEngineTest {
         var apiStatus: PushResult.Status,
         private val page: ChangePage = ChangePage(emptyList(), 0, false),
     ) : CoupleDiaryApi {
-        override suspend fun push(operation: PendingOperation) = PushResult(operation.operationId, apiStatus)
-        override suspend fun pull(coupleId: UUID, after: Long, limit: Int) = page
+        var throwOnPush = false
+        val pushedIds = mutableListOf<UUID>()
+        var pages: ArrayDeque<ChangePage> = ArrayDeque()
+
+        override suspend fun push(operation: PendingOperation): PushResult {
+            pushedIds += operation.operationId
+            if (throwOnPush) throw IOException("simulated timeout")
+            return PushResult(operation.operationId, apiStatus)
+        }
+
+        override suspend fun pull(coupleId: UUID, after: Long, limit: Int): ChangePage {
+            if (apiStatus == PushResult.Status.UNAUTHORIZED) throw HttpUnauthorizedException()
+            return pages.removeFirstOrNull() ?: page
+        }
     }
 
     private class FakeStore(
@@ -64,7 +133,9 @@ class SyncEngineTest {
         private val failApply: Boolean = false,
     ) : SyncStore {
         val applied = mutableListOf<UUID>()
+        val appliedChanges = mutableListOf<RemoteChange>()
         var retryAt: Long? = null
+        var cursor: Long = 0
         override suspend fun pendingOperations(limit: Int) = operations
         override suspend fun markApplied(operationId: UUID) { applied += operationId }
         override suspend fun markRetry(operationId: UUID, attemptCount: Int, nextAttemptAtEpochMillis: Long) {
@@ -73,6 +144,9 @@ class SyncEngineTest {
         override suspend fun markConflict(operationId: UUID) = Unit
         override suspend fun applyChangesAtomically(coupleId: UUID, changes: List<RemoteChange>, nextSequence: Long) {
             if (failApply) error("room failed")
+            appliedChanges += changes
+            cursor = nextSequence
         }
+        override suspend fun currentCursor(coupleId: UUID) = cursor
     }
 }

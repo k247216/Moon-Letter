@@ -63,6 +63,10 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
         }
     }
 
+    override suspend fun currentCursor(coupleId: UUID): Long = withContext(Dispatchers.IO) {
+        database.syncCursorDao().nextSequence(coupleId.toString()) ?: 0L
+    }
+
     /** Upsert semantics make duplicate deliveries harmless. */
     private suspend fun applyEntryChange(change: RemoteChange) {
         val payload = JSONObject(change.payload)

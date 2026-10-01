@@ -47,11 +47,43 @@ class LocalEntryWriter(private val database: AppDatabase) {
                     coupleId = command.coupleId.toString(),
                     entityId = command.entryId.toString(),
                     action = "CREATE_ENTRY",
-                    payload = command.entryId.toString(),
+                    payload = createOperationPayload(command),
                     baseVersion = 0,
                 ),
             )
         }
         command.entryId
+    }
+
+    /**
+     * The outbox payload must match the server's typed dispatcher contract
+     * (CREATE_PERSONAL_ENTRY): the server executes it, not the client.
+     */
+    private fun createOperationPayload(command: LocalEntryCommand): String {
+        val blocks = org.json.JSONArray()
+        for (block in command.blocks) {
+            val text = if (block.type == com.twomemory.model.BlockType.TEXT) {
+                try {
+                    org.json.JSONObject(block.payload).optString("text", block.payload)
+                } catch (exception: org.json.JSONException) {
+                    block.payload
+                }
+            } else {
+                null
+            }
+            blocks.put(org.json.JSONObject().apply {
+                put("blockId", block.id.toString())
+                put("type", block.type.name)
+                put("orderKey", block.orderKey)
+                if (text != null) put("text", text) else put("payload", block.payload)
+            })
+        }
+        return org.json.JSONObject().apply {
+            put("authorId", command.authorId.toString())
+            put("title", command.title ?: org.json.JSONObject.NULL)
+            put("occurredAt", command.occurredAt.toString())
+            put("occurredTimezone", command.occurredTimezone)
+            put("blocks", blocks)
+        }.toString()
     }
 }

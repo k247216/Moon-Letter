@@ -61,4 +61,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
     abstract fun outboxDao(): OutboxDao
     abstract fun syncCursorDao(): SyncCursorDao
+
+    companion object {
+        fun build(context: android.content.Context): AppDatabase =
+            androidx.room.Room.databaseBuilder(
+                context,
+                AppDatabase::class.java,
+                "moon-letter.db",
+            ).build()
+    }
 }

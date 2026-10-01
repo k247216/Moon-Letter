@@ -154,3 +154,11 @@
 - **测试**：`RoomSyncStoreTest`（Robolectric JVM，真 Room，两个独立临时库文件代表两台设备）：条目+outbox 同事务提交、杀进程重开库后 pending 仍在、坏 payload 使整页+cursor 回滚、重复变更无害且 cursor 正确推进。
 - **结果**：`./gradlew :core:database:testDebugUnitTest` → `BUILD SUCCESSFUL`（EXIT=0，5/5）。
 - **环境坑（重要）**：本机中文用户名导致 Robolectric 原生运行时解压到 TEMP 时 ICU 路径乱码崩溃；解决：以 `TEMP/TMP=E:\tmp` 运行 Gradle。此坑同时解释了模拟器异常的部分嫌疑。
+
+### 记录 10：Task 10 Retrofit 同步引擎装配（2026-10-01）
+
+- **Commit**：`feat(android): wire Room Retrofit synchronization`。
+- **实现**：`RetrofitFactory.kt`（Retrofit/OkHttp、bearer 注入拦截器、10s/15s 超时、UUID Gson 适配器、HTTP→状态映射：200→APPLIED、409→CONFLICT、401→UNAUTHORIZED、其余→RETRYABLE_FAILURE；`operationPayloadHash` 与服务端 SyncPayloadHasher 同一规范 operationType+"\n"+payload）；SyncStore 增加 currentCursor；SyncEngine 增加 UNAUTHORIZED 即停并报 needsRePair、pullAll（循环拉到 has_more=false）；LocalEntryWriter outbox payload 改为服务端 CREATE_PERSONAL_ENTRY 契约 JSON（org.json 构建）；SyncWorker 用 pullAll + 网络约束 + 指数退避（best effort，不承诺分钟级送达，不依赖 FCM）；app 侧 `SyncSession`（SharedPreferences 存 token/coupleId/userId/baseUrl，默认 http://10.0.2.2:8080）+ 启动与回前台触发同步。
+- **测试**：SyncEngineTest 扩到 7 个：FIFO push、超时后复用同一幂等 ID 重试成功、pull 循环到 has_more=false 且游标=9、401 推/拉均停止并报 needsRePair、失败前游标不变、指数退避与冲突保留。
+- **结果**：`./gradlew :core:sync:testDebugUnitTest :app:assembleDebug` → `BUILD SUCCESSFUL`（EXIT=0，7/7）；全模块 `./gradlew test` → `BUILD SUCCESSFUL`（EXIT=0）。
+- **TDD 红灯**：一处测试缺陷（FakeApi 在抛超时异常前未记录 ID），修正后转绿；另修正一处 SyncEngine 缺 import。

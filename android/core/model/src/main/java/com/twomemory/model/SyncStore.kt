@@ -13,4 +13,5 @@ interface SyncStore {
     suspend fun markRetry(operationId: UUID, attemptCount: Int, nextAttemptAtEpochMillis: Long)
     suspend fun markConflict(operationId: UUID)
     suspend fun applyChangesAtomically(coupleId: UUID, changes: List<RemoteChange>, nextSequence: Long)
+    suspend fun currentCursor(coupleId: UUID): Long
 }
