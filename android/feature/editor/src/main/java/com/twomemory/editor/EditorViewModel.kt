@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 
 /** One attached picture; [id] becomes the block id and the stored file's name. */
@@ -22,7 +23,10 @@ data class EditorUiState(
     val title: String = "",
     val body: String = "",
     val occurrenceTime: Instant = Instant.now(),
-    val timezone: String = "Asia/Shanghai",
+    /** The zone this phone is in: what the record stores as 故事发生时区. */
+    val timezone: String = ZoneId.systemDefault().id,
+    /** True once the writer picked a moment, so a page can stop saying 此刻. */
+    val occurrenceEdited: Boolean = false,
     val authors: List<String> = listOf("我"),
     /** Read-only partner block supplied when opening an existing shared record. */
     val partnerName: String? = null,
@@ -75,14 +79,33 @@ class EditorViewModel : ViewModel() {
         mutableState.value = mutableState.value.copy(photoError = message)
     }
 
+    /**
+     * When the story happened. Writing about this morning at night must not record
+     * the evening, so this is the writer's answer rather than the clock's.
+     */
+    fun updateOccurrence(occurrenceTime: Instant) {
+        mutableState.value = mutableState.value.copy(
+            occurrenceTime = occurrenceTime,
+            occurrenceEdited = true,
+            recordStatus = MoonLetterRecordStatus.DRAFT,
+        )
+    }
+
     /** Restores an interrupted session's text so a killed process loses nothing. */
-    fun restore(savedTitle: String, savedBody: String, savedPhotos: List<EditorPhoto> = emptyList()) {
+    fun restore(
+        savedTitle: String,
+        savedBody: String,
+        savedPhotos: List<EditorPhoto> = emptyList(),
+        savedOccurrence: Instant? = null,
+    ) {
         if (mutableState.value.hasContent) return
         if (savedTitle.isBlank() && savedBody.isBlank() && savedPhotos.isEmpty()) return
         mutableState.value = mutableState.value.copy(
             title = savedTitle,
             body = savedBody,
             photos = savedPhotos,
+            occurrenceTime = savedOccurrence ?: mutableState.value.occurrenceTime,
+            occurrenceEdited = savedOccurrence != null,
             recordStatus = MoonLetterRecordStatus.DRAFT,
         )
     }

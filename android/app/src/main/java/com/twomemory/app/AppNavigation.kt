@@ -33,7 +33,6 @@ import com.twomemory.database.AppDatabase
 import com.twomemory.designsystem.MoonLetterBottomNavigation
 import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.MoonLetterTheme
-import com.twomemory.designsystem.TwoMemoryTheme
 import com.twomemory.editor.EditorViewModel
 import com.twomemory.editor.PersonalEditorScreen
 import com.twomemory.editor.SharedEditorRoute
@@ -312,6 +311,8 @@ object DraftStore {
         val title: String,
         val body: String,
         val photos: List<com.twomemory.editor.EditorPhoto> = emptyList(),
+        /** A moment the writer picked. Without one, a resumed draft takes the current time. */
+        val occurrence: java.time.Instant? = null,
     )
 
     fun save(
@@ -320,6 +321,7 @@ object DraftStore {
         title: String,
         body: String,
         photos: List<com.twomemory.editor.EditorPhoto> = emptyList(),
+        occurrence: java.time.Instant? = null,
     ) {
         val editor = prefs(context).edit()
         if (title.isBlank() && body.isBlank() && photos.isEmpty()) {
@@ -335,6 +337,8 @@ object DraftStore {
                             .put("mime", photo.mimeType))
                     }
                 }.toString())
+            if (occurrence == null) editor.remove(field(mode, "occurrenceAt"))
+            else editor.putLong(field(mode, "occurrenceAt"), occurrence.toEpochMilli())
         }
         editor.apply()
     }
@@ -356,7 +360,7 @@ object DraftStore {
             .filter { it.isNotBlank() }
             .joinToString("\n\n")
         val mergedPhotos = (existing?.photos.orEmpty() + photos).distinctBy { it.id }
-        save(context, EntryMode.PERSONAL, mergedTitle, mergedBody, mergedPhotos)
+        save(context, EntryMode.PERSONAL, mergedTitle, mergedBody, mergedPhotos, existing?.occurrence)
     }
 
     fun load(context: android.content.Context, mode: EntryMode): Draft? {
@@ -374,8 +378,11 @@ object DraftStore {
                 )
             }
         }.getOrDefault(emptyList())
+        val occurrence = if (stored.contains(field(mode, "occurrenceAt")))
+            java.time.Instant.ofEpochMilli(stored.getLong(field(mode, "occurrenceAt"), 0L))
+        else null
         return if (title.isBlank() && body.isBlank() && photos.isEmpty()) null
-        else Draft(title, body, photos)
+        else Draft(title, body, photos, occurrence)
     }
 
     fun clear(context: android.content.Context, mode: EntryMode) {
@@ -391,6 +398,7 @@ object DraftStore {
         editor.remove(field(mode, "title"))
             .remove(field(mode, "body"))
             .remove(field(mode, "photos"))
+            .remove(field(mode, "occurrenceAt"))
     }
 }
 
@@ -404,9 +412,7 @@ fun AppNavigation(
     val context = LocalContext.current
     var bound by remember { mutableStateOf(SyncSession.load(context) != null) }
     if (!bound) {
-        TwoMemoryTheme {
-            SetupScreen(onBound = { bound = true })
-        }
+        SetupScreen(onBound = { bound = true })
         return
     }
     var selectedKey by remember { mutableStateOf("timeline") }
@@ -478,11 +484,26 @@ fun AppNavigation(
     // Drafts are written while the user pauses, not only when the close icon
     // is pressed. A killed process therefore loses at most the current debounce
     // window, and the editor never needs a second “save draft” step.
-    LaunchedEffect(editingMode, editorState.title, editorState.body, editorState.photos, editorState.saved) {
+    LaunchedEffect(
+        editingMode,
+        editorState.title,
+        editorState.body,
+        editorState.photos,
+        editorState.occurrenceEdited,
+        editorState.occurrenceTime,
+        editorState.saved,
+    ) {
         val mode = editingMode ?: return@LaunchedEffect
         if (editorState.saved) return@LaunchedEffect
         delay(300)
-        DraftStore.save(context, mode, editorState.title, editorState.body, editorState.photos)
+        DraftStore.save(
+            context,
+            mode,
+            editorState.title,
+            editorState.body,
+            editorState.photos,
+            occurrence = editorState.occurrenceTime.takeIf { editorState.occurrenceEdited },
+        )
     }
 
     // Real display names win over the placeholder couple state: the space is
@@ -540,7 +561,7 @@ fun AppNavigation(
         editorViewModel.reset()
         publishedEntryId = null
         DraftStore.load(context, mode)?.let {
-            editorViewModel.restore(it.title, it.body, it.photos)
+            editorViewModel.restore(it.title, it.body, it.photos, it.occurrence)
         }
         editingMode = mode
     }
@@ -558,7 +579,14 @@ fun AppNavigation(
 
     editingMode?.let { mode ->
         val keepDraft = {
-            DraftStore.save(context, mode, editorState.title, editorState.body, editorState.photos)
+            DraftStore.save(
+                context,
+                mode,
+                editorState.title,
+                editorState.body,
+                editorState.photos,
+                occurrence = editorState.occurrenceTime.takeIf { editorState.occurrenceEdited },
+            )
         }
         val closeEditor = {
             if (editorState.saved) DraftStore.clear(context, mode) else keepDraft()
@@ -593,6 +621,7 @@ fun AppNavigation(
                 ownName = cachedNames.own,
                 delivery = delivery,
                 onRetryDelivery = retryDelivery,
+                onOccurrenceChange = editorViewModel::updateOccurrence,
             )
         } else {
             SharedEditorRoute(
@@ -610,6 +639,7 @@ fun AppNavigation(
                 ownName = cachedNames.own,
                 delivery = delivery,
                 onRetryDelivery = retryDelivery,
+                onOccurrenceChange = editorViewModel::updateOccurrence,
             )
         }
         return

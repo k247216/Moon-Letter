@@ -46,11 +46,7 @@ import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.TwoMemoryTypography
 import com.twomemory.designsystem.paperTexture
 import com.twomemory.model.EntryMode
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
-
-private val occurrenceFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日 · HH:mm", Locale.CHINA)
+import java.time.Instant
 
 @Composable
 fun PersonalEditorScreen(
@@ -66,6 +62,8 @@ fun PersonalEditorScreen(
     /** Real queue state of the record just published; null until something is published. */
     delivery: MoonLetterRecordStatus? = null,
     onRetryDelivery: () -> Unit = {},
+    /** When the story happened; the writer's answer, not the clock's. */
+    onOccurrenceChange: (Instant) -> Unit = {},
 ) {
     Scaffold(
         bottomBar = {
@@ -91,7 +89,7 @@ fun PersonalEditorScreen(
                 .padding(horizontal = 22.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            EditorTopBar(state, onClose, onPublish)
+            EditorTopBar(state, onClose, onPublish, onOccurrenceChange)
             RecordModeSwitch(mode, onModeChange)
             EditorStatus(delivery ?: state.recordStatus, onRetryDelivery)
             val author = ownName.ifBlank { "我" }
@@ -160,7 +158,12 @@ private fun EditorStatus(status: MoonLetterRecordStatus, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: () -> Unit) {
+private fun EditorTopBar(
+    state: EditorUiState,
+    onClose: () -> Unit,
+    onPublish: () -> Unit,
+    onOccurrenceChange: (Instant) -> Unit,
+) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
             Icon(TwoMemoryIcons.Close, contentDescription = "关闭编辑器")
@@ -169,9 +172,11 @@ private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
             horizontalArrangement = Arrangement.Center) {
             Icon(TwoMemoryIcons.Time, contentDescription = null, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(7.dp))
-            Text(
-                state.occurrenceTime.atZone(ZoneId.of(state.timezone)).format(occurrenceFormatter),
-                style = TwoMemoryTypography.body,
+            OccurrenceTime(
+                occurrenceTime = state.occurrenceTime,
+                timezone = state.timezone,
+                editable = !state.saved && !state.saving,
+                onChange = onOccurrenceChange,
             )
         }
         val actionEnabled = state.saved || (!state.saving && state.hasContent)

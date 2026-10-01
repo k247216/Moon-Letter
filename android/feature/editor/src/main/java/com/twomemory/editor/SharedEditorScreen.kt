@@ -36,9 +36,7 @@ import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.TwoMemoryTypography
 import com.twomemory.designsystem.paperTexture
 import com.twomemory.model.EntryMode
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import java.time.Instant
 
 @Composable
 fun SharedEditorRoute(
@@ -55,6 +53,8 @@ fun SharedEditorRoute(
     /** Real queue state of the record just published; null until something is published. */
     delivery: MoonLetterRecordStatus? = null,
     onRetryDelivery: () -> Unit = {},
+    /** When the story happened; the writer's answer, not the clock's. */
+    onOccurrenceChange: (Instant) -> Unit = {},
 ) {
     val author = ownName.ifBlank { "我" }
     Scaffold(
@@ -71,7 +71,7 @@ fun SharedEditorRoute(
                 .padding(horizontal = 22.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            SharedTopBar(state, onClose, onPublish)
+            SharedTopBar(state, onClose, onPublish, onOccurrenceChange)
             RecordModeSwitch(EntryMode.COLLABORATIVE, onModeChange)
             EditorStatus(delivery ?: state.recordStatus, onRetryDelivery)
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -97,6 +97,11 @@ fun SharedEditorRoute(
             AuthorBlock(
                 name = author,
                 accent = MaterialTheme.colorScheme.primary,
+                moment = if (state.occurrenceEdited) {
+                    occurrenceLabel(state.occurrenceTime, state.timezone)
+                } else {
+                    "此刻"
+                },
             ) {
                 BasicTextField(
                     value = state.body,
@@ -165,7 +170,12 @@ private fun ReadOnlyAuthorBlock(name: String, body: String) {
 }
 
 @Composable
-private fun SharedTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: () -> Unit) {
+private fun SharedTopBar(
+    state: EditorUiState,
+    onClose: () -> Unit,
+    onPublish: () -> Unit,
+    onOccurrenceChange: (Instant) -> Unit,
+) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
             Icon(TwoMemoryIcons.Close, contentDescription = "关闭编辑器")
@@ -174,10 +184,11 @@ private fun SharedTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
             horizontalArrangement = Arrangement.Center) {
             Icon(TwoMemoryIcons.Time, contentDescription = null, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(7.dp))
-            Text(
-                state.occurrenceTime.atZone(ZoneId.of(state.timezone))
-                    .format(DateTimeFormatter.ofPattern("yyyy年M月d日 · HH:mm", Locale.CHINA)),
-                style = TwoMemoryTypography.body,
+            OccurrenceTime(
+                occurrenceTime = state.occurrenceTime,
+                timezone = state.timezone,
+                editable = !state.saved && !state.saving,
+                onChange = onOccurrenceChange,
             )
         }
         val actionEnabled = state.saved || (!state.saving && state.hasContent)
@@ -201,6 +212,7 @@ private fun SharedTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
 private fun AuthorBlock(
     name: String,
     accent: Color,
+    moment: String,
     content: @Composable () -> Unit,
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -214,7 +226,7 @@ private fun AuthorBlock(
                 Spacer(Modifier.width(8.dp))
                 Text(name, style = TwoMemoryTypography.caption, color = accent)
                 Spacer(Modifier.width(8.dp))
-                Text("此刻", style = TwoMemoryTypography.caption,
+                Text(moment, style = TwoMemoryTypography.caption,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f))
             }
             content()
