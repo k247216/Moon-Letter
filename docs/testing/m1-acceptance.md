@@ -326,3 +326,31 @@
   4. 恢复动作不写 `session_admin_audit`（该表目前只由 CLI 写），所以「谁在什么时候把谁的会话换掉了」在库里查不到。自用两人场景暂不补，但它是一条可审计性缺口。
   5. **落地需要的动作**：服务端要用本轮构建**重启**（V10 列在 dev 库已存在，但运行中的进程必须是新代码）；两台手机要装新 APK。开档当天仍是「两台都清除应用数据 → 第一位初始化 → 另一位用新生成的码配对」。
   6. 未在真机验证：长按复制、`REJOIN` 说明文案的实际读感、以及「另一台手机生成码 → 本机粘贴」这条双手协作的真实耗时（门槛第 5/6 项的一部分，用户已明确接受真机成本后续再精进）。界面复刻与视觉细节本轮刻意只做够用即可，另有其人负责。
+
+### 记录 22：情感钩子——每周回看与新记录本地通知（2026-10-01）
+
+- **Commits**：`138aaea`（Android 侧全部实现与测试），docs 提交另计；`git rev-list --count origin/m1-stable-recording-loop..HEAD` 实测**本地领先 10 个提交**，推送仍逐次授权。
+- **对应门槛第 5 项 / plan Task 11c**。服务端本轮**未改动**。验收人是伴侣本人，代码层达成不等于她那一侧成立。
+- **挑选规则（`core/sync/WeeklyReview.pick`，纯函数）**：只在**已发布**记录里挑（私密草稿永不参与），年龄门槛 8 天（「明显更早」，本周之内的不算），优先离 365 天最近的一条，逐级回退；平手取更近的那条（她更可能记得自己写过）。**挑不到就返回 null——安静跳过**，不生成内容、不显示「本周没有内容」、不凑数。
+- **调度**：`PeriodicWorkRequest` 7 天周期 + `setInitialDelay(millisUntilNext(星期, 整点))`。`schedule(force)` 区分两种入口：开屏/进程启动用 `ExistingPeriodicWorkPolicy.KEEP`（**不能**重排队，否则她每次打开 App 都把下周的提醒往后推），只有她真的改了开关或时间才 `CANCEL_AND_REENQUEUE`。关掉开关既取消已排队的周期任务，worker 内部也重读一次开关——先排队后关闭的那一跑仍然什么都不发。
+- **新记录通知挂在同步 worker 里，而不是界面里**：`SyncEngineRegistry.onCycleCompleted` 是 app 注入的钩子，**签名刻意无参数**——`pulled` 这个数不该离开 worker，任何地方都不该留下一个可被显示的计数。
+- **两条不是「顺手」的决定**：
+  - 钩子在** outcome ≠ FAILURE ** 时都跑，而不是 `pulled > 0` 时跑。`SyncWorker.enqueue` 用 `REPLACE`，她一发新记录就会取消正在拉取的那一轮：那一轮可能已经把 change 落进 Room 却没能跑到钩子，下一轮 `pulled = 0` 就**永远不会**通知。漏一次是永久性的，所以宁可多跑一次幂等检查（一次索引查询 + 一次 prefs 读）。
+  - 排序键用 SQLite 的 **`rowid`（到达顺序）而不是 `occurredAtEpochMillis`**。写「上周六」的记录日期更早、到达更晚，按日期排序它永远当不上「最新」，通知就永久漏掉——而回填日期是这个产品最普通的用法。`ORDER BY occurredAt DESC` 只留给每周回看（那里要的正是"多久以前"）。回归测试：`aBackdatedRecordAnnouncesWhenItIsTheOneThatJustArrived`。
+- **首见不广播**：设备第一次看到伴侣的记录时只把水位推到那条（`NewEntryAction.REMEMBER`），不发通知——把本来就存在的旧记录说成「TA 刚写了一条」是假信息。之后水位只存**一个 entry id**，多条一起到达也只有一条通知。
+- **关闭语义**：`newEntryNoticeEnabled = false` 的 setter 顺手删掉 `lastNotifiedEntryId`，所以再打开时不会把关闭期间到达的记录当新的补发；`NotificationPreferences` 的全部状态是 2 个开关 + 1 个 entry id + 星期/整点 + 一个「权限问过没」标记。通知 id 固定（2001/2002），新的替换旧的，不会堆成需要清理的历史。
+- **无统计自查（H7 的代码层）**：对新增/改动文件 grep `count|未读|统计|已读|活跃|badge|total` —— 命中只有说明「这里没有什么」的注释和一个既有的 `AvatarBadge` 组件名。没有条数、字数、天数、间隔、已读回执，也没有「对方没写」的反向提示。
+- **进程装配搬到 `MoonLetterApplication`**：`SyncEngineRegistry.factory` 此前只在 `triggerSync` 里赋值，而它是 `lateinit`。WorkManager 完全可以只凭一条后台任务启动一个从未显示过界面的进程，那时 `factory.create()` 抛 `UninitializedPropertyAccessException`——一个真实的潜在崩溃，顺带也是通知在后台永远不响的原因。现在 Application 与 `triggerSync` 都走 `installProcessHooks`。
+- **深链**：`MainActivity` 用 `mutableStateOf` + `onNewIntent` 持有 `openEntryId`（通知在 App 已开着时也要生效），`AppNavigation` 只在**本地仍有这条记录**时打开它，否则什么都不做——不给一个空壳详情页。回看与新记录两条通知都直达那一条记录。
+- **入口**：`我们` 页新增「回看与通知」卡：两个开关、星期 chips（横向滚动）、`TimePicker` 只取整点（关掉回看时时间控件不显示），文案里写明「不含内容、不数条数、不攒未读」。视觉复刻与排版细化按分工留给另一个人。
+- **我自己写出来的一盏红灯（不是假红灯，是真 bug）**：第一版 `pick()` 把**绝对时间戳**与 365 天这个**时长**直接相减比大小，于是所有候选的距离都是同一个量级、永远挑中最老的一条。`WeeklyReviewTest` 的 `pickTakesTheRecordClosestToAYearOld` 与 `pickBreaksATieTowardsTheMoreRecentRecord` 先把它抓红，改成用「现在 − 发生时间」算年龄后转绿。
+- **绿灯**：`TEMP/TMP=E:/tmp JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 ./gradlew --offline testDebugUnitTest :core:model:test :app:assembleDebug` → **BUILD SUCCESSFUL**，单元测试 **69 条全绿 0 失败 0 错误**（口径与记录 20/21 一致，不含 `:core:model:test` 的 1 条；上轮 48 + 本轮 21）。新增：`WeeklyReviewTest` 8（挑选与到点延时）、`NewEntryNoticeStateTest` 6（水位与开关后不留痕迹）、`NoticeChainTest` 7（真 Room + 真 SharedPreferences + Robolectric 的 `ShadowNotificationManager`：首见不播报、迟到一条只一条、自己的记录与草稿都不播、关闭后既静音也不留 id、倒填日期仍到达、回看对年轻档案与关闭状态都返回 null）。
+- **必须知道的边界 / 未做**：
+  1. **WorkManager 只保证窗口不保证整点**：周期任务受 Doze、省电与系统调度影响，「周日 20:00 到点就来」在 JVM 上无法证明（`millisUntilNext` 只证明**首次延时的算术**对）。真机必须验一次（H3）；同理，时间选择器只到整点也是这个权衡的一部分。
+  2. 通知本身**未真机验证**：小图标（新加的单色月牙 vector）在状态栏的实际观感、两个渠道在系统设置里的名字、`POST_NOTIFICATIONS` 弹窗的时机（绑定后首次进 App 且只问一次）、以及点开直达那一条记录的真实手感。她若拒绝权限，两条链路都**静音而不是改用应用内角标**（这是刻意的，`NotificationManagerCompat.notify` 用 `runCatching` 包住）。
+  3. **「TA」是写死的第三人称**，没有换成伴侣真名：名字缓存在 `AppNavigation` 的 prefs 里，而通知在 worker 进程路径上发。要显示真名是「多读一个 prefs 键」的量级，本轮按 plan 原文「TA 写了一条新的」实现，是否换成真名留给她本人判断。
+  4. **删除/撤回记录时这条链会需要重做**：当前客户端没有任何把 `entries.deleted` 置 1 的写路径（只有 comments 有），所以「水位按 id 去重」不会因为某条记录消失而误报。将来加删除时，`rowid` 排序与 id 去重**两处都要一起改**，否则会把旧记录说成刚写的。
+  5. 编辑已发布记录（现无此功能）不会造成重复通知：REPLACE 会让该行排到 `rowid` 末尾，但 id 不变 → 判定仍是 `NONE`。记在这里是为了下次不必重新推一遍。
+  6. 关闭开关**不收回已经贴在通知栏的那一条**（她划掉即可），重新打开也不补发关闭期间的记录——见上面的水位删除规则。
+  7. 未做：把当周挑中的那条也在 App 内呈现（打开就看到的卡片）。plan 只要求通知直达；界面复刻与参考图对齐另有其人。
+  8. 落地动作与记录 21 相同且仍未完成：服务端用新构建重启 8080（当前无进程），两台手机装 `:app:assembleDebug` 产出的新 APK；开档当天照旧「两台清数据 → 第一位初始化 → 第二位用新生成的码配对」。
