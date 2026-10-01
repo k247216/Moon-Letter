@@ -417,3 +417,9 @@
 - **本轮内容**：首页默认采用暖米色参考层级（标题「我们的时光」、中秋副标题、日期/具体时间进入纸卡、左侧缝线式连续时间轴）；底栏固定为「时光 / 相册 / ＋记录 / 地图 / 我们」，淡紫工具栏与选中胶囊；封面仍可由用户主动替换；「我们」页保留头像/名字/暖米色/纯白主题入口、未来功能显示「还没开放」，并显示 M1/版本证据。
 - **验证边界**：本机只执行 `git diff --check` 与源码检查；未运行 Gradle、Android SDK、模拟器或真机。导航/个人页 Compose 测试、390×844 截图和真实 Room 数据链路均 **NOT RUN**，不能据此更新 U1/U2/H1/H6/H8 或宣称 M1 通过。
 - **下一步**：SDK 机器用该 SHA 构建 APK，覆盖安装旧包保留数据，执行 `docs/testing/real-use-log.md` 的 A/B 双机首条记录闭环，并回填设备/系统/日志/截图证据。
+
+### 记录 28：相册与城市页接入真实本地投影（2026-10-01）
+
+- **Commit**：`d697e94 feat(ui): make album and city views data-driven`，已推送到 `origin/m1-stable-recording-loop`；计划文档末尾修正为 `15c9971`。
+- **实现**：相册从 Room `entry_blocks` 的已发布 IMAGE/VIDEO 派生月份、日期、作者和来源记录；图片复用本机/远端 asset 渲染，视频明确回到原记录。城市页从已发布 LOCATION block 派生城市故事，地图区域不可用时列表仍能阅读；两页都不请求实时定位、不造演示数据。
+- **测试边界**：新增 `FutureFeatureScreensTest`，但本机未运行 Compose instrumentation、Gradle 或真机；因此相册/城市页仍为 **NOT RUN**，服务端媒体/位置接口尚未接通，不能标记 V2/V3 或 M1 完成。
