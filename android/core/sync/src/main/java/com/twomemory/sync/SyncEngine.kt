@@ -2,6 +2,7 @@ package com.twomemory.sync
 
 import com.twomemory.model.PendingOperation
 import com.twomemory.model.RemoteChange
+import com.twomemory.model.SyncStore
 import com.twomemory.network.ChangePage
 import com.twomemory.network.CoupleDiaryApi
 import com.twomemory.network.PushResult
@@ -10,14 +11,6 @@ import kotlinx.coroutines.ensureActive
 import java.time.Clock
 import java.time.Duration
 import java.util.UUID
-
-interface SyncStore {
-    suspend fun pendingOperations(limit: Int): List<PendingOperation>
-    suspend fun markApplied(operationId: UUID)
-    suspend fun markRetry(operationId: UUID, attemptCount: Int, nextAttemptAtEpochMillis: Long)
-    suspend fun markConflict(operationId: UUID)
-    suspend fun applyChangesAtomically(coupleId: UUID, changes: List<RemoteChange>, nextSequence: Long)
-}
 
 data class SyncResult(
     val applied: Int = 0,

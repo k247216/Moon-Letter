@@ -60,4 +60,5 @@ data class SyncCursorEntity(
 abstract class AppDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
     abstract fun outboxDao(): OutboxDao
+    abstract fun syncCursorDao(): SyncCursorDao
 }

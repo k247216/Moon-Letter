@@ -138,3 +138,19 @@
 - **实现**：新增 `SelfUseRecordingLoopE2ETest`（`@SpringBootTest(RANDOM_PORT)` + 独立真库 moon_letter_e2e_test，全部真实 HTTP，双 bearer token）：bootstrap → 配对（B 端建号+会话）→ A 经类型化同步操作建个人草稿 + 幂等重试（仅 1 条 entry）→ A 发布 → B 分页拉取变更流（limit=1 两页，第二页含 PUBLISH）→ B 读取已发布条目 → 伪造 token 401 → 协作条目双视角（B 追加自己的块成 2 块，改 A 块 403）。配套：publish 现在也追加 PUBLISH 变更行（否则 B 永远感知不到发布）；`TwoDeviceSyncTest` 更名 `TwoDeviceSyncModelTest`（FakeServer 模型/单元测试，注明不计入 E2E 数量）。服务端重启项在本机以 `mvn spring-boot:run` 重启 + curl health 复验过（记录于 Task 1），测试内不做进程级重启。
 - **结果**：`mvn test` → `Tests run: 48, Failures: 0, Errors: 0`，`EXIT=0`（数据库：本地 Docker PostgreSQL 18，`jdbc:postgresql://localhost:5432/moon_letter_e2e_test`）。
 - **TDD 红灯**：三轮修正——测试端 ClassCastException（MutationResult.body 是 JSON 字符串需再解析）、协作建稿 400（BlockMutation.payload 应为 JSON 字符串而非嵌套对象）。均为测试侧问题，服务端实现无改动。
+
+### 记录 8：Task 8 Android 可编译基座（2026-10-01）
+
+- **Commit**：`build(android): establish verified app and test baseline`。
+- **环境**：JDK 21.0.2（E:\jdk21-extract\jdk-21.0.2）、Android SDK 37.0（E:\Android\Sdk，含 emulator + google_apis x86_64 系统镜像）、Gradle 9.8.0。
+- **实现**：新建 `android/gradle.properties`（useAndroidX 等）；app manifest 补 `android:theme` + 新增 `styles.xml` + INTERNET 权限；PersonalEditorScreen 的 verticalScroll import 修正为 foundation 包；所有 android 模块补 `testInstrumentationRunner`；app 补 :core:database/network/sync 依赖（WorkManager 进 APK）；androidTest 统一挂 Compose BOM + ext-junit/test-core；**去掉无 Compose 代码模块（database/network/sync）的 Compose 插件**（基线失败证据：Compose Compiler 要求 runtime 在类路径）；core:sync 的 JUnit5 依赖换成 kotlin-test-junit 统一 JUnit4。
+- **结果**：`./gradlew :app:assembleDebug :app:testDebugUnitTest` → `BUILD SUCCESSFUL`（EXIT=0）；`./gradlew test`（全部模块单测）→ `BUILD SUCCESSFUL`（EXIT=0）。
+- **诚实记录——connectedDebugAndroidTest 未跑**：模拟器在本宿主反复静默退出（WHPX 报 operational、guest 内核参数已发出后进程消失，多轮复现；日志存 .workbuddy/tmp）。按计划 Task 8 的既定决策，主证明手段为 Robolectric（真 Room + 真 HTTP + 真 PG），模拟器仅用于 smoke 与 Task 14 录像，故此缺口不阻塞主链路证明；后续在真机（Task 11 的两台设备）上补 smoke。
+
+### 记录 9：Task 9 Room 存储与持久化 outbox（2026-10-01）
+
+- **Commit**：`feat(android): persist entries outbox and sync cursor in Room`。
+- **实现**：`RoomSyncStore` 实现 SyncStore（pending/markApplied/markRetry/markConflict 走 OutboxDao；applyChangesAtomically 在 Room 事务内应用变更页 + 写 cursor，REPLACE 语义使重复投递无害）；SyncCursorDao 新增；SyncStore 接口下沉 :core:model 消除模块环。
+- **测试**：`RoomSyncStoreTest`（Robolectric JVM，真 Room，两个独立临时库文件代表两台设备）：条目+outbox 同事务提交、杀进程重开库后 pending 仍在、坏 payload 使整页+cursor 回滚、重复变更无害且 cursor 正确推进。
+- **结果**：`./gradlew :core:database:testDebugUnitTest` → `BUILD SUCCESSFUL`（EXIT=0，5/5）。
+- **环境坑（重要）**：本机中文用户名导致 Robolectric 原生运行时解压到 TEMP 时 ICU 路径乱码崩溃；解决：以 `TEMP/TMP=E:\tmp` 运行 Gradle。此坑同时解释了模拟器异常的部分嫌疑。
