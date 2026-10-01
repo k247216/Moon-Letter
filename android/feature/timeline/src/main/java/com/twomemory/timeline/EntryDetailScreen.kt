@@ -138,11 +138,27 @@ private fun StatusChip(text: String) {
 @Composable
 private fun DetailBlock(block: EntryBlockUi) {
     val author = block.author
+    val payload = runCatching { org.json.JSONObject(block.payload.orEmpty()) }.getOrNull()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         author?.let { Text("$it的视角", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted) }
         when {
             block.type == BlockType.IMAGE && (block.assetId != null || block.localPath != null) -> {
                 EntryPhoto(localPath = block.localPath, assetId = block.assetId, modifier = Modifier.fillMaxWidth().height(220.dp), contentDescription = "记录里的照片")
+            }
+            block.type == BlockType.LOCATION -> {
+                val city = payload?.optString("city").orEmpty()
+                    .ifBlank { payload?.optString("cityName").orEmpty() }
+                    .ifBlank { payload?.optString("name").orEmpty() }
+                Text(if (city.isBlank()) "地点快照正在准备中" else "📍 $city", style = TwoMemoryTypography.body)
+            }
+            block.type == BlockType.MUSIC -> {
+                val link = payload?.optString("url").orEmpty()
+                    .ifBlank { payload?.optString("link").orEmpty() }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("音乐分享", style = TwoMemoryTypography.body)
+                    if (link.isNotBlank()) Text(link, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                    else Text("音乐链接正在准备中", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                }
             }
             block.text?.isNotBlank() == true -> Text(block.text, style = TwoMemoryTypography.body)
             else -> Text(blockTypeLabel(block.type), style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)

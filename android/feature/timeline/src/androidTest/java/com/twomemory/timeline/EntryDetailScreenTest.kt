@@ -53,4 +53,29 @@ class EntryDetailScreenTest {
         }
         composeRule.onNodeWithText("正在等待同步，这条记录还不在这台手机上").assertIsDisplayed()
     }
+
+    @Test
+    fun detailRendersCitySnapshotInsteadOfHidingItBehindAPlaceholder() {
+        val state = EntryDetailUi(
+            header = TimelineEntryUi("entry-city", "2026年10月1日", "22:07", "小满", "杭州", body = null, shared = false, mine = true),
+            blocks = listOf(
+                EntryBlockUi(
+                    id = "city-1",
+                    type = BlockType.LOCATION,
+                    text = null,
+                    localPath = null,
+                    assetId = null,
+                    author = "小满",
+                    payload = "{\"city\":\"杭州\"}",
+                ),
+            ),
+            comments = emptyList(),
+        )
+        composeRule.setContent {
+            TwoMemoryTheme {
+                EntryDetailScreen(state, onBack = {}, onDraftChange = {}, onSend = {})
+            }
+        }
+        composeRule.onNodeWithText("📍 杭州").assertIsDisplayed()
+    }
 }

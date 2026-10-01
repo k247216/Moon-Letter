@@ -30,6 +30,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 enum class CoupleToolRoute { ANNIVERSARY, CAPSULE, EXPORT }
 
@@ -52,6 +55,9 @@ fun RelationshipToolsScreen(
     initialAnniversaryName: String = "我们的中秋",
     initialAnniversaryDate: String = "农历八月十五",
     initialAnniversaryRepeats: Boolean = true,
+    initialCapsuleTitle: String = "",
+    initialCapsuleUnlockDate: String = "",
+    initialCapsuleLocked: Boolean = false,
 ) {
     Scaffold { padding ->
         Column(
@@ -82,7 +88,12 @@ fun RelationshipToolsScreen(
                     initialDate = initialAnniversaryDate,
                     initialRepeats = initialAnniversaryRepeats,
                 )
-                CoupleToolRoute.CAPSULE -> CapsuleTool(onSaveCapsule)
+                CoupleToolRoute.CAPSULE -> CapsuleTool(
+                    onSave = onSaveCapsule,
+                    initialTitle = initialCapsuleTitle,
+                    initialUnlockDate = initialCapsuleUnlockDate,
+                    initialLocked = initialCapsuleLocked,
+                )
                 CoupleToolRoute.EXPORT -> ExportTool(onStartExport)
             }
         }
@@ -116,21 +127,39 @@ private fun AnniversaryTool(
             }
             Switch(checked = repeats, onCheckedChange = { repeats = it; saved = false })
         }
+        anniversaryCountdown(date, repeats)?.let { preview ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = .10f),
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("本机预览", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
+                    Text(preview, style = TwoMemoryTypography.title)
+                    Text("服务端同步后，另一台设备会按同一条日期规则重新计算。", style = TwoMemoryTypography.caption)
+                }
+            }
+        }
         Button(onClick = { onSave(AnniversaryDraft(name.trim(), date.trim(), repeats)); saved = true }, enabled = name.isNotBlank() && date.isNotBlank()) {
             Text(if (saved) "已保存到本机 · 等待同步" else "保存纪念日")
         }
         if (saved) {
-            Text("倒计时将在服务端规则接通后显示，不在这里伪造剩余天数。", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
+            Text("已保存日期规则；本机预览不会替代服务端最终日期。", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
 
 @Composable
-private fun CapsuleTool(onSave: (CapsuleDraft) -> Unit) {
-    var title by rememberSaveable { mutableStateOf("") }
+private fun CapsuleTool(
+    onSave: (CapsuleDraft) -> Unit,
+    initialTitle: String,
+    initialUnlockDate: String,
+    initialLocked: Boolean,
+) {
+    var title by rememberSaveable(initialTitle) { mutableStateOf(initialTitle) }
     var body by rememberSaveable { mutableStateOf("") }
-    var unlockDate by rememberSaveable { mutableStateOf("") }
-    var locked by rememberSaveable { mutableStateOf(false) }
+    var unlockDate by rememberSaveable(initialUnlockDate) { mutableStateOf(initialUnlockDate) }
+    var locked by rememberSaveable(initialLocked) { mutableStateOf(initialLocked) }
     ToolCard {
         Text("给未来的我们留一封信", style = TwoMemoryTypography.title)
         Text("开启日期前，正文不会在任何设备的详情页、通知或导出结果中返回。", style = TwoMemoryTypography.body, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .62f))
@@ -139,6 +168,7 @@ private fun CapsuleTool(onSave: (CapsuleDraft) -> Unit) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Icon(TwoMemoryIcons.Capsule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Text("时间胶囊已锁定", style = TwoMemoryTypography.title)
+                    if (title.isNotBlank()) Text("《$title》", style = TwoMemoryTypography.body)
                     Text("开启日期：$unlockDate", style = TwoMemoryTypography.body)
                     Text("已提交保存请求；正文已隐藏，等待服务端确认后再进入到期解锁流程。", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
                 }
@@ -152,6 +182,40 @@ private fun CapsuleTool(onSave: (CapsuleDraft) -> Unit) {
             }
         }
     }
+}
+
+/**
+ * A safe local preview for explicit ISO dates. Lunar rules stay textual until
+ * the shared date service is available, so this never guesses a lunar day.
+ */
+internal fun anniversaryCountdown(
+    rule: String,
+    repeatsYearly: Boolean,
+    today: LocalDate = LocalDate.now(),
+): String? {
+    val parsed = try {
+        LocalDate.parse(rule.trim(), DateTimeFormatter.ISO_LOCAL_DATE)
+    } catch (_: DateTimeParseException) {
+        return null
+    }
+    val target = if (!repeatsYearly) {
+        parsed
+    } else {
+        nextYearlyOccurrence(parsed, today)
+    }
+    val days = java.time.temporal.ChronoUnit.DAYS.between(today, target)
+    return when {
+        days > 0 -> "距离 ${target} 还有 $days 天"
+        days == 0L -> "就是今天 · 记得留下一句话"
+        else -> "这一天已过去 ${-days} 天"
+    }
+}
+
+private fun nextYearlyOccurrence(rule: LocalDate, today: LocalDate): LocalDate {
+    fun inYear(year: Int): LocalDate = runCatching { rule.withYear(year) }
+        .getOrElse { LocalDate.of(year, 2, 28) }
+    val thisYear = inYear(today.year)
+    return if (thisYear.isBefore(today)) inYear(today.year + 1) else thisYear
 }
 
 @Composable
@@ -169,6 +233,9 @@ private fun ExportTool(onStartExport: (ExportScope) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(scope.description, style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .52f))
+        }
+        if (selected == ExportScope.LOCAL_CACHE.name) {
+            Text("本机缓存会以可读 Markdown + 机器可读 JSON 一起分享；原始媒体文件不会通过文本通道伪装成已打包。", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
         }
         Button(onClick = { onStartExport(ExportScope.valueOf(selected)); requested = true }) {
             Text(if (requested) "已提交 · 等待生成" else "开始导出")

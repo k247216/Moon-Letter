@@ -45,6 +45,7 @@ import com.twomemory.timeline.EntryDetailViewModel
 import com.twomemory.timeline.TimelineRoute
 import com.twomemory.timeline.TimelineViewModel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -242,6 +243,7 @@ private fun com.twomemory.database.EntryBlockEntity.toEntryBlock(): com.twomemor
         text = if (type == "TEXT") payload.optString("text").takeIf { it.isNotBlank() } ?: payload.toString() else null,
         localPath = entryPath,
         assetId = assetId,
+        payload = payload.toString(),
     )
 }
 
@@ -424,6 +426,16 @@ fun AppNavigation(
     val toolScope = rememberCoroutineScope()
     var citySnapshotStatus by remember { mutableStateOf<String?>(null) }
 
+    // Drafts are written while the user pauses, not only when the close icon
+    // is pressed. A killed process therefore loses at most the current debounce
+    // window, and the editor never needs a second “save draft” step.
+    LaunchedEffect(editingMode, editorState.title, editorState.body, editorState.photos, editorState.saved) {
+        val mode = editingMode ?: return@LaunchedEffect
+        if (editorState.saved) return@LaunchedEffect
+        delay(300)
+        DraftStore.save(context, mode, editorState.title, editorState.body, editorState.photos)
+    }
+
     // Real display names win over the placeholder couple state: the space is
     // read once when the app is entered, and again after a rename succeeds.
     // Typing in the name field must not reach the network.
@@ -587,30 +599,31 @@ fun AppNavigation(
                     .putBoolean("anniversaryRepeats", draft.repeatsYearly)
                     .apply()
             },
-            onSaveCapsule = {
-                // Capsule plaintext and unlock enforcement belong to the server;
-                // do not put a private letter into ordinary preferences here.
+            onSaveCapsule = { draft ->
+                // Keep only lock metadata locally. The plaintext and unlock
+                // enforcement belong to the server; never put the letter into
+                // ordinary preferences or the local-cache export.
+                context.getSharedPreferences("moon_letter_tools", android.content.Context.MODE_PRIVATE).edit()
+                    .putString("capsuleTitle", draft.title)
+                    .putString("capsuleUnlockDate", draft.unlockDate)
+                    .putBoolean("capsuleLocked", true)
+                    .apply()
             },
             onStartExport = { scope ->
                 if (scope == com.twomemory.couple.ExportScope.LOCAL_CACHE) {
                     toolScope.launch {
-                        val entries = database.entryDao().publishedEntries()
-                        val text = buildString {
-                            appendLine("月笺本机缓存导出")
-                            appendLine("导出范围：已发布记录")
-                            appendLine()
-                            entries.forEach { entry ->
-                                val blocks = database.entryDao().blocks(entry.id)
-                                appendLine("## ${entry.title.orEmpty().ifBlank { "未命名记录" }}")
-                                appendLine("发生时间：${entry.occurredAtEpochMillis} (${entry.occurredTimezone})")
-                                appendLine("记录 ID：${entry.id}")
-                                previewOf(blocks)?.let { appendLine(it) }
-                                appendLine()
-                            }
-                        }
+                        val session = SyncSession.load(context)
+                        val names = SyncSession.loadNames(context)
+                        val document = LocalExportBuilder.build(
+                            database = database,
+                            currentUserId = session?.userId,
+                            ownName = names.own,
+                            partnerName = names.partner,
+                        )
+                        val text = document.markdown + "\n\n---\n\n# 机器可读 JSON\n\n" + document.json
                         val share = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "月笺本机缓存导出")
+                            putExtra(Intent.EXTRA_SUBJECT, "月笺本机缓存导出（Markdown + JSON）")
                             putExtra(Intent.EXTRA_TEXT, text)
                         }
                         context.startActivity(Intent.createChooser(share, "分享月笺导出"))
@@ -620,6 +633,9 @@ fun AppNavigation(
             initialAnniversaryName = toolsPrefs.getString("anniversaryName", "我们的中秋").orEmpty(),
             initialAnniversaryDate = toolsPrefs.getString("anniversaryDate", "农历八月十五").orEmpty(),
             initialAnniversaryRepeats = toolsPrefs.getBoolean("anniversaryRepeats", true),
+            initialCapsuleTitle = toolsPrefs.getString("capsuleTitle", "").orEmpty(),
+            initialCapsuleUnlockDate = toolsPrefs.getString("capsuleUnlockDate", "").orEmpty(),
+            initialCapsuleLocked = toolsPrefs.getBoolean("capsuleLocked", false),
         )
         return
     }

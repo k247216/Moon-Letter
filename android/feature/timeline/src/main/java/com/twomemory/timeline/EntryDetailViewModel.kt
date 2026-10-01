@@ -23,6 +23,7 @@ data class EntryBlockUi(
     val localPath: String?,
     val assetId: String?,
     val author: String? = null,
+    val payload: String? = null,
 )
 
 data class EntryCommentUi(
@@ -112,6 +113,7 @@ class EntryDetailViewModel(
                         text = block.text,
                         localPath = block.localPath,
                         assetId = block.assetId,
+                        payload = block.payload,
                     )
                 },
             comments = comments.map { comment ->
