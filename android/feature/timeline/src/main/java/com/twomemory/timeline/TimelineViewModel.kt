@@ -35,8 +35,8 @@ class TimelineViewModel(
     private val currentUserId: UUID? = null,
 ) : ViewModel() {
 
-    private var ownName: String = "小满"
-    private var partnerName: String = "阿屿"
+    private var ownName: String = ""
+    private var partnerName: String = ""
 
     private val mutableEntries = MutableStateFlow<List<TimelineEntryUi>>(emptyList())
     val entries: StateFlow<List<TimelineEntryUi>> = mutableEntries.asStateFlow()
@@ -53,8 +53,8 @@ class TimelineViewModel(
     }
 
     fun updateNames(own: String, partner: String) {
-        ownName = own.ifBlank { "小满" }
-        partnerName = partner.ifBlank { "阿屿" }
+        ownName = own.trim()
+        partnerName = partner.trim()
         refresh()
     }
 
@@ -69,8 +69,8 @@ class TimelineViewModel(
             dateLabel = date,
             timeLabel = time,
             author = when {
-                mine -> ownName
-                else -> partnerName
+                mine -> ownName.ifBlank { "我" }
+                else -> partnerName.ifBlank { "伴侣" }
             },
             title = title?.takeIf { it.isNotBlank() },
             // Body must be the real content text; title is rendered separately.

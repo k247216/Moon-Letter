@@ -32,7 +32,7 @@ public class CoupleController {
 
     @PostMapping("/pair")
     public PairResult pair(@RequestBody PairRequest request) {
-        return coupleService.pair(request.token());
+        return coupleService.pair(request.token(), request.displayName());
     }
 
     @PostMapping("/{coupleId}/pairing-token")

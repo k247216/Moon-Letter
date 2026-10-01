@@ -58,13 +58,27 @@ object SyncSession {
                 .readSpace(session.baseUrl, session.token, session.coupleId)
             val own = space.members.firstOrNull { it.userId == session.userId }?.profile?.displayName.orEmpty()
             val partner = space.members.firstOrNull { it.userId != session.userId }?.profile?.displayName.orEmpty()
-            if (own.isNotBlank() || partner.isNotBlank()) {
-                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                    .putString("ownName", own)
-                    .putString("partnerName", partner)
-                    .apply()
-            }
+            // A name the space does not have yet stays unknown rather than blanking
+            // the one this device already shows.
+            if (own.isBlank() && partner.isBlank()) return@runCatching
+            val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            if (own.isNotBlank()) editor.putString("ownName", own)
+            if (partner.isNotBlank()) editor.putString("partnerName", partner)
+            editor.apply()
         }
+    }
+
+    /**
+     * Stores [displayName] as this device owner's name in the space, then
+     * refreshes the cached names. Throws when the server refuses, so the screen
+     * can say the name was not saved instead of showing a local-only rename.
+     */
+    suspend fun renameOwn(context: Context, displayName: String): String {
+        val session = load(context) ?: error("设备尚未绑定：请先完成 bootstrap 与配对")
+        val profile = com.twomemory.network.RetrofitSessionApi.create()
+            .updateOwnProfile(session.baseUrl, session.token, session.coupleId, session.userId, displayName)
+        refreshNames(context)
+        return profile.displayName.ifBlank { displayName }
     }
 
     /**

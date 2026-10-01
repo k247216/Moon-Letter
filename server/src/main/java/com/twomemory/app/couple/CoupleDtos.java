@@ -11,7 +11,7 @@ enum ThemeKind {
     WARM_BEIGE, PURE_WHITE
 }
 
-record PairRequest(String token) {
+record PairRequest(String token, String displayName) {
 }
 
 record UpdateProfileRequest(String displayName, UUID avatarAssetId, String theme) {

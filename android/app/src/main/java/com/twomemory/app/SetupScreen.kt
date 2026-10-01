@@ -71,8 +71,8 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
         val sessionSaved: Boolean = false,
     ) {
         val canSubmit: Boolean
-            get() = !busy && serverUrl.isNotBlank() && when (mode) {
-                Mode.FIRST_DEVICE -> bootstrapSecret.isNotBlank() && displayName.isNotBlank()
+            get() = !busy && serverUrl.isNotBlank() && displayName.isNotBlank() && when (mode) {
+                Mode.FIRST_DEVICE -> bootstrapSecret.isNotBlank()
                 Mode.PARTNER_DEVICE -> pairingTokenInput.isNotBlank()
             }
     }
@@ -126,7 +126,7 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
         mutate { it.copy(busy = true, error = null) }
         viewModelScope.launch {
             try {
-                val result = api.pair(s.serverUrl, s.pairingTokenInput)
+                val result = api.pair(s.serverUrl, s.pairingTokenInput, s.displayName)
                 mutate {
                     it.copy(
                         busy = false,
@@ -231,15 +231,21 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
                         modifier = Modifier.fillMaxWidth(),
                     )
 
+                    OutlinedTextField(
+                        value = state.displayName,
+                        onValueChange = viewModel::updateDisplayName,
+                        label = {
+                            Text(
+                                if (state.mode == SetupViewModel.Mode.FIRST_DEVICE) "你的称呼"
+                                else "你的称呼（伴侣手机上会看到）"
+                            )
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
                     when (state.mode) {
                         SetupViewModel.Mode.FIRST_DEVICE -> {
-                            OutlinedTextField(
-                                value = state.displayName,
-                                onValueChange = viewModel::updateDisplayName,
-                                label = { Text("你的称呼") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
                             OutlinedTextField(
                                 value = state.bootstrapSecret,
                                 onValueChange = viewModel::updateBootstrapSecret,

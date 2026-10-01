@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,12 +29,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,23 +54,33 @@ import com.twomemory.designsystem.MoonLetterTheme
 import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import kotlinx.coroutines.launch
 
 @Composable
-fun CoupleRoute(viewModel: CoupleViewModel, onThemeChange: (MoonLetterTheme) -> Unit = {}) {
+fun CoupleRoute(
+    viewModel: CoupleViewModel,
+    onThemeChange: (MoonLetterTheme) -> Unit = {},
+    serverOwnName: String = "",
+    serverPartnerName: String = "",
+    onSaveName: suspend (String) -> String = { it },
+) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
     val state by viewModel.state.collectAsState()
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         val restoredTheme = runCatching {
             MoonLetterTheme.valueOf(prefs.getString("theme", MoonLetterTheme.WARM_BEIGE.name).orEmpty())
         }.getOrDefault(MoonLetterTheme.WARM_BEIGE)
         viewModel.restore(
-            ownName = prefs.getString("ownName", "小满").orEmpty().ifBlank { "小满" },
             ownAvatar = prefs.getString("ownAvatar", null),
             theme = restoredTheme,
         )
         onThemeChange(restoredTheme)
+    }
+    LaunchedEffect(serverOwnName, serverPartnerName) {
+        viewModel.restoreNames(own = serverOwnName, partner = serverPartnerName)
     }
 
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -90,11 +103,9 @@ fun CoupleRoute(viewModel: CoupleViewModel, onThemeChange: (MoonLetterTheme) -> 
     CoupleScreen(
         state = state,
         ownAvatarBitmap = ownAvatarBitmap,
-        onOwnNameChange = {
-            viewModel.updateOwnName(it)
-            prefs.edit().putString("ownName", it).apply()
-        },
+        onOwnNameChange = viewModel::updateOwnName,
         onOwnAvatarChange = { avatarPicker.launch(arrayOf("image/*")) },
+        onSaveName = { scope.launch { viewModel.saveOwnName(onSaveName) } },
         onThemeChange = {
             viewModel.updateTheme(it)
             prefs.edit().putString("theme", it.name).apply()
@@ -108,10 +119,13 @@ fun CoupleScreen(
     state: CoupleUiState,
     onOwnNameChange: (String) -> Unit,
     onThemeChange: (MoonLetterTheme) -> Unit,
+    onSaveName: () -> Unit = {},
     ownAvatarBitmap: ImageBitmap? = null,
     onOwnAvatarChange: () -> Unit = {},
 ) {
     var editingName by remember { mutableStateOf(false) }
+    val draft = state.draftName.trim()
+    val canSave = draft.isNotEmpty() && draft != state.ownName && !state.savingName
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -137,7 +151,7 @@ fun CoupleScreen(
             verticalAlignment = Alignment.Top,
         ) {
             AvatarBadge(
-                name = state.ownName,
+                name = state.ownName.ifBlank { "取个名字" },
                 fallback = R.drawable.moonletter_avatar_xiaoman,
                 bitmap = ownAvatarBitmap,
                 accent = MaterialTheme.colorScheme.primary,
@@ -156,19 +170,38 @@ fun CoupleScreen(
                     color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
             }
             AvatarBadge(
-                name = state.partnerName,
+                name = state.partnerName.ifBlank { "伴侣" },
                 fallback = R.drawable.moonletter_avatar_ayu,
                 accent = Color(0xFF6F8268),
             )
         }
         if (editingName) {
-            OutlinedTextField(
-                value = state.ownName,
-                onValueChange = onOwnNameChange,
-                label = { Text("我的名字") },
-                singleLine = true,
+            Column(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp),
-            )
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.draftName,
+                    onValueChange = onOwnNameChange,
+                    label = { Text("我的名字" + if (state.ownName.isBlank()) "" else "（现在叫 ${state.ownName}）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "这个名字会同时出现在你们两个人的手机上。",
+                    style = TwoMemoryTypography.caption,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f),
+                )
+                state.nameError?.let {
+                    Text(it, style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.error)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = onSaveName, enabled = canSave) {
+                        Text(if (state.savingName) "保存中…" else "保存")
+                    }
+                    TextButton(onClick = { editingName = false }) { Text("取消") }
+                }
+            }
         }
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),

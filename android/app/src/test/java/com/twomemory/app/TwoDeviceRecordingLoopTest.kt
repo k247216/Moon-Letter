@@ -210,6 +210,7 @@ class TwoDeviceRecordingLoopTest {
             setupB.updateMode(SetupViewModel.Mode.PARTNER_DEVICE)
             setupB.updateServerUrl(baseUrl)
             setupB.updatePairingToken(pairingToken)
+            setupB.updateDisplayName("阿屿")
             setupB.pair()
             awaitSetupIdle(setupB)
             assertEquals(
@@ -220,6 +221,11 @@ class TwoDeviceRecordingLoopTest {
             val tokenB = boundB.token
             val userIdB = boundB.userId
             assertEquals(coupleId, boundB.coupleId)
+            assertEquals(
+                setOf("小满", "阿屿"),
+                RetrofitSessionApi.create().readSpace(baseUrl, tokenB, coupleId)
+                    .members.map { it.profile.displayName }.toSet(),
+            )
 
             // The screen persists the issued session; prove the roundtrip works.
             SyncSession.save(context, tokenA, coupleId, userIdA, baseUrl)
@@ -227,6 +233,16 @@ class TwoDeviceRecordingLoopTest {
             assertEquals(coupleId, loaded.coupleId)
             assertEquals(userIdA, loaded.userId)
             assertEquals(baseUrl, loaded.baseUrl)
+
+            // 2.5 Renaming through the shipped client reaches the partner's space
+            //     read and refreshes this device's cached names.
+            assertEquals("小满呀", SyncSession.renameOwn(context, "小满呀"))
+            assertTrue(
+                "partner must see the rename",
+                RetrofitSessionApi.create().readSpace(baseUrl, tokenB, coupleId)
+                    .members.map { it.profile.displayName }.contains("小满呀"),
+            )
+            assertEquals("小满呀", SyncSession.loadNames(context).own)
 
             // 3. Device A writes OFFLINE and taps 发布: Room holds a draft, the
             //    outbox holds the create followed by the publish.

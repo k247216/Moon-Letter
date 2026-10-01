@@ -21,6 +21,7 @@ import java.util.UUID;
 public class CoupleService {
 
     private static final Duration PAIRING_TOKEN_LIFETIME = Duration.ofMinutes(15);
+    private static final String PLACEHOLDER_DISPLAY_NAME = "未命名";
 
     private final JdbcTemplate jdbcTemplate;
     private final SpaceAccessPolicy accessPolicy;
@@ -65,9 +66,11 @@ public class CoupleService {
      * Consumes a one-time pairing token on behalf of a not-yet-existing
      * partner: creates the second member, its profile and its first device
      * session in one transaction. The raw session token is returned once.
+     * displayName is what she types for herself on her own device, blank keeps
+     * the placeholder for callers that pair without a name.
      */
     @Transactional
-    public PairResult pair(String pairingToken) {
+    public PairResult pair(String pairingToken, String displayName) {
         String normalized = normalizePairingToken(pairingToken);
         String tokenHash = sha256(normalized);
         PairingRow pairing = jdbcTemplate.query("""
@@ -100,7 +103,7 @@ public class CoupleService {
         jdbcTemplate.update("UPDATE couple_space SET status = 'ACTIVE', updated_at = now() WHERE id = ?",
                 pairing.coupleId());
         jdbcTemplate.update("UPDATE space_pairing_code SET consumed_at = now() WHERE id = ?", pairing.id());
-        ensureProfile(partnerId);
+        ensureProfile(partnerId, displayName);
         String deviceToken = deviceSessionService.issueSession(partnerId, pairing.coupleId());
         return new PairResult(readSpace(partnerId, pairing.coupleId()), deviceToken, partnerId);
     }
@@ -126,7 +129,7 @@ public class CoupleService {
         accessPolicy.requireMember(userId, coupleId);
         CoupleView couple = jdbcTemplate.query("""
                 SELECT cs.id, cs.status, cm.user_id,
-                       COALESCE(up.display_name, '未命名') AS display_name,
+                       COALESCE(up.display_name, ?::text) AS display_name,
                        up.avatar_asset_id, COALESCE(up.theme::text, 'WARM_BEIGE') AS theme
                 FROM couple_space cs
                 JOIN couple_member cm ON cm.couple_id = cs.id
@@ -134,13 +137,19 @@ public class CoupleService {
                 LEFT JOIN user_profile up ON up.user_id = cm.user_id
                 WHERE cs.id = ? AND cs.deleted_at IS NULL
                 ORDER BY cm.joined_at, cm.user_id
-                """, (org.springframework.jdbc.core.ResultSetExtractor<CoupleView>) this::mapCouple, coupleId);
+                """, (org.springframework.jdbc.core.ResultSetExtractor<CoupleView>) this::mapCouple,
+                PLACEHOLDER_DISPLAY_NAME, coupleId);
         if (couple == null) {
             throw new ConflictException("couple space not found");
         }
         return couple;
     }
 
+    /**
+     * Partial update of the caller's own profile: a field absent from the
+     * request keeps its stored value, so renaming never has to resend (and can
+     * never silently reset) the theme or avatar.
+     */
     @Transactional
     public ProfileView updateProfile(UUID actorId, UUID coupleId, UUID targetUserId,
                                      UpdateProfileRequest request) {
@@ -148,8 +157,8 @@ public class CoupleService {
         if (!actorId.equals(targetUserId)) {
             throw new AccessDeniedException("member may only update own profile");
         }
-        String displayName = normalizeDisplayName(request.displayName());
-        ThemeKind theme = parseTheme(request.theme());
+        String displayName = request.displayName() == null ? null : normalizeDisplayName(request.displayName());
+        ThemeKind theme = request.theme() == null ? null : parseTheme(request.theme());
         if (request.avatarAssetId() != null) {
             Integer ownedAsset = jdbcTemplate.queryForObject("""
                     SELECT count(*) FROM media_asset
@@ -162,9 +171,13 @@ public class CoupleService {
         ensureProfile(targetUserId);
         jdbcTemplate.update("""
                 UPDATE user_profile
-                SET display_name = ?, avatar_asset_id = ?, theme = ?::theme_kind, updated_at = now()
+                SET display_name = COALESCE(?, display_name),
+                    avatar_asset_id = COALESCE(?, avatar_asset_id),
+                    theme = COALESCE(?::theme_kind, theme),
+                    updated_at = now()
                 WHERE user_id = ?
-                """, displayName, request.avatarAssetId(), theme.name(), targetUserId);
+                """, displayName, request.avatarAssetId(),
+                theme == null ? null : theme.name(), targetUserId);
         return jdbcTemplate.queryForObject("""
                 SELECT user_id, display_name, avatar_asset_id, theme::text AS theme
                 FROM user_profile WHERE user_id = ?
@@ -206,11 +219,23 @@ public class CoupleService {
     }
 
     private void ensureProfile(UUID userId) {
+        ensureProfile(userId, null);
+    }
+
+    /**
+     * Creates the profile row if absent. A device that pairs without naming
+     * itself falls back to the placeholder, which is the one string the app
+     * must never show as someone's name.
+     */
+    private void ensureProfile(UUID userId, String displayName) {
+        String name = displayName == null || displayName.isBlank()
+                ? PLACEHOLDER_DISPLAY_NAME
+                : normalizeDisplayName(displayName);
         jdbcTemplate.update("""
                 INSERT INTO user_profile(user_id, display_name, theme)
-                VALUES (?, '未命名', 'WARM_BEIGE')
+                VALUES (?, ?, 'WARM_BEIGE')
                 ON CONFLICT (user_id) DO NOTHING
-                """, userId);
+                """, userId, name);
     }
 
     private String allocatePairingToken(UUID coupleId) {

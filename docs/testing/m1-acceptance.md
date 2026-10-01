@@ -219,7 +219,7 @@
 - **客户端实现**：`SyncStore.markApplied(operationId, serverEntrySnapshot = null)`；`RoomSyncStore` 在**同一 Room 事务**里删除 outbox 行并合并快照（`upsertEntry` 与 feed 应用共用一份实现；非条目载荷——评论视图、畸形 JSON——只消费操作不合并，**不能让一次服务端已接受的操作因合并失败而重投**）；feed 侧仍保持「坏 JSON 整页回滚含 cursor」的强语义，两条路径的容错差异是刻意的；`LocalEntryWriter.save(command, publish = true)` 在同事务追加 `PUBLISH_ENTRY(baseVersion=0)`（服务端 `createDraft` 固定写入 `row_version=0`，新建即发布时该版本必然正确）；`SyncSession.saveDraft` 更名 `publish` 并接线 `AppNavigation` 两处 `onPublish`。
 - **可观测性**：时间线为仍是 DRAFT 的条目加「未寄出」chip（`TimelineEntryUi.unsent`）。离线时用户以为已经共享、实际只在本地——原来与正常页完全同形，属于静默失败；现在状态可见。不引入任何统计口径。
 - **TDD 红灯（保留为证据）**：`SelfUseRecordingLoopE2ETest:110 expected: false but was: true`、`SharedPerspectiveSyncTest:247 expected: 0 but was: 2`——多出的两行正是个人草稿的 CREATE 与 UPDATE 泄漏。实现后 `SharedPerspectiveSyncTest:176 expected: 1 but was: 2` 暴露**同类第二个测试统计了整个 couple 的 COMMENT 行**，与记录 15 修过的 ENTRY 计数是同一缺陷，改法一致：按 `entity_id` 限定。
-- **绿灯**：服务端 `JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn test` → `Tests run: 57, Failures: 0, Errors: 0, Skipped: 0`，EXIT=0。Android `./gradlew testDebugUnitTest`（JDK 21 + `TEMP/TMP=E:/tmp`）→ 19/19 通过：`SyncEngineTest` 11、`RoomSyncStoreTest` 7、`TwoDeviceRecordingLoopTest` 1（真 Room×2 + 真 HTTP + 真 Spring Boot 进程 + 真 PostgreSQL）。
+- **绿灯**：服务端 `JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn test` → `Tests run: 57, Failures: 0, Errors: 0, Skipped: 0`，EXIT=0。**（记录 17 更正：真实为 55——57 是把 `TwoDeviceSyncTest` 的陈旧 surefire 报告计入求和得来的，该测试类早在 `f410974` 已删除；当次 mvn 汇总行本身就是 55。）**Android `./gradlew testDebugUnitTest`（JDK 21 + `TEMP/TMP=E:/tmp`）→ 19/19 通过：`SyncEngineTest` 11、`RoomSyncStoreTest` 7、`TwoDeviceRecordingLoopTest` 1（真 Room×2 + 真 HTTP + 真 Spring Boot 进程 + 真 PostgreSQL）。
 - **竖切按新语义重写后的断言**：A 写「完成即发布」→ outbox 依次为 `CREATE_ENTRY`、`PUBLISH_ENTRY`、本地仍 DRAFT；B 拉 0 条；A 推 2 个操作；B 再拉**恰好 1 条**变更行；重放已消费的 CREATE 得 `replayed=true` 且 B 再拉 0 条（重放不再增长变更流）；A 自己的副本经快照合并变为 PUBLISHED 且 `rowVersion=1`；B 由这一行重建出 title/state=PUBLISHED/1 个含正文的块；B 写不发布 → A 拉 0 条且查不到该条目；反向 B 发布 → A 可见。注意此处的「A 拉 0 条」前提是 A 先做一次追赶式拉取——共享变更流也包含自己写的行，这是夹具必须先归零游标的原因。
 - **诚实记录 / 未完成**：
   1. E1/H1/H2 的**真机**证据仍未取得，JVM 夹具不等同于真机；feature 模块只有仪器测试（本机不可运行），且 `TimelineScreenTest` 断言的文本「共同记录 · 我们」在当前实现中并不存在——该夹具**从未通过**，属已知失效件，新增的「未寄出」chip 同样只有编译级保证。
@@ -227,3 +227,22 @@
   3. 与规格 §6.4 的偏差仍在：`EntryMode` 仍为 PERSONAL/COLLABORATIVE（要求 SHARED）、`EntryState` 仍含 `CAPSULE_LOCKED/ARCHIVED`（要求移除，`RoomSyncStore.mapState` 仍在映射）。
   4. 毛刺清单未动：时间线仍非 Room Flow 响应式、Scaffold padding 未透传、`SyncSession.DEFAULT_DEV_BASE_URL` 硬编码局域网 IP、备份脚本未调度/未演练、无 Room 迁移测试、bootstrap 密钥无消费标记。
   5. dev 库 `moon_letter` 仍有 5 条历史 DRAFT 测试数据，待「开档」时清掉或导出封存；真实内容一旦出现，迁移纪律（先备份副本演练）立即生效。
+
+### 记录 17：身份体面——配对即取名 + 改名真正落到服务器（2026-10-01）
+
+- **门槛清单第 1 项**：「身份体面：改称呼入口先做——她打开第一眼不能是『未命名』」。现场核查发现这条链上有三个独立缺陷，缺一不可构成「改称呼入口」。
+- **缺陷现场**：
+  1. `CoupleService.pair` 给新伴侣写的 profile 固定是字面量「未命名」——她配对成功的第一眼就是它；
+  2. 「我们」页的改名只写本机 SharedPreferences（`moon_letter_profile.ownName`），**服务器从未收到过一次改名**，对端永远看不到；
+  3. `AppNavigation` 用 `LaunchedEffect(coupleState.ownName, coupleState.partnerName)` 取名字，而该值随输入变化——**每敲一个字符发一次 `GET /api/v1/couple/{id}`**；
+  4. 掩盖性问题：`CoupleViewModel` 与 `TimelineViewModel` 把 `小满 / 阿屿` 写成默认值，真名字反而被假身份挤掉。
+- **服务端实现（test-first）**：`PairRequest(token, displayName)` → `pair(token, displayName)` → `ensureProfile(partnerId, displayName)`；只有缺席或空白才落 `PLACEHOLDER_DISPLAY_NAME` 常量，`readSpace` 以 `COALESCE(up.display_name, ?::text)` 绑定它，SQL 里不再出现「未命名」字面量。**PATCH 改为真正的部分更新**：`display_name / avatar_asset_id / theme` 三列各自 `COALESCE(?, 原值)`。原实现要求 theme 必填并把 avatar 无条件置 NULL，于是改名会静默重置主题、清空头像，且客户端必须回传它并不拥有的字段——两台设备各存一份主题偏好，用陈旧偏好改名就把另一台的设置回滚了。缺席字段保持原值，出现但空白的名字仍然 400。
+- **红/绿灯（服务端）**：`PairingFlowTest:152 expected: 200 OK but was: 400 BAD_REQUEST {code=VALIDATION_ERROR, message=theme is required}`；实现后 `PairingFlowTest` 1/1、`CoupleApiTest` 8/8。新增断言覆盖：只带名字的 PATCH 保留 `PURE_WHITE` 主题、对端 readSpace 读到新名字、改他人 403、空白名 400。
+- **客户端实现**：`SessionApi.pair(..., displayName)` 与 `updateOwnProfile(...)`（PATCH + bearer，非 2xx 抛 `SetupHttpException`）；`SetupViewModel.canSubmit` 两条路径都要求称呼非空，`SetupScreen` 把「你的称呼」提为公共输入框（伴侣分支标签写明「伴侣手机上会看到」）；`SyncSession.renameOwn` = PATCH + `refreshNames` 并返回服务器存下的名字，失败上抛；`refreshNames` 不再把读不到的名字写空；`AppNavigation` 改为进入 App 时读一次（`LaunchedEffect(Unit)`）+ `LaunchedEffect(cachedNames)` 只刷标签，改名成功后再刷一次；`CoupleViewModel` 引入 `draftName / savingName / nameError` 与显式 `saveOwnName(remote)`，空白、与已存名字相同、保存进行中都不发请求，`restore` 不再从本地 prefs 恢复名字（名字唯一来源是服务器），删除无引用的 `anniversaryLabel / partnerAvatar / coverUri / keepOldCoverUntilUploadSuccess`；`CoupleScreen` 编辑区改为草稿 + 保存/取消并写明「这个名字会同时出现在你们两个人的手机上」，失败原因用 error 色显示；徽章在无名字时显示「取个名字」而非假名；`TimelineViewModel` 作者标签回退由 `小满/阿屿` 改为 `我/伴侣`。
+- **测试**：新增 `SetupViewModelTest`（2）与 `CoupleViewModelTest`（5），均为 JVM 级证据；`TwoDeviceRecordingLoopTest` 扩了两步真链路——配对带名字后用 B 的 token `readSpace` 见 `{小满, 阿屿}`；`SyncSession.renameOwn("小满呀")` 后伴侣侧 readSpace 见到该名字且本机名字缓存同步。
+- **绿灯**：服务端 `mvn -o test` → **Tests run: 55, Failures: 0, Errors: 0, Skipped: 0**（见记录 16 的 57 更正）；Android `./gradlew testDebugUnitTest` → 26/26（`SyncEngineTest` 11、`RoomSyncStoreTest` 7、`SetupViewModelTest` 2、`CoupleViewModelTest` 5、`TwoDeviceRecordingLoopTest` 1，其中竖切仍是真 Room×2 + 真 HTTP + 真 Spring Boot 进程 + 真 PostgreSQL），另 `:core:model:test` 通过。`:feature:couple:compileDebugAndroidTestKotlin` 通过——该模块 androidTest 依赖此前从未下载，本轮联网取回后才第一次可编译。
+- **已知偏差 / 未完成**：
+  1. 改名**不会实时到达对端**：PROFILE 没有变更行，对端在下次打开 App 时才收敛。这是刻意取舍（为改个称呼引入一种新实体类型 + 投影 + 归属规则，成本与风险都不成比例），但必须写进验收说明，不能算作已同步。
+  2. `CoupleScreenTest` 旧版断言的「我的名字」「中秋节 · 农历八月十五」「米色」在实现里都不存在（编辑区默认折叠、chip 文案是「暖米色」、纪念日文本从未渲染），属于**从未通过的假绿灯**；已重写为断言真实存在的文本，但本机无设备，仍只有编译级保证。
+  3. 同一屏仍硬编码「已相伴 1097 天」「中秋节 · 还有 360 天」与两张固定头像——同一类假身份的另一半，归 #6 处理。
+  4. 主题（暖米/纯白）仍只存本机，不跨设备同步；服务器已有 theme 列，但没有客户端写入路径。

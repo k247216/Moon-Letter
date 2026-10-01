@@ -57,25 +57,25 @@ class CoupleApiTest {
 
     @Test
     void validPairingTokenBecomesUnusable() throws Exception {
-        when(coupleService.pair(TOKEN)).thenReturn(new PairResult(
+        when(coupleService.pair(TOKEN, null)).thenReturn(new PairResult(
                 view(SPACE, SpaceStatus.ACTIVE, OWNER, PARTNER), "partner-device-token", PARTNER));
         doThrow(new ConflictException("pairing token already used"))
-                .when(coupleService).pair(TOKEN);
+                .when(coupleService).pair(TOKEN, null);
 
         mvc.perform(post("/api/v1/couple/pair")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PairRequest(TOKEN))))
+                        .content(objectMapper.writeValueAsString(new PairRequest(TOKEN, null))))
                 .andExpect(status().isConflict());
     }
 
     @Test
     void thirdUserIsRejected() throws Exception {
         doThrow(new ConflictException("couple space is full"))
-                .when(coupleService).pair(TOKEN);
+                .when(coupleService).pair(TOKEN, null);
 
         mvc.perform(post("/api/v1/couple/pair")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new PairRequest(TOKEN))))
+                        .content(objectMapper.writeValueAsString(new PairRequest(TOKEN, null))))
                 .andExpect(status().isConflict());
     }
 

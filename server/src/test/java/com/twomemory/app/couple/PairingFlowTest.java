@@ -103,22 +103,27 @@ class PairingFlowTest {
         assertThat(outstanding).isEqualTo(1);
 
         // 5. Pairing with the fresh token creates the second member and its
-        //    device session; the session token is returned exactly once.
-        ResponseEntity<Map> paired = postJson("/api/v1/couple/pair", Map.of("token", freshToken), null);
+        //    device session; the session token is returned exactly once. She
+        //    names herself here, because the first thing she must not see is 未命名.
+        ResponseEntity<Map> paired = postJson("/api/v1/couple/pair",
+                Map.of("token", freshToken, "displayName", "阿屿"), null);
         assertThat(paired.getStatusCode())
                 .as("pair response: %s", paired.getBody())
                 .isEqualTo(HttpStatus.OK);
         Map<?, ?> couple = (Map<?, ?>) paired.getBody().get("couple");
         assertThat(couple.get("status")).isEqualTo("ACTIVE");
         assertThat((List<?>) couple.get("members")).hasSize(2);
+        assertThat(memberNames(couple)).contains("阿屿");
         String partnerToken = (String) paired.getBody().get("deviceToken");
         assertThat(partnerToken).hasSize(43);
 
         // 6. The partner's bearer token authenticates the shared space read;
-        //    the pairing token is never disclosed on a space read.
+        //    the pairing token is never disclosed on a space read, and neither
+        //    device is left holding the placeholder name.
         ResponseEntity<Map> space = exchangeWithBearer("/api/v1/couple/" + coupleId, partnerToken);
         assertThat(space.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(space.getBody()).doesNotContainKey("pairingToken");
+        assertThat(memberNames((Map<?, ?>) space.getBody())).containsExactlyInAnyOrder("小满", "阿屿");
 
         // 7. The token is single use.
         ResponseEntity<Map> reused = postJson("/api/v1/couple/pair", Map.of("token", freshToken), null);
@@ -130,11 +135,48 @@ class PairingFlowTest {
                         + "AND left_at IS NULL AND deleted_at IS NULL",
                 Integer.class, coupleId);
         assertThat(memberCount).isEqualTo(2);
+
+        // 9. Renaming herself is a name-only PATCH and must not quietly undo
+        //    anything she set before, so the client never has to resend the theme.
+        String ownerId = (String) boot.get("userId");
+        String partnerId = (String) paired.getBody().get("userId");
+        String partnerProfilePath = "/api/v1/couple/" + coupleId + "/members/" + partnerId + "/profile";
+        ResponseEntity<Map> themeSet = patchJson(partnerProfilePath,
+                Map.of("displayName", "阿屿", "theme", "PURE_WHITE"), partnerToken);
+        assertThat(themeSet.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> renamed = patchJson(partnerProfilePath,
+                Map.of("displayName", "  阿屿屿  "), partnerToken);
+        assertThat(renamed.getStatusCode())
+                .as("rename response: %s", renamed.getBody())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(renamed.getBody().get("displayName")).isEqualTo("阿屿屿");
+        assertThat(renamed.getBody().get("theme")).isEqualTo("PURE_WHITE");
+
+        // 10. The other device reads the new name on its next space read.
+        ResponseEntity<Map> ownerView = exchangeWithBearer("/api/v1/couple/" + coupleId, ownerToken);
+        assertThat(memberNames(ownerView.getBody())).containsExactlyInAnyOrder("小满", "阿屿屿");
+
+        // 11. A member cannot rename the other one, and a blank name is rejected
+        //     rather than stored.
+        ResponseEntity<Map> forbidden = patchJson(
+                "/api/v1/couple/" + coupleId + "/members/" + ownerId + "/profile",
+                Map.of("displayName", "陌生人"), partnerToken);
+        assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> blank = patchJson(partnerProfilePath, Map.of("displayName", "   "), partnerToken);
+        assertThat(blank.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     private void expireOutstandingToken() {
         jdbcTemplate.update("UPDATE space_pairing_code SET expires_at = now() - interval '1 minute' "
                 + "WHERE consumed_at IS NULL");
+    }
+
+    private static List<String> memberNames(Map<?, ?> couple) {
+        return ((List<?>) couple.get("members")).stream()
+                .map(member -> (String) ((Map<?, ?>) ((Map<?, ?>) member).get("profile")).get("displayName"))
+                .toList();
     }
 
     private ResponseEntity<Map> postBootstrap(String secret, String displayName) {
@@ -152,6 +194,15 @@ class PairingFlowTest {
             headers.setBearerAuth(bearerToken);
         }
         return restTemplate.postForEntity(path, new HttpEntity<>(body, headers), Map.class);
+    }
+
+    private ResponseEntity<Map> patchJson(String path, Map<String, Object> body, String bearerToken) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        if (bearerToken != null) {
+            headers.setBearerAuth(bearerToken);
+        }
+        return restTemplate.exchange(path, HttpMethod.PATCH, new HttpEntity<>(body, headers), Map.class);
     }
 
     private ResponseEntity<Map> exchangeWithBearer(String path, String token) {

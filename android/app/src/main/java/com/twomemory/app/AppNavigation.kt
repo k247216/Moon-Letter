@@ -129,7 +129,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
         }
     }
     val coupleViewModel = remember { CoupleViewModel() }
-    val coupleState by coupleViewModel.state.collectAsState()
+    var cachedNames by remember { mutableStateOf(SyncSession.loadNames(context)) }
     val timelineViewModel = remember {
         val dao = AppDatabase.build(context).entryDao()
         TimelineViewModel(
@@ -146,15 +146,15 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
     val editorViewModel = remember { EditorViewModel() }
     val editorState by editorViewModel.state.collectAsState()
 
-    // Real display names win over the placeholder couple state: fetch them
-    // from the server profile, then label every author by their actual name.
-    LaunchedEffect(coupleState.ownName, coupleState.partnerName) {
+    // Real display names win over the placeholder couple state: the space is
+    // read once when the app is entered, and again after a rename succeeds.
+    // Typing in the name field must not reach the network.
+    LaunchedEffect(Unit) {
         SyncSession.refreshNames(context)
-        val saved = SyncSession.loadNames(context)
-        timelineViewModel.updateNames(
-            own = saved.own.ifBlank { coupleState.ownName },
-            partner = saved.partner.ifBlank { coupleState.partnerName },
-        )
+        cachedNames = SyncSession.loadNames(context)
+    }
+    LaunchedEffect(cachedNames) {
+        timelineViewModel.updateNames(own = cachedNames.own, partner = cachedNames.partner)
     }
 
     // Unpublished text is kept off the critical path: restore on entry, keep
@@ -235,7 +235,21 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
                     coverBitmap = coverBitmap,
                     onChangeCover = { coverPicker.launch(arrayOf("image/*")) },
                 )
-                "couple" -> CoupleRoute(coupleViewModel, onThemeChange)
+                "couple" -> CoupleRoute(
+                    viewModel = coupleViewModel,
+                    onThemeChange = onThemeChange,
+                    serverOwnName = cachedNames.own,
+                    serverPartnerName = cachedNames.partner,
+                    onSaveName = { name ->
+                        val saved = SyncSession.renameOwn(context, name)
+                        cachedNames = SyncSession.loadNames(context)
+                        timelineViewModel.updateNames(
+                            own = cachedNames.own.ifBlank { saved },
+                            partner = cachedNames.partner,
+                        )
+                        saved
+                    },
+                )
                 "album" -> AlbumPreviewScreen()
                 "map" -> CityMapPreviewScreen()
             }

@@ -8,6 +8,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import java.io.IOException
@@ -38,7 +39,9 @@ data class SpaceViewDto(
 
 data class PairingTokenResultDto(val couple: CoupleViewDto = CoupleViewDto(), val pairingToken: String = "")
 
-data class PairRequestDto(val token: String)
+data class PairRequestDto(val token: String, val displayName: String? = null)
+
+data class UpdateProfileRequestDto(val displayName: String)
 
 data class PairResultDto(
     val couple: CoupleViewDto = CoupleViewDto(),
@@ -50,8 +53,8 @@ data class PairResultDto(
 class SetupHttpException(val code: Int, message: String) : IOException("setup failed: HTTP $code $message")
 
 /**
- * Device binding calls used before a session exists. All are real HTTP with
- * no bearer token (bootstrap/pair are anonymous by design).
+ * Device binding and profile calls used around setup. Bootstrap and pair are
+ * anonymous by design; the space read and the rename carry a bearer token.
  */
 interface SessionApi {
     suspend fun bootstrap(baseUrl: String, secret: String, displayName: String): BootstrapResultDto
@@ -59,10 +62,22 @@ interface SessionApi {
     /** Fetches (and rotates) the one-time pairing token for the space. */
     suspend fun pairingToken(baseUrl: String, bearer: String, coupleId: UUID): PairingTokenResultDto
 
-    suspend fun pair(baseUrl: String, pairingToken: String): PairResultDto
+    suspend fun pair(baseUrl: String, pairingToken: String, displayName: String): PairResultDto
 
     /** Reads the space with member profiles (display names for the timeline). */
     suspend fun readSpace(baseUrl: String, bearer: String, coupleId: UUID): SpaceViewDto
+
+    /**
+     * Renames the caller in the space; the server rejects renaming anyone else
+     * and keeps every field the client does not send.
+     */
+    suspend fun updateOwnProfile(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+        userId: UUID,
+        displayName: String,
+    ): ProfileViewDto
 }
 
 internal interface SessionRetrofitApi {
@@ -80,6 +95,13 @@ internal interface SessionRetrofitApi {
 
     @GET("api/v1/couple/{coupleId}")
     suspend fun readSpace(@Path("coupleId") coupleId: UUID): Response<SpaceViewDto>
+
+    @PATCH("api/v1/couple/{coupleId}/members/{userId}/profile")
+    suspend fun updateOwnProfile(
+        @Path("coupleId") coupleId: UUID,
+        @Path("userId") userId: UUID,
+        @Body body: UpdateProfileRequestDto,
+    ): Response<ProfileViewDto>
 }
 
 class RetrofitSessionApi private constructor(
@@ -104,9 +126,25 @@ class RetrofitSessionApi private constructor(
             response.body() ?: throw SetupHttpException(response.code(), "empty body")
         }
 
-    override suspend fun pair(baseUrl: String, pairingToken: String): PairResultDto =
+    override suspend fun pair(baseUrl: String, pairingToken: String, displayName: String): PairResultDto =
         withContext(Dispatchers.IO) {
-            val response = api(baseUrl).pair(PairRequestDto(pairingToken))
+            val response = api(baseUrl).pair(PairRequestDto(pairingToken, displayName))
+            if (!response.isSuccessful) {
+                throw SetupHttpException(response.code(), response.errorBody()?.string().orEmpty().take(200))
+            }
+            response.body() ?: throw SetupHttpException(response.code(), "empty body")
+        }
+
+    override suspend fun updateOwnProfile(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+        userId: UUID,
+        displayName: String,
+    ): ProfileViewDto =
+        withContext(Dispatchers.IO) {
+            val response = api(baseUrl, bearer)
+                .updateOwnProfile(coupleId, userId, UpdateProfileRequestDto(displayName))
             if (!response.isSuccessful) {
                 throw SetupHttpException(response.code(), response.errorBody()?.string().orEmpty().take(200))
             }
