@@ -257,7 +257,6 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
     LaunchedEffect(editorState.saved) {
         if (editorState.saved) {
             editingMode?.let { DraftStore.clear(context, it) }
-            editingMode = null
         }
     }
 
@@ -275,7 +274,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
             DraftStore.save(context, mode, editorState.title, editorState.body, editorState.photos)
         }
         val closeEditor = {
-            keepDraft()
+            if (editorState.saved) DraftStore.clear(context, mode) else keepDraft()
             editingMode = null
         }
         val switchMode: (EntryMode) -> Unit = { next ->

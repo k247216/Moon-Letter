@@ -15,3 +15,7 @@ Task 2: Ruling: the focused Compose test and screenshot comparison are not run o
 Task 3: Ruling: keep block author metadata optional at the UI boundary because the current shared `EntryBlock` model does not yet carry an author ID; the detail screen renders author labels when supplied and the service/database task must provide them before shared-version acceptance.
 Task 3: Ruling: unsupported VIDEO/AUDIO/MUSIC/LOCATION blocks remain readable as explicit type messages rather than disappearing; their real renderers belong to the media/map plans.
 Task 3: Ruling: focused detail Compose tests and the Room-backed device open path remain pending on the SDK machine; local verification is `git diff --check` only.
+
+Task 4: Ruling: after a successful local save, keep the editor visible with `等待同步` and change the primary action to `返回时间轴`; this makes the persistence state observable and avoids silently equating local Room success with partner visibility.
+Task 4: Ruling: shared partner block fields are optional on `EditorUiState` until the database/sync layer supplies author-owned blocks; the UI renders them read-only when present and keeps the existing create flow unchanged when absent.
+Task 4: Ruling: focused editor tests and keyboard/200% screenshot verification remain pending on the SDK machine; local verification is `git diff --check` and source inspection.

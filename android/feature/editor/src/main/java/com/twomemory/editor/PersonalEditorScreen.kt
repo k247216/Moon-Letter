@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.TwoMemoryIcons
+import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.TwoMemoryTypography
 import com.twomemory.model.EntryMode
 import java.time.ZoneId
@@ -81,6 +82,7 @@ fun PersonalEditorScreen(
         ) {
             EditorTopBar(state, onClose, onPublish)
             RecordModeSwitch(mode, onModeChange)
+            EditorStatus(state.recordStatus)
             val author = ownName.ifBlank { "我" }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AuthorMark(author, 54.dp, MaterialTheme.colorScheme.primary)
@@ -129,6 +131,18 @@ fun PersonalEditorScreen(
 }
 
 @Composable
+private fun EditorStatus(status: MoonLetterRecordStatus) {
+    Text(
+        status.label,
+        style = TwoMemoryTypography.caption,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
 private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
@@ -143,11 +157,11 @@ private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
                 style = TwoMemoryTypography.body,
             )
         }
-        TextButton(onClick = onPublish, enabled = !state.saving && state.hasContent) {
+        TextButton(onClick = if (state.saved) onClose else onPublish, enabled = state.saved || (!state.saving && state.hasContent)) {
             Text(
                 when {
                     state.saving -> "保存中"
-                    state.saved -> "已保存"
+                    state.saved -> "返回时间轴"
                     else -> "完成"
                 },
                 color = if (state.hasContent) MaterialTheme.colorScheme.primary else Color.Unspecified,

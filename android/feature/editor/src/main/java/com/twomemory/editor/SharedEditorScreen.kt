@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.TwoMemoryIcons
+import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.TwoMemoryTypography
 import com.twomemory.model.EntryMode
 import java.time.ZoneId
@@ -47,6 +48,8 @@ fun SharedEditorRoute(
     onModeChange: (EntryMode) -> Unit = {},
     photoActions: EditorPhotoActions? = null,
     ownName: String = "",
+    partnerName: String? = state.partnerName,
+    partnerBody: String? = state.partnerBody,
 ) {
     val author = ownName.ifBlank { "我" }
     Scaffold(
@@ -64,6 +67,7 @@ fun SharedEditorRoute(
         ) {
             SharedTopBar(state, onClose, onPublish)
             RecordModeSwitch(EntryMode.COLLABORATIVE, onModeChange)
+            EditorStatus(state.recordStatus)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AuthorMark(author, 48.dp, MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(12.dp))
@@ -100,8 +104,11 @@ fun SharedEditorRoute(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f))
                             inner()
                         }
-                    },
-                )
+                },
+            )
+            if (!partnerName.isNullOrBlank() && !partnerBody.isNullOrBlank()) {
+                ReadOnlyAuthorBlock(partnerName, partnerBody)
+            }
             }
             EditorPhotoStrip(
                 photos = state.photos,
@@ -113,6 +120,35 @@ fun SharedEditorRoute(
             }
             Spacer(Modifier.size(96.dp))
         }
+    }
+}
+
+@Composable
+private fun EditorStatus(status: MoonLetterRecordStatus) {
+    Text(
+        status.label,
+        style = TwoMemoryTypography.caption,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
+private fun ReadOnlyAuthorBlock(name: String, body: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().background(Color(0x146F8268), androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AuthorMark(name, 34.dp, Color(0xFF6F8268))
+            Spacer(Modifier.width(8.dp))
+            Text("$name的视角", style = TwoMemoryTypography.caption, color = Color(0xFF6F8268))
+        }
+        Text(body, style = TwoMemoryTypography.body)
+        Text("仅 TA 可以修改", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .52f))
     }
 }
 
@@ -132,8 +168,8 @@ private fun SharedTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
                 style = TwoMemoryTypography.body,
             )
         }
-        TextButton(onClick = onPublish, enabled = !state.saving && state.hasContent) {
-            Text(if (state.saving) "发布中" else "发布", fontWeight = FontWeight.Medium)
+        TextButton(onClick = if (state.saved) onClose else onPublish, enabled = state.saved || (!state.saving && state.hasContent)) {
+            Text(if (state.saving) "发布中" else if (state.saved) "返回时间轴" else "发布", fontWeight = FontWeight.Medium)
         }
     }
 }
