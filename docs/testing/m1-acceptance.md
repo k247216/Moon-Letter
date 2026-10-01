@@ -423,3 +423,10 @@
 - **Commit**：`d697e94 feat(ui): make album and city views data-driven` + `6b68ab8 fix(ui): accept city snapshot name fields`，均已推送到 `origin/m1-stable-recording-loop`；计划文档末尾修正为 `15c9971`。
 - **实现**：相册从 Room `entry_blocks` 的已发布 IMAGE/VIDEO 派生月份、日期、作者和来源记录；图片复用本机/远端 asset 渲染，视频明确回到原记录。城市页从已发布 LOCATION block 派生城市故事，地图区域不可用时列表仍能阅读；两页都不请求实时定位、不造演示数据。
 - **测试边界**：新增 `FutureFeatureScreensTest`，但本机未运行 Compose instrumentation、Gradle 或真机；因此相册/城市页仍为 **NOT RUN**，服务端媒体/位置接口尚未接通，不能标记 V2/V3 或 M1 完成。
+
+### 记录 29：时间工具与本机缓存导出入口（2026-10-01）
+
+- **Commit**：`2978cee feat(ui): add anniversary capsule and export routes`，已推送到 `origin/m1-stable-recording-loop`。
+- **实现**：`我们` 页的纪念日、时间胶囊、数据与导出行现在可进入独立页面；纪念日保存名称/农历规则/重复设置到本机并显示等待同步；时间胶囊锁定后隐藏正文；本机缓存导出读取已发布 Room 记录并通过系统分享发送文字备份。
+- **严格边界**：完整倒计时计算、服务端胶囊锁定/到期解锁、按范围/全部 ZIP（JSON + Markdown + 原媒体）仍需 SDK 机器提供 API 和同步实现；UI 不宣称这些能力已完成。
+- **验证**：新增 `RelationshipToolsScreenTest`，本机仅做 `git diff --cached --check`；未运行 Gradle、模拟器或真机。因此 D2、V4/V5、H1–H8 和 M1 总体验收仍为 **NOT RUN / NOT VERIFIED**。
