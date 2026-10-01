@@ -51,6 +51,31 @@ object SyncSession {
         return SyncEngine(api, RoomSyncStore(database), session.coupleId)
     }
 
+    /** Saves a personal draft through Room + outbox, then triggers a sync. */
+    suspend fun saveDraft(context: Context, state: com.twomemory.editor.EditorUiState) {
+        val session = load(context) ?: error("设备尚未绑定：请先完成 bootstrap 与配对")
+        val payload = org.json.JSONObject().put("text", state.body).toString()
+        com.twomemory.database.LocalEntryWriter(AppDatabase.build(context)).save(
+            com.twomemory.model.LocalEntryCommand(
+                coupleId = session.coupleId,
+                authorId = session.userId,
+                mode = com.twomemory.model.EntryMode.PERSONAL,
+                occurredAt = state.occurrenceTime,
+                occurredTimezone = state.timezone,
+                title = state.title.ifBlank { null },
+                blocks = listOf(
+                    com.twomemory.model.LocalBlockCommand(
+                        type = com.twomemory.model.BlockType.TEXT,
+                        orderKey = 0,
+                        payload = payload,
+                        authorId = session.userId,
+                    ),
+                ),
+            ),
+        )
+        triggerSync(context)
+    }
+
     /** One-shot sync from app start / foreground return / manual refresh. */
     fun triggerSync(context: Context) {
         val session = load(context) ?: return

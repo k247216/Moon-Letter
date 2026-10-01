@@ -99,7 +99,8 @@ public class SyncOperationDispatcher {
                     false));
         }
         CreateEntryCommand command = new CreateEntryCommand(
-                actorId, coupleId, EntryMode.PERSONAL, title, occurredAt, timezone, blocks);
+                actorId, coupleId, EntryMode.PERSONAL, title, occurredAt, timezone, blocks,
+                parseOptionalUuid(root.path("entryId")));
         EntryView entry = entryService.createDraft(actorId, command);
         String responseBody;
         try {
@@ -120,6 +121,14 @@ public class SyncOperationDispatcher {
         } catch (IllegalArgumentException exception) {
             throw new SyncValidationException("uuid field is malformed: " + raw);
         }
+    }
+
+    private static UUID parseOptionalUuid(JsonNode node) {
+        String raw = node.asText(null);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return parseUuid(node);
     }
 
     private static Instant parseInstant(JsonNode node) {

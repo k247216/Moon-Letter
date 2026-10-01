@@ -70,10 +70,10 @@ class EntryApiTest {
     void sharedEntryCanBeCreatedWithBothContributors() throws Exception {
         CreateEntryCommand command = new CreateEntryCommand(
                 USER, SPACE, EntryMode.COLLABORATIVE, "周末", Instant.parse("2026-09-30T12:18:00Z"),
-                "Asia/Shanghai", List.of());
+                "Asia/Shanghai", List.of(), null);
         when(entryService.createDraft(eq(USER), any(CreateEntryCommand.class)))
                 .thenReturn(new EntryView(ENTRY, SPACE, EntryMode.COLLABORATIVE, EntryState.DRAFT,
-                        USER, 0, 0, List.of()));
+                        USER, 0, 0, null, 0L, "Asia/Shanghai", List.of()));
 
         mvc.perform(post("/api/v1/entries")
                         .with(TestAuth.deviceSession(USER, SPACE))

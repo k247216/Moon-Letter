@@ -54,7 +54,7 @@ public class EntryService {
         accessPolicy.requireMember(command.authorId(), command.coupleId());
         List<BlockMutation> blocks = stableOrder(command.blocks() == null ? List.of() : command.blocks());
         validateTitle(command.title());
-        UUID entryId = UUID.randomUUID();
+        UUID entryId = command.entryId() != null ? command.entryId() : UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO entry(id, couple_id, mode, state, author_id, title,
                                   occurred_at, occurred_timezone, current_revision_no,
@@ -311,7 +311,9 @@ public class EntryService {
     private EntryRow lockEntry(UUID entryId) {
         return jdbcTemplate.queryForObject("""
                 SELECT id, couple_id, mode::text AS mode, state::text AS state, author_id,
-                       row_version, current_revision_no
+                       row_version, current_revision_no, title,
+                       EXTRACT(EPOCH FROM occurred_at) * 1000 AS occurred_at_epoch_millis,
+                       occurred_timezone
                 FROM entry WHERE id = ? FOR UPDATE
                 """, this::mapEntryRow, entryId);
     }
@@ -319,7 +321,9 @@ public class EntryService {
     private EntryRow locklessEntry(UUID entryId) {
         return jdbcTemplate.queryForObject("""
                 SELECT id, couple_id, mode::text AS mode, state::text AS state, author_id,
-                       row_version, current_revision_no
+                       row_version, current_revision_no, title,
+                       EXTRACT(EPOCH FROM occurred_at) * 1000 AS occurred_at_epoch_millis,
+                       occurred_timezone
                 FROM entry WHERE id = ?
                 """, this::mapEntryRow, entryId);
     }
@@ -359,7 +363,8 @@ public class EntryService {
                 rs.getObject("asset_id", UUID.class),
                 rs.getTimestamp("deleted_at") != null), entryId);
         return new EntryView(row.id(), row.coupleId(), row.mode(), row.state(), row.authorId(),
-                row.rowVersion(), row.currentRevisionNo(), List.copyOf(blocks));
+                row.rowVersion(), row.currentRevisionNo(), row.title(),
+                row.occurredAtEpochMillis(), row.occurredTimezone(), List.copyOf(blocks));
     }
 
     private EntryRow mapEntryRow(ResultSet rs, int rowNum) throws SQLException {
@@ -370,7 +375,10 @@ public class EntryService {
                 EntryState.valueOf(rs.getString("state")),
                 rs.getObject("author_id", UUID.class),
                 rs.getLong("row_version"),
-                rs.getInt("current_revision_no"));
+                rs.getInt("current_revision_no"),
+                rs.getString("title"),
+                rs.getLong("occurred_at_epoch_millis"),
+                rs.getString("occurred_timezone"));
     }
 
     private Instant lastOccurredAt(UUID entryId) {
@@ -384,6 +392,7 @@ public class EntryService {
     }
 
     private record EntryRow(UUID id, UUID coupleId, EntryMode mode, EntryState state,
-                            UUID authorId, long rowVersion, int currentRevisionNo) {
+                            UUID authorId, long rowVersion, int currentRevisionNo,
+                            String title, long occurredAtEpochMillis, String occurredTimezone) {
     }
 }

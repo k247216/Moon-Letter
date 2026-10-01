@@ -18,6 +18,7 @@ data class PushResult(
     val operationId: UUID,
     val status: Status,
     val responseBody: String? = null,
+    val replayed: Boolean = false,
 ) {
     enum class Status { APPLIED, DUPLICATE, CONFLICT, UNAUTHORIZED, RETRYABLE_FAILURE }
 }

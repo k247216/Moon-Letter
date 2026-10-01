@@ -79,6 +79,7 @@ class LocalEntryWriter(private val database: AppDatabase) {
             })
         }
         return org.json.JSONObject().apply {
+            put("entryId", command.entryId.toString())
             put("authorId", command.authorId.toString())
             put("title", command.title ?: org.json.JSONObject.NULL)
             put("occurredAt", command.occurredAt.toString())

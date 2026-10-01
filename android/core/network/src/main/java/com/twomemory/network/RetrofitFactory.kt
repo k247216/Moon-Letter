@@ -99,6 +99,7 @@ class RetrofitCoupleDiaryApi private constructor(
                     operationId = operation.operationId,
                     status = PushResult.Status.APPLIED,
                     responseBody = mutation.body,
+                    replayed = mutation.replayed,
                 )
             }
             response.code() == 401 -> PushResult(operation.operationId, PushResult.Status.UNAUTHORIZED)
