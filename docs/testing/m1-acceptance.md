@@ -268,3 +268,13 @@
   4. 未发布草稿被整页丢弃或被新草稿覆盖时，其图片文件仍会成为孤儿（本轮只处理了编辑器内显式「移除」）。
   5. 共同记录的「追加自己视角的图」入口在 UI 上仍未开放（附件工具栏只有「图片」可用，且走创建路径）；语音/音乐/位置仍是占位。
   6. 规格要求的记录成本实测（≤10 秒 / ≤4 次交互）仍无真机数据，加图后交互数会变，需实测秒数。
+
+### 记录 19：开档前的数据封存与清空（2026-10-01）
+
+- **现场**：dev 库 `moon_letter` 的 5 条记录实测为标题 `u` / `h` 的键盘乱码，**全部 DRAFT、`row_version=0`、无评论、无媒体**（`server/storage` 为空目录）。它们是配对调试时留下的，不是内容。
+- **封存（仓库外，不入版本库）**：`E:\MoonLetter\archive\pre-open-2026-10-01\` 下 `moon_letter-pre-open.dump`（pg_dump custom，可还原）与 `moon_letter-pre-open.sql`（含 5 条 entry 的 INSERT，可读）。私密内容绝不提交进 git。
+- **还原演练先行**：把 dump 还原进临时库 `moon_letter_wipe_drill` 验证 `entry=5 / entry_block=5 / sync_change=5 / last_space_sequence=5 / device_session=2` 后才动手删除；演练库与容器内临时 dump 已删除，不留第二份副本。
+- **删除范围**：单事务清空 `entry_block / entry_contributor / entry / sync_change`（各 5 行）与 `entry_revision / comment / time_capsule`（0 行）。
+- **刻意保留**：`couple_sync_state.last_space_sequence=5` **不回卷**——两台手机的本地 cursor 已经走到 5，回卷会让新记录落在 cursor 之下而永远拉不到；`idempotency_record` 5 行保留，使任何仍在手机 outbox 里的旧操作被服务端判定为重放而不是把刚删掉的记录写回来；`app_user / user_profile / couple_space / couple_member / device_session / space_pairing_code` 全部保留，空间与配对关系不变，只清书。
+- **未完成 / 必须知道的边界**：**这只清了服务器**。两台手机各自的 Room 里那 5 条 DRAFT 仍在，时间线还会显示它们；本机无设备也无法远程清。开档当天的动作是：在两台手机上「设置 → 应用 → 清除数据」后重新配对（或卸载重装），从「我们的第一页」开始写。此步骤必须与「她正式加入」同一天做，否则她会先看到 5 页乱码。
+- **恢复命令（若需要）**：`docker cp moon_letter-pre-open.dump infra-postgres-1:/tmp/r.dump && docker exec infra-postgres-1 pg_restore -U moon_letter -d moon_letter --no-owner /tmp/r.dump`（恢复到空库，不要覆盖已有真实记录）。
