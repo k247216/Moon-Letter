@@ -3,8 +3,11 @@ package com.twomemory.app
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.twomemory.designsystem.TwoMemoryTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,5 +45,19 @@ class FutureFeatureScreensTest {
         composeRule.onNodeWithText("我们的城市").assertIsDisplayed()
         composeRule.onNodeWithText("杭州").assertIsDisplayed()
         composeRule.onNodeWithText("散步回来的路上").assertIsDisplayed()
+    }
+
+    @Test
+    fun mapCanCreateOneManualCitySnapshotWithoutRealtimeLocation() {
+        var savedCity = ""
+        composeRule.setContent {
+            TwoMemoryTheme {
+                CityMapPreviewScreen(onSaveCitySnapshot = { savedCity = it })
+            }
+        }
+        composeRule.onNodeWithText("记录城市").performClick()
+        composeRule.onNodeWithText("城市名称").performTextInput("杭州")
+        composeRule.onNodeWithText("保存快照").performClick()
+        assertEquals("杭州", savedCity)
     }
 }

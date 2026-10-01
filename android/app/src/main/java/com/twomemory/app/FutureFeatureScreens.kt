@@ -19,9 +19,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -170,7 +178,11 @@ private fun MediaTile(item: AlbumMediaUi, onOpenEntry: (String) -> Unit, modifie
 fun CityMapPreviewScreen(
     stories: List<CityStoryUi> = emptyList(),
     onOpenEntry: (String) -> Unit = {},
+    onSaveCitySnapshot: (String) -> Unit = {},
+    snapshotStatus: String? = null,
 ) {
+    var showSnapshotDialog by rememberSaveable { mutableStateOf(false) }
+    var cityDraft by rememberSaveable { mutableStateOf("") }
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier.fillMaxWidth().height(276.dp).background(Color(0xFFDDE8E1)),
@@ -192,10 +204,14 @@ fun CityMapPreviewScreen(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = .92f),
                 shadowElevation = 2.dp,
             ) {
-                Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Icon(TwoMemoryIcons.Location, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(6.dp))
                     Text(if (stories.isEmpty()) "还没有留下地点" else "${stories.map { it.city }.distinct().size} 个城市", style = TwoMemoryTypography.body)
+                    Button(onClick = { showSnapshotDialog = true }) { Text("记录城市") }
                 }
             }
         }
@@ -203,8 +219,12 @@ fun CityMapPreviewScreen(
             Text("城市故事", style = TwoMemoryTypography.display)
             HandDrawnUnderline(168f)
             Spacer(Modifier.height(8.dp))
+            snapshotStatus?.let {
+                Text(it, style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(4.dp))
+            }
             if (stories.isEmpty()) {
-                Text("点击记录里的“城市”后，这里会出现你们主动留下的地点。", style = TwoMemoryTypography.body, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .58f))
+                Text("记录一个城市后，这里会出现你们主动留下的地点。", style = TwoMemoryTypography.body, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .58f))
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(stories, key = { it.id }) { story ->
@@ -213,6 +233,36 @@ fun CityMapPreviewScreen(
                 }
             }
         }
+    }
+    if (showSnapshotDialog) {
+        AlertDialog(
+            onDismissRequest = { showSnapshotDialog = false },
+            icon = { Icon(TwoMemoryIcons.Location, contentDescription = null) },
+            title = { Text("记录一次城市快照") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("只保存城市级名称，不做实时定位或轨迹。", style = TwoMemoryTypography.body)
+                    OutlinedTextField(
+                        value = cityDraft,
+                        onValueChange = { cityDraft = it },
+                        label = { Text("城市名称") },
+                        placeholder = { Text("例如：杭州") },
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = cityDraft.isNotBlank(),
+                    onClick = {
+                        onSaveCitySnapshot(cityDraft.trim())
+                        cityDraft = ""
+                        showSnapshotDialog = false
+                    },
+                ) { Text("保存快照") }
+            },
+            dismissButton = { TextButton(onClick = { showSnapshotDialog = false }) { Text("取消") } },
+        )
     }
 }
 

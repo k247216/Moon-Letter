@@ -42,3 +42,10 @@
 - Keep 图片 wired to the existing picker; make 视频、语音、音乐、城市、更多 open an explanation instead of silently doing nothing.
 - State the exact handoff for each unavailable capability: media upload, MUSIC block, one-time city snapshot, or profile tools. Never request a permission or write a fake block from a disabled path.
 - Add a Compose regression for the video explanation; device screenshots remain the SDK-machine responsibility.
+
+## Task 7 — Make the map page write a city snapshot
+
+- Add a manual city-name confirmation surface from the map page.
+- Persist one `LOCATION` block through the existing local entry/outbox path, with the current occurrence time and no background location permission.
+- Keep the map list-first fallback and expose local-save/sync status; city stories continue to open their source entry.
+- The SDK machine must verify server acceptance and the two-device projection; this Mac does not claim that sync is complete.

@@ -447,3 +447,8 @@
 
 - **本轮内容**：保留指导图要求的图片/视频/语音/音乐/城市/更多六项顺序。图片继续打开本机照片选择器；其余入口现在可点击并说明当前接入边界，不请求未实现的权限、不写假的媒体/位置 block，也不把等待服务端的能力显示成成功。
 - **验证边界**：新增 `EditorScreenTest.mediaButtonsExplainTheirBoundaryInsteadOfBeingDead`；本机未运行 Gradle、Compose instrumentation 或真机。需要 SDK 机器确认对照截图的底部工具栏尺寸、系统分享进入音乐草稿及媒体/城市接口接通后的回归。
+
+### 记录 33：地图可以主动记录城市快照（2026-10-01）
+
+- **本轮内容**：地图页新增“记录城市”入口，手动确认城市名称后通过现有 `LocalEntryWriter` 写入一条含 `LOCATION` block 的个人记录，并触发既有同步队列。只保存城市级名称和发生时间，不请求实时定位、不写轨迹；保存失败在地图页显示明确状态。
+- **验证边界**：新增 `FutureFeatureScreensTest.mapCanCreateOneManualCitySnapshotWithoutRealtimeLocation`；本机未运行 Gradle、Compose instrumentation、服务端或真机。SDK 机器需验证 `LOCATION` DTO 校验、两端城市故事投影和离线恢复。

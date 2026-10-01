@@ -147,7 +147,11 @@ private fun cityStoriesOf(
         .filter { it.type == "LOCATION" }
         .mapNotNull { block ->
             val entry = entryById[block.entryId] ?: return@mapNotNull null
-            if (entry.state != "PUBLISHED" || entry.deleted) return@mapNotNull null
+            // A locally saved city snapshot should be readable by its author
+            // while waiting for sync, but never leak a private draft to the
+            // partner's map projection.
+            val ownPending = entry.authorId == currentUserId?.toString()
+            if ((entry.state != "PUBLISHED" && !ownPending) || entry.deleted) return@mapNotNull null
             val payload = payloadOf(block)
             val city = payload.optString("city")
                 .ifBlank { payload.optString("cityName") }
@@ -418,6 +422,7 @@ fun AppNavigation(
     val editorViewModel = remember { EditorViewModel() }
     val editorState by editorViewModel.state.collectAsState()
     val toolScope = rememberCoroutineScope()
+    var citySnapshotStatus by remember { mutableStateOf<String?>(null) }
 
     // Real display names win over the placeholder couple state: the space is
     // read once when the app is entered, and again after a rename succeeds.
@@ -704,7 +709,51 @@ fun AppNavigation(
                     onOpenWeeklySummary = { reviewRoute = MemoryReviewRoute.WEEKLY_SUMMARY },
                 )
                 "album" -> AlbumPreviewScreen(media = albumMedia, onOpenEntry = { openEntryId = it })
-                "map" -> CityMapPreviewScreen(stories = cityStories, onOpenEntry = { openEntryId = it })
+                "map" -> CityMapPreviewScreen(
+                    stories = cityStories,
+                    onOpenEntry = { openEntryId = it },
+                    snapshotStatus = citySnapshotStatus,
+                    onSaveCitySnapshot = { city ->
+                        val session = SyncSession.load(context)
+                        if (session == null) {
+                            citySnapshotStatus = "设备尚未绑定，城市快照没有保存"
+                        } else {
+                            citySnapshotStatus = "正在保存到本机…"
+                            toolScope.launch {
+                                runCatching {
+                                    val now = java.time.Instant.now()
+                                    com.twomemory.database.LocalEntryWriter(database).save(
+                                        com.twomemory.model.LocalEntryCommand(
+                                            coupleId = session.coupleId,
+                                            authorId = session.userId,
+                                            mode = EntryMode.PERSONAL,
+                                            occurredAt = now,
+                                            occurredTimezone = ZoneId.systemDefault().id,
+                                            title = city,
+                                            blocks = listOf(
+                                                com.twomemory.model.LocalBlockCommand(
+                                                    type = com.twomemory.model.BlockType.LOCATION,
+                                                    orderKey = 0,
+                                                    payload = JSONObject()
+                                                        .put("city", city)
+                                                        .put("capturedAt", now.toString())
+                                                        .toString(),
+                                                    authorId = session.userId,
+                                                ),
+                                            ),
+                                        ),
+                                        publish = true,
+                                    )
+                                    SyncSession.triggerSync(context)
+                                }.onSuccess {
+                                    citySnapshotStatus = "已保存到本机 · 等待同步"
+                                }.onFailure {
+                                    citySnapshotStatus = "城市快照保存失败，请重试"
+                                }
+                            }
+                        }
+                    },
+                )
             }
         }
     }
