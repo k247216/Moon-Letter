@@ -11,3 +11,7 @@ Task 1: Ruling: the planned focused JVM test is written but not run on this mach
 Task 2: Ruling: keep the existing `TimelineScreen` route signature and Room-backed `TimelineEntryUi`; improve the visible composition in place so the second machine can build the same APK without a navigation/data migration.
 Task 2: Ruling: the test update changes the shared marker assertion from one combined string to separate author + `共同` labels, matching the guided double-identity layout and avoiding a chat-bubble interpretation.
 Task 2: Ruling: the focused Compose test and screenshot comparison are not run on this Mac; the SDK machine owns both. Local verification is limited to `git diff --check` and source inspection.
+
+Task 3: Ruling: keep block author metadata optional at the UI boundary because the current shared `EntryBlock` model does not yet carry an author ID; the detail screen renders author labels when supplied and the service/database task must provide them before shared-version acceptance.
+Task 3: Ruling: unsupported VIDEO/AUDIO/MUSIC/LOCATION blocks remain readable as explicit type messages rather than disappearing; their real renderers belong to the media/map plans.
+Task 3: Ruling: focused detail Compose tests and the Room-backed device open path remain pending on the SDK machine; local verification is `git diff --check` only.
