@@ -142,7 +142,10 @@ private fun cityStoriesOf(
             val entry = entryById[block.entryId] ?: return@mapNotNull null
             if (entry.state != "PUBLISHED" || entry.deleted) return@mapNotNull null
             val payload = payloadOf(block)
-            val city = payload.optString("city").ifBlank { payload.optString("name") }.trim()
+            val city = payload.optString("city")
+                .ifBlank { payload.optString("cityName") }
+                .ifBlank { payload.optString("name") }
+                .trim()
             if (city.isBlank()) return@mapNotNull null
             val (date, _, _) = occurredLabels(entry)
             CityStoryUi(
