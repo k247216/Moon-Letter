@@ -21,11 +21,16 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,7 +41,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.TwoMemoryIcons
+import com.twomemory.designsystem.TwoMemoryColors
+import com.twomemory.designsystem.MoonLetterRecordStatus
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
 import com.twomemory.model.EntryMode
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -59,7 +67,7 @@ fun PersonalEditorScreen(
     Scaffold(
         bottomBar = {
             Column(
-                modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+                modifier = Modifier.fillMaxWidth().background(TwoMemoryColors.WarmBeigeNav)
                     .navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 state.error?.let {
@@ -75,12 +83,14 @@ fun PersonalEditorScreen(
         },
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(padding)
+            modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState()).padding(padding)
                 .padding(horizontal = 22.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             EditorTopBar(state, onClose, onPublish)
             RecordModeSwitch(mode, onModeChange)
+            EditorStatus(state.recordStatus)
             val author = ownName.ifBlank { "我" }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AuthorMark(author, 54.dp, MaterialTheme.colorScheme.primary)
@@ -129,6 +139,18 @@ fun PersonalEditorScreen(
 }
 
 @Composable
+private fun EditorStatus(status: MoonLetterRecordStatus) {
+    Text(
+        status.label,
+        style = TwoMemoryTypography.caption,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    )
+}
+
+@Composable
 private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
@@ -143,14 +165,21 @@ private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
                 style = TwoMemoryTypography.body,
             )
         }
-        TextButton(onClick = onPublish, enabled = !state.saving && state.hasContent) {
+        val actionEnabled = state.saved || (!state.saving && state.hasContent)
+        TextButton(
+            onClick = if (state.saved) onClose else onPublish,
+            enabled = actionEnabled,
+            modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                .background(if (actionEnabled) TwoMemoryColors.WarmBeigeAccent else TwoMemoryColors.WarmBeigeLine)
+                .padding(horizontal = 4.dp),
+        ) {
             Text(
                 when {
                     state.saving -> "保存中"
-                    state.saved -> "已保存"
+                    state.saved -> "返回时间轴"
                     else -> "完成"
                 },
-                color = if (state.hasContent) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                color = if (actionEnabled) Color.White else TwoMemoryColors.WarmBeigeMuted,
                 fontWeight = FontWeight.Medium,
             )
         }
@@ -159,15 +188,15 @@ private fun EditorTopBar(state: EditorUiState, onClose: () -> Unit, onPublish: (
 
 @Composable
 fun RecordModeSwitch(mode: EntryMode, onModeChange: (EntryMode) -> Unit) {
-    Row(
+            Row(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)).padding(1.dp),
+            .background(TwoMemoryColors.WarmBeigeLine.copy(alpha = 0.54f)).padding(1.dp),
     ) {
         listOf(EntryMode.PERSONAL to "我的记录", EntryMode.COLLABORATIVE to "共同记录").forEach { (item, label) ->
             val selected = mode == item
             Box(
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(27.dp)).clickable { onModeChange(item) }
-                    .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else Color.Transparent)
+                    .background(if (selected) TwoMemoryColors.WarmBeigeAccentSoft else Color.Transparent)
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -178,11 +207,44 @@ fun RecordModeSwitch(mode: EntryMode, onModeChange: (EntryMode) -> Unit) {
     }
 }
 
+private enum class EditorAttachmentKind(
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val explanation: String,
+) {
+    VIDEO(
+        "视频",
+        TwoMemoryIcons.Video,
+        "视频卡片和播放控制已预留；等媒体上传接口接通后，选择的视频会先保存到本机，再进入待同步状态。当前不会生成空卡片或假装已上传。",
+    ),
+    VOICE(
+        "语音",
+        TwoMemoryIcons.Voice,
+        "语音记录需要录音与媒体上传器。接口接通前，这里只展示接入边界，不会偷偷申请麦克风权限。",
+    ),
+    MUSIC(
+        "音乐",
+        TwoMemoryIcons.Music,
+        "网易云链接可以通过系统分享直接进入个人草稿；编辑器内的音乐卡片、标题和封面等待 MUSIC block 接口接通后再写入。",
+    ),
+    LOCATION(
+        "城市",
+        TwoMemoryIcons.Location,
+        "这里只做一次城市位置快照，不做实时定位或轨迹。位置接口接通后会在保存前让你确认城市名称。",
+    ),
+    MORE(
+        "更多",
+        TwoMemoryIcons.More,
+        "时间胶囊、导出等不属于正文附件的工具会从“我们”页进入；这里保留入口语义，不新增重复的隐藏页面。",
+    ),
+}
+
 @Composable
 fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
+    var explanation by remember { mutableStateOf<EditorAttachmentKind?>(null) }
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         listOf(
@@ -194,16 +256,39 @@ fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
             "更多" to TwoMemoryIcons.More,
         ).forEach { (label, icon) ->
             val images = label == "图片"
+            val kind = EditorAttachmentKind.values().firstOrNull { it.label == label }
             IconButton(
-                onClick = { onImageClick?.invoke() },
-                enabled = images && onImageClick != null,
-                modifier = Modifier.semantics {
-                    contentDescription = if (images) "添加照片" else "$label（暂未开放）"
+                onClick = {
+                    if (images) onImageClick?.invoke() else kind?.let { explanation = it }
+                },
+                enabled = images.not() || onImageClick != null,
+                modifier = Modifier.size(42.dp).semantics {
+                    contentDescription = if (images) "添加照片" else "$label（查看说明）"
                 },
             ) {
                 Icon(icon, contentDescription = label)
             }
         }
+        Spacer(Modifier.width(4.dp))
+        Text(
+            "自动保存草稿",
+            style = TwoMemoryTypography.caption,
+            color = TwoMemoryColors.WarmBeigeMuted,
+            maxLines = 1,
+        )
+    }
+    explanation?.let { kind ->
+        AlertDialog(
+            onDismissRequest = { explanation = null },
+            icon = { Icon(kind.icon, contentDescription = null) },
+            title = { Text("${kind.label}记录") },
+            text = { Text(kind.explanation, style = TwoMemoryTypography.body) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { explanation = null }) {
+                    Text("知道了")
+                }
+            },
+        )
     }
 }
 

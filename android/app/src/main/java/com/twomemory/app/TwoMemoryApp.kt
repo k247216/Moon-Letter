@@ -24,7 +24,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Composable
-fun TwoMemoryApp(initialEntryId: String? = null) {
+fun TwoMemoryApp(
+    initialEntryId: String? = null,
+    initialEditorMode: String? = null,
+    initialEditorRequest: Int = 0,
+) {
     val context = LocalContext.current
     val profilePrefs = remember {
         context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE)
@@ -73,6 +77,11 @@ fun TwoMemoryApp(initialEntryId: String? = null) {
     }
 
     TwoMemoryTheme(theme = theme) {
-        AppNavigation(onThemeChange = { theme = it }, initialEntryId = initialEntryId)
+        AppNavigation(
+            onThemeChange = { theme = it },
+            initialEntryId = initialEntryId,
+            initialEditorMode = initialEditorMode,
+            initialEditorRequest = initialEditorRequest,
+        )
     }
 }

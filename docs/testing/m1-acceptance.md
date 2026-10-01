@@ -410,3 +410,61 @@
 - **红灯核验（性质检查，非 TDD 首发）**：临时把 `RoomSyncStore.currentCursor` 改成恒返回 `9_999L`（即"这台手机以为自己早就跟上了"），竖切立刻在**第一次 pull** 就红：`expected:<4> but was:<0>`（`:185`）。红的位置比预想的更早，因为该变异影响所有 pull；随后按位还原（`git diff --stat` 空）并用 `--rerun` 强制真跑一次，绿。**未**证明的点：变异只验了「cursor 错了就拉不回东西」，没有单独验「清数据那一步是否真的清了」——那三条断言仍是直接的现场断言。
 - **数字**：Android JVM 单测 **74 例全绿**（含 `:core:model:test` 的 1 条；上轮 73 + 本条 1），`:app:assembleDebug` 成功。服务端本轮**零改动**，`mvn -o test` 复跑 **63 例全绿 0 失败**。
 - **必须知道的边界**：这是**真 Room + 真服务端但在 JVM 上**的证据，按 §2 的口径不能写成「真机已验证」。H4 的表格状态因此改为「部分通过」：CLI 克隆库演练 + 客户端重装竖切已在，**两台真机各自清除数据后重新绑定、并互相看见对方的历史**这一步仍然只能当天在人手里做（`docs/testing/open-day-runbook.md` §1）。
+
+### 记录 27：指导图核心 UI 壳层交接（2026-10-01）
+
+- **Commit**：`926ebdb feat(ui): wire guided app shell and profile controls`，已推送到 `origin/m1-stable-recording-loop`。
+- **本轮内容**：首页默认采用暖米色参考层级（标题「我们的时光」、中秋副标题、日期/具体时间进入纸卡、左侧缝线式连续时间轴）；底栏固定为「时光 / 相册 / ＋记录 / 地图 / 我们」，淡紫工具栏与选中胶囊；封面仍可由用户主动替换；「我们」页保留头像/名字/暖米色/纯白主题入口、未来功能显示「还没开放」，并显示 M1/版本证据。
+- **验证边界**：本机只执行 `git diff --check` 与源码检查；未运行 Gradle、Android SDK、模拟器或真机。导航/个人页 Compose 测试、390×844 截图和真实 Room 数据链路均 **NOT RUN**，不能据此更新 U1/U2/H1/H6/H8 或宣称 M1 通过。
+- **下一步**：SDK 机器用该 SHA 构建 APK，覆盖安装旧包保留数据，执行 `docs/testing/real-use-log.md` 的 A/B 双机首条记录闭环，并回填设备/系统/日志/截图证据。
+
+### 记录 28：相册与城市页接入真实本地投影（2026-10-01）
+
+- **Commit**：`d697e94 feat(ui): make album and city views data-driven` + `6b68ab8 fix(ui): accept city snapshot name fields`，均已推送到 `origin/m1-stable-recording-loop`；计划文档末尾修正为 `15c9971`。
+- **实现**：相册从 Room `entry_blocks` 的已发布 IMAGE/VIDEO 派生月份、日期、作者和来源记录；图片复用本机/远端 asset 渲染，视频明确回到原记录。城市页从已发布 LOCATION block 派生城市故事，地图区域不可用时列表仍能阅读；两页都不请求实时定位、不造演示数据。
+- **测试边界**：新增 `FutureFeatureScreensTest`，但本机未运行 Compose instrumentation、Gradle 或真机；因此相册/城市页仍为 **NOT RUN**，服务端媒体/位置接口尚未接通，不能标记 V2/V3 或 M1 完成。
+
+### 记录 29：时间工具与本机缓存导出入口（2026-10-01）
+
+- **Commit**：`2978cee feat(ui): add anniversary capsule and export routes`，已推送到 `origin/m1-stable-recording-loop`。
+- **实现**：`我们` 页的纪念日、时间胶囊、数据与导出行现在可进入独立页面；纪念日保存名称/农历规则/重复设置到本机并显示等待同步；时间胶囊锁定后隐藏正文；本机缓存导出读取已发布 Room 记录并通过系统分享发送文字备份。
+- **严格边界**：完整倒计时计算、服务端胶囊锁定/到期解锁、按范围/全部 ZIP（JSON + Markdown + 原媒体）仍需 SDK 机器提供 API 和同步实现；UI 不宣称这些能力已完成。
+- **验证**：新增 `RelationshipToolsScreenTest`，本机仅做 `git diff --cached --check`；未运行 Gradle、模拟器或真机。因此 D2、V4/V5、H1–H8 和 M1 总体验收仍为 **NOT RUN / NOT VERIFIED**。
+
+### 记录 30：过去的今天与本周小结（2026-10-01）
+
+- **Commit**：`1b10d43 feat(ui): add deterministic memory review screens`，已推送到 `origin/m1-stable-recording-loop`。
+- **实现**：`我们` 页新增两个可进入入口；“过去的今天”筛选更早年份同月日的已发布记录，“本周小结”筛选当前周一至周日的真实记录，并显示照片/视频/语音/音乐/城市来源标签。点击卡片回到原详情，不复制数据、不计数、不评分、不调用 AI。
+- **验证边界**：新增 `MemoryReviewScreensTest`，本机未运行 Gradle/Compose instrumentation/真机；当前仍不能把回看页面写成 H3 或 M1 已通过。
+
+### 记录 31：系统分享直接进入个人草稿（2026-10-01）
+
+- **本轮内容**：新增 `ShareReceiverActivity` 与 `SEND`/`SEND_MULTIPLE` intent 过滤器。系统分享的文字、网易云分享文本或图片先被复制到应用自己的草稿/照片目录，再打开普通个人编辑器；已有未完成草稿采用追加合并，不静默覆盖。接收过程不调用网络，发布仍由用户在编辑器中明确点击完成。
+- **实现边界**：分享入口只接收文字与图片。视频/语音上传、音乐结构化 block、城市位置快照仍等待 SDK 机器提供媒体/位置接口；本轮不把 URL 猜成 MUSIC block，也不把 provider 临时 URI 写入记录。
+- **验证边界**：新增 `ShareIntentParserTest` 3 例覆盖文字、图片列表和无关 intent；本机没有运行 Gradle、Compose instrumentation、Sharesheet 或真机。需要 SDK 机器补做系统分享面板进入草稿、进程恢复和 ≤4 次交互的真实记录。
+
+### 记录 32：编辑器附件入口不再是死按钮（2026-10-01）
+
+- **本轮内容**：保留指导图要求的图片/视频/语音/音乐/城市/更多六项顺序。图片继续打开本机照片选择器；其余入口现在可点击并说明当前接入边界，不请求未实现的权限、不写假的媒体/位置 block，也不把等待服务端的能力显示成成功。
+- **验证边界**：新增 `EditorScreenTest.mediaButtonsExplainTheirBoundaryInsteadOfBeingDead`；本机未运行 Gradle、Compose instrumentation 或真机。需要 SDK 机器确认对照截图的底部工具栏尺寸、系统分享进入音乐草稿及媒体/城市接口接通后的回归。
+
+### 记录 33：地图可以主动记录城市快照（2026-10-01）
+
+- **本轮内容**：地图页新增“记录城市”入口，手动确认城市名称后通过现有 `LocalEntryWriter` 写入一条含 `LOCATION` block 的个人记录，并触发既有同步队列。只保存城市级名称和发生时间，不请求实时定位、不写轨迹；保存失败在地图页显示明确状态。
+- **验证边界**：新增 `FutureFeatureScreensTest.mapCanCreateOneManualCitySnapshotWithoutRealtimeLocation`；本机未运行 Gradle、Compose instrumentation、服务端或真机。SDK 机器需验证 `LOCATION` DTO 校验、两端城市故事投影和离线恢复。
+
+### 记录 34：纪念日预览与胶囊锁定元数据（2026-10-01）
+
+- **本轮内容**：纪念日输入明确的公历 `yyyy-MM-dd` 时显示本机倒计时预览；农历规则不猜日期，仍等待服务端计算。时间胶囊保存后只在本机保留标题、开启日期和锁定标记，正文不写入普通偏好，也不进入本机导出。
+- **验证边界**：新增公历/农历分支断言；本机未运行 Gradle、模拟器或真机。服务端仍需验证农历规则、正文加密/锁定和到期解锁。
+
+### 记录 35：本机导出扩展为 Markdown + JSON（2026-10-01）
+
+- **本轮内容**：本机缓存导出现在包含已发布记录的标题、具体时间、作者、文字、媒体/城市类型、评论和安全清洗后的结构化 payload，并同时分享可读 Markdown 与机器可读 JSON；不泄露本机私有文件路径。
+- **附加修正**：编辑器输入增加 300ms 防抖草稿保存；详情页直接展示 LOCATION 城市和 MUSIC 链接，而不是统一的占位文案。
+- **验证边界**：本机仅完成源码检查，未运行 Gradle/Room/服务端/真机；原始媒体打包、选择性范围导出和 ZIP 仍由 SDK 机器提供。
+
+### 记录 36：资料页设置入口不再是死按钮（2026-10-01）
+
+- **本轮内容**：资料页右上角设置图标现在打开明确说明，指出主题、头像、名字、回看和通知均在当前页面操作；不再保留无响应的禁用按钮。
+- **验证边界**：新增 `CoupleScreenTest.settingsIconExplainsWhereLocalControlsLive`；本机未运行 Compose instrumentation 或真机。

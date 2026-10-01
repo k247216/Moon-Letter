@@ -58,6 +58,8 @@ data class EntryBlock(
     val localPath: String? = null,
     /** Server asset to fetch when no local copy exists. */
     val assetId: String? = null,
+    /** Original structured payload for UI-only rendering of links/city snapshots. */
+    val payload: String? = null,
 )
 
 data class EntryComment(

@@ -27,9 +27,12 @@
 - `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
 - `docs/superpowers/plans/2026-10-01-self-use-m1-implementation.md`
 - `docs/handoff/2026-09-30-cross-machine-m1-handoff.md`
+- `docs/superpowers/specs/2026-10-01-guided-ui-and-feature-completion-design.md`
+- `docs/superpowers/plans/2026-10-01-core-guided-ui.md`
 - `docs/testing/m1-acceptance.md`
 - `docs/testing/open-day-runbook.md`（开档当天的操作顺序与真机门清单）
-- `docs/testing/real-use-log.md`（逐项真机验证清单 + 真机结果与计时数字记在这里）
+- `docs/testing/feature-checklist.md`（逐项功能验证清单：每条单独判过没过）
+- `docs/testing/real-use-log.md`（真机使用日志：APK 指纹、设备、计时数字与真实结果记在这里）
 - `docs/reviews/2026-10-01-m1-round-review.md`
 - `docs/design/reference/`
 - `docs/design/brand/`

@@ -6,8 +6,10 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,8 +60,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.twomemory.designsystem.MoonLetterTheme
 import com.twomemory.designsystem.R
+import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
 import java.time.DayOfWeek
 import kotlinx.coroutines.launch
 
@@ -78,6 +82,14 @@ fun CoupleRoute(
     onWeeklyReviewChange: (Boolean) -> Unit = {},
     onNewEntryNoticeChange: (Boolean) -> Unit = {},
     onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
+    versionLabel: String = "M1 · 0.1.0",
+    onOpenAnniversary: () -> Unit = {},
+    onOpenCapsule: () -> Unit = {},
+    onOpenExport: () -> Unit = {},
+    onOpenPastToday: () -> Unit = {},
+    onOpenWeeklySummary: () -> Unit = {},
+    anniversaryName: String = "我们的中秋",
+    anniversaryDate: String = "农历八月十五",
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -135,6 +147,14 @@ fun CoupleRoute(
             prefs.edit().putString("theme", it.name).apply()
             onThemeChange(it)
         },
+        versionLabel = versionLabel,
+        onOpenAnniversary = onOpenAnniversary,
+        onOpenCapsule = onOpenCapsule,
+        onOpenExport = onOpenExport,
+        onOpenPastToday = onOpenPastToday,
+        onOpenWeeklySummary = onOpenWeeklySummary,
+        anniversaryName = anniversaryName,
+        anniversaryDate = anniversaryDate,
     )
 }
 
@@ -155,13 +175,23 @@ fun CoupleScreen(
     onWeeklyReviewChange: (Boolean) -> Unit = {},
     onNewEntryNoticeChange: (Boolean) -> Unit = {},
     onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
+    versionLabel: String = "M1 · 0.1.0",
+    onOpenAnniversary: () -> Unit = {},
+    onOpenCapsule: () -> Unit = {},
+    onOpenExport: () -> Unit = {},
+    onOpenPastToday: () -> Unit = {},
+    onOpenWeeklySummary: () -> Unit = {},
+    anniversaryName: String = "我们的中秋",
+    anniversaryDate: String = "农历八月十五",
 ) {
     var editingName by remember { mutableStateOf(false) }
     var pickingHour by remember { mutableStateOf(false) }
+    var showingSettings by remember { mutableStateOf(false) }
     val draft = state.draftName.trim()
     val canSave = draft.isNotEmpty() && draft != state.ownName && !state.savingName
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
+        modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Row(
@@ -169,16 +199,26 @@ fun CoupleScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("我们", style = TwoMemoryTypography.display, modifier = Modifier.weight(1f))
-            IconButton(onClick = {}, enabled = false) {
+            IconButton(onClick = { showingSettings = true }) {
                 Icon(TwoMemoryIcons.Settings, contentDescription = "设置")
             }
         }
-        Image(
-            painter = painterResource(R.drawable.moonletter_cover_default),
-            contentDescription = "我们的封面",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxWidth().height(190.dp),
-        )
+        Box(modifier = Modifier.fillMaxWidth().height(190.dp)) {
+            Image(
+                painter = painterResource(R.drawable.moonletter_cover_default),
+                contentDescription = "我们的封面",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(Modifier.fillMaxSize().background(Color(0x4D18202A)))
+            Column(
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 26.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text("中秋，是我们的纪念日", style = TwoMemoryTypography.title, color = Color.White)
+                Text("把平凡的日子，写成只属于我们的故事", style = TwoMemoryTypography.caption, color = Color.White.copy(alpha = .86f))
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 30.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -198,6 +238,24 @@ fun CoupleScreen(
                 fallback = R.drawable.moonletter_avatar_ayu,
                 accent = Color(0xFF6F8268),
             )
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp).clickable(onClick = onOpenAnniversary),
+            shape = RoundedCornerShape(20.dp),
+            color = TwoMemoryColors.WarmBeigeAccentSoft.copy(alpha = .58f),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(TwoMemoryIcons.Calendar, contentDescription = null, tint = TwoMemoryColors.WarmBeigeAccent, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(anniversaryName.ifBlank { "我们的中秋" }, style = TwoMemoryTypography.title)
+                    Text(anniversaryDate.ifBlank { "还没有设置日期" }, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                }
+                Icon(TwoMemoryIcons.Chevron, contentDescription = "编辑纪念日", tint = TwoMemoryColors.WarmBeigeMuted)
+            }
         }
         if (editingName) {
             Column(
@@ -234,9 +292,9 @@ fun CoupleScreen(
             shadowElevation = 1.dp,
         ) {
             Column {
-                SettingsRow(TwoMemoryIcons.Calendar, "纪念日与倒计时", "管理属于我们的重要日子")
-                SettingsRow(TwoMemoryIcons.Capsule, "时间胶囊", "给未来的我们留下一段此刻的心情")
-                SettingsRow(TwoMemoryIcons.Export, "数据与导出", "备份我们的回忆")
+                SettingsRow(TwoMemoryIcons.Calendar, "纪念日与倒计时", "管理属于我们的重要日子", onClick = onOpenAnniversary)
+                SettingsRow(TwoMemoryIcons.Capsule, "时间胶囊", "给未来的我们留下一段此刻的心情", onClick = onOpenCapsule)
+                SettingsRow(TwoMemoryIcons.Export, "数据与导出", "备份我们的回忆", onClick = onOpenExport)
                 Text(
                     "显示主题",
                     style = TwoMemoryTypography.body,
@@ -257,6 +315,22 @@ fun CoupleScreen(
                         label = { Text("纯白") },
                     )
                 }
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 1.dp,
+        ) {
+            Column {
+                Text(
+                    "回看与小结",
+                    style = TwoMemoryTypography.body,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp),
+                )
+                SettingsRow(TwoMemoryIcons.Time, "过去的今天", "找回更早年份同一天的真实记录", onClick = onOpenPastToday)
+                SettingsRow(TwoMemoryIcons.Calendar, "本周小结", "组合本周文字、照片、音乐和城市，不调用 AI", onClick = onOpenWeeklySummary)
             }
         }
         Surface(
@@ -389,6 +463,28 @@ fun CoupleScreen(
                 }
             }
         }
+        Text(
+            "月笺 · $versionLabel",
+            style = TwoMemoryTypography.caption,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .42f),
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 2.dp),
+        )
+    }
+    if (showingSettings) {
+        AlertDialog(
+            onDismissRequest = { showingSettings = false },
+            icon = { Icon(TwoMemoryIcons.Settings, contentDescription = null) },
+            title = { Text("月笺设置") },
+            text = {
+                Text(
+                    "主题、头像、名字、回看与通知都在这个页面直接修改。服务端账户和双端同步设置会在绑定/配对链路中处理。",
+                    style = TwoMemoryTypography.body,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showingSettings = false }) { Text("知道了") }
+            },
+        )
     }
 }
 
@@ -451,9 +547,15 @@ private fun dayLabel(day: DayOfWeek) = when (day) {
 }
 
 @Composable
-private fun SettingsRow(icon: ImageVector, title: String, subtitle: String) {
+private fun SettingsRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
@@ -463,11 +565,7 @@ private fun SettingsRow(icon: ImageVector, title: String, subtitle: String) {
             Text(subtitle, style = TwoMemoryTypography.caption,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
         }
-        Text(
-            "还没开放",
-            style = TwoMemoryTypography.caption,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
-        )
+        Icon(TwoMemoryIcons.Chevron, contentDescription = "打开$title", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = .42f))
     }
 }
 

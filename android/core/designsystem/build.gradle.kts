@@ -31,4 +31,5 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.icons)
     implementation(libs.kotlinx.coroutines.core)
+    testImplementation(kotlin("test"))
 }

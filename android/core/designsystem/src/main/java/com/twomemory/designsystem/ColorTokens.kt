@@ -3,12 +3,19 @@ package com.twomemory.designsystem
 import androidx.compose.ui.graphics.Color
 
 object TwoMemoryColors {
-    val WarmBeigeBackground = Color(0xFFF7F1E8)
+    // The warm-beige palette is shared by every feature surface. Keeping these
+    // values in one place prevents the timeline, editor, album and map from
+    // drifting into four subtly different products.
+    val WarmBeigeBackground = Color(0xFFF8F4EB)
     val WarmBeigeSurface = Color(0xFFFFFCF7)
-    val WarmBeigeInk = Color(0xFF3F382F)
-    val WarmBeigeMuted = Color(0xFF8D8175)
-    val WarmBeigeAccent = Color(0xFFD28A72)
-    val WarmBeigeLine = Color(0xFFE6D9CB)
+    val WarmBeigeInk = Color(0xFF37332F)
+    val WarmBeigeMuted = Color(0xFF81786F)
+    val WarmBeigeAccent = Color(0xFFD67B63)
+    val WarmBeigeAccentSoft = Color(0xFFF3D8CD)
+    val WarmBeigeSage = Color(0xFF788770)
+    val WarmBeigeLine = Color(0xFFE2D5C8)
+    val WarmBeigeNav = Color(0xFFF7EFF9)
+    val WarmBeigePaperShadow = Color(0x1A8B776A)
 
     val PureWhiteBackground = Color(0xFFFFFFFF)
     val PureWhiteSurface = Color(0xFFFDFCFB)

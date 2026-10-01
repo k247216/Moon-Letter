@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.twomemory.model.BlockType
 import com.twomemory.model.EntryDetail
+import com.twomemory.designsystem.MoonLetterRecordStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,9 +18,12 @@ import java.util.UUID
 
 data class EntryBlockUi(
     val id: String,
+    val type: BlockType = BlockType.TEXT,
     val text: String?,
     val localPath: String?,
     val assetId: String?,
+    val author: String? = null,
+    val payload: String? = null,
 )
 
 data class EntryCommentUi(
@@ -37,6 +41,7 @@ data class EntryDetailUi(
     val draft: String = "",
     val sending: Boolean = false,
     val error: String? = null,
+    val status: MoonLetterRecordStatus = MoonLetterRecordStatus.SYNCED,
 )
 
 /**
@@ -100,14 +105,15 @@ class EntryDetailViewModel(
         val timeFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm", Locale.CHINA)
         return EntryDetailUi(
             header = entry.toEntryUi(ownName, partnerName, currentUserId),
-            blocks = blocks.filter { it.type == BlockType.TEXT || it.type == BlockType.IMAGE }
-                .sortedBy { it.orderKey }
+            blocks = blocks.sortedBy { it.orderKey }
                 .map { block ->
                     EntryBlockUi(
                         id = block.id.toString(),
+                        type = block.type,
                         text = block.text,
                         localPath = block.localPath,
                         assetId = block.assetId,
+                        payload = block.payload,
                     )
                 },
             comments = comments.map { comment ->
@@ -126,6 +132,7 @@ class EntryDetailViewModel(
             draft = onScreen?.draft.orEmpty(),
             sending = onScreen?.sending == true,
             error = onScreen?.error,
+            status = if (entry.unsent) MoonLetterRecordStatus.DRAFT else MoonLetterRecordStatus.SYNCED,
         )
     }
 }
