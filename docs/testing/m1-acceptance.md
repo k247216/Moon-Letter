@@ -430,3 +430,9 @@
 - **实现**：`我们` 页的纪念日、时间胶囊、数据与导出行现在可进入独立页面；纪念日保存名称/农历规则/重复设置到本机并显示等待同步；时间胶囊锁定后隐藏正文；本机缓存导出读取已发布 Room 记录并通过系统分享发送文字备份。
 - **严格边界**：完整倒计时计算、服务端胶囊锁定/到期解锁、按范围/全部 ZIP（JSON + Markdown + 原媒体）仍需 SDK 机器提供 API 和同步实现；UI 不宣称这些能力已完成。
 - **验证**：新增 `RelationshipToolsScreenTest`，本机仅做 `git diff --cached --check`；未运行 Gradle、模拟器或真机。因此 D2、V4/V5、H1–H8 和 M1 总体验收仍为 **NOT RUN / NOT VERIFIED**。
+
+### 记录 30：过去的今天与本周小结（2026-10-01）
+
+- **Commit**：`1b10d43 feat(ui): add deterministic memory review screens`，已推送到 `origin/m1-stable-recording-loop`。
+- **实现**：`我们` 页新增两个可进入入口；“过去的今天”筛选更早年份同月日的已发布记录，“本周小结”筛选当前周一至周日的真实记录，并显示照片/视频/语音/音乐/城市来源标签。点击卡片回到原详情，不复制数据、不计数、不评分、不调用 AI。
+- **验证边界**：新增 `MemoryReviewScreensTest`，本机未运行 Gradle/Compose instrumentation/真机；当前仍不能把回看页面写成 H3 或 M1 已通过。
