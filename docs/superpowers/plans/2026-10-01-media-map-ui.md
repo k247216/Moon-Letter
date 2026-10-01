@@ -24,4 +24,3 @@
 - `FutureFeatureScreensTest.kt` 覆盖月份相册和城市故事正文可见性。
 - 本机只做 `git diff --check` 和源码检查；SDK 机器运行测试并在真实 Room 数据上截图。
 - 服务端补齐 VIDEO/AUDIO/LOCATION 后，再把 editor toolbar 和发布门禁接到这些 block；本 slice 不把“页面存在”写成“功能完成”。
-
