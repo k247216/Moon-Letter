@@ -98,8 +98,12 @@ object SyncSession {
         return SyncEngine(api, RoomSyncStore(database), session.coupleId)
     }
 
-    /** Saves a personal draft through Room + outbox, then triggers a sync. */
-    suspend fun saveDraft(
+    /**
+     * Writes the record through Room + outbox and publishes it in the same batch,
+     * then triggers a sync. Offline this leaves a private draft plus two pending
+     * operations; the record reaches the partner as soon as the device reconnects.
+     */
+    suspend fun publish(
         context: Context,
         state: com.twomemory.editor.EditorUiState,
         mode: com.twomemory.model.EntryMode = com.twomemory.model.EntryMode.PERSONAL,
@@ -123,6 +127,7 @@ object SyncSession {
                     ),
                 ),
             ),
+            publish = true,
         )
         triggerSync(context)
     }

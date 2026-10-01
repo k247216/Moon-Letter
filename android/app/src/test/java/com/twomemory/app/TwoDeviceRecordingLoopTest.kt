@@ -161,7 +161,12 @@ class TwoDeviceRecordingLoopTest {
 
     private fun api(token: String) = RetrofitCoupleDiaryApi.create(baseUrl) { token }
 
-    private fun command(coupleId: UUID, authorId: UUID, body: String) = LocalEntryCommand(
+    private fun command(
+        coupleId: UUID,
+        authorId: UUID,
+        body: String,
+        entryId: UUID = UUID.randomUUID(),
+    ) = LocalEntryCommand(
         coupleId = coupleId,
         authorId = authorId,
         mode = EntryMode.PERSONAL,
@@ -176,10 +181,11 @@ class TwoDeviceRecordingLoopTest {
                 authorId = authorId,
             ),
         ),
+        entryId = entryId,
     )
 
     @Test
-    fun twoDevicesRecordAndSeeEachOthersEntries() = runBlocking {
+    fun twoDevicesRecordAndSeeEachOthersPublishedEntries() = runBlocking {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
             // 1. Device A bootstraps the installation through the REAL setup
@@ -222,43 +228,81 @@ class TwoDeviceRecordingLoopTest {
             assertEquals(userIdA, loaded.userId)
             assertEquals(baseUrl, loaded.baseUrl)
 
-        // 3. Device A writes OFFLINE: Room + outbox commit, nothing synced yet.
-        val storeA = RoomSyncStore(databaseA)
-        val entryIdA = LocalEntryWriter(databaseA).save(command(coupleId, userIdA, "A 的一天：暴雨"))
-        val pendingA = storeA.pendingOperations(1).single()
-        val beforePush = SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pullAll()
-        assertEquals(0, beforePush.pulled)
-        assertNull(databaseB.entryDao().findEntry(entryIdA.toString()))
+            // 3. Device A writes OFFLINE and taps 发布: Room holds a draft, the
+            //    outbox holds the create followed by the publish.
+            val storeA = RoomSyncStore(databaseA)
+            val entryIdA = UUID.randomUUID()
+            val writerA = LocalEntryWriter(databaseA)
+            writerA.save(command(coupleId, userIdA, "A 的一天：暴雨", entryIdA), publish = true)
+            assertEquals(
+                listOf("CREATE_ENTRY", "PUBLISH_ENTRY"),
+                storeA.pendingOperations(10).map { it.action },
+            )
+            assertEquals("DRAFT", databaseA.entryDao().findEntry(entryIdA.toString())!!.state)
 
-        // 4. A reconnects and pushes.
-        assertEquals(1, SyncEngine(api(tokenA), storeA, coupleId).pushPending().applied)
+            // 4. While it is a draft, A's record does not exist for B — not
+            //    even after A pushes it: the private create writes no feed row.
+            val createA = storeA.pendingOperations(10).first()
+            assertEquals(0, SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pullAll().pulled)
+            assertEquals(2, SyncEngine(api(tokenA), storeA, coupleId).pushPending().applied)
+            val draftOnlyPull = SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pullAll()
+            assertEquals("one change row for create+publish", 1, draftOnlyPull.pulled)
 
-        // 5. A duplicate timeout retry hits server idempotency: replayed, one effect.
-        val replay = api(tokenA).push(pendingA)
-        assertEquals(PushResult.Status.APPLIED, replay.status)
-        assertTrue("replayed response expected", replay.replayed)
+            // 5. A duplicate timeout retry of a consumed operation hits server
+            //    idempotency: replayed, and no extra change row appears.
+            val replay = api(tokenA).push(createA)
+            assertEquals(PushResult.Status.APPLIED, replay.status)
+            assertTrue("replayed response expected", replay.replayed)
+            assertEquals(0, SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pullAll().pulled)
 
-        // 6. Device B pulls and exposes the exact entry from its own database.
-        val pullB = SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pullAll()
-        assertTrue("pull failed: ${pullB.failed}", pullB.pulled >= 1)
-        val seenByB = databaseB.entryDao().findEntry(entryIdA.toString())
-        assertNotNull(seenByB)
-        assertEquals("傍晚散步", seenByB!!.title)
-        val seenByBBlocks = databaseB.entryDao().blocks(entryIdA.toString())
-        assertEquals(1, seenByBBlocks.size)
+            // 6. The author's device adopts the server version from the push
+            //    response: a personal record is never pulled back, so without
+            //    this merge A would keep showing its own record as unsent.
+            val ownCopyA = databaseA.entryDao().findEntry(entryIdA.toString())!!
+            assertEquals("PUBLISHED", ownCopyA.state)
+            assertEquals(1L, ownCopyA.rowVersion)
 
-        // 7. Reverse reconnect: B writes offline, pushes; A pulls and sees it.
-        val entryIdB = LocalEntryWriter(databaseB).save(command(coupleId, userIdB, "B 的一天：台风天"))
-        assertEquals(1, SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pushPending().applied)
-        SyncEngine(api(tokenA), storeA, coupleId).pullAll()
-        assertNotNull(databaseA.entryDao().findEntry(entryIdB.toString()))
+            // 7. B's copy is rebuildable from that single row: published, with
+            //    the body text, not an id-only stub.
+            val seenByB = databaseB.entryDao().findEntry(entryIdA.toString())
+            assertNotNull(seenByB)
+            assertEquals("傍晚散步", seenByB!!.title)
+            assertEquals("PUBLISHED", seenByB.state)
+            val seenByBBlocks = databaseB.entryDao().blocks(entryIdA.toString())
+            assertEquals(1, seenByBBlocks.size)
+            assertTrue(seenByBBlocks.single().payload.contains("暴雨"))
 
-        // 8. App-process recreation: closing and reopening Room keeps everything.
-        databaseA.close()
-        databaseA = Room.databaseBuilder(context, AppDatabase::class.java, "slice-device-a.db").build()
-        assertNotNull(databaseA.entryDao().findEntry(entryIdA.toString()))
-        assertNotNull(databaseA.entryDao().findEntry(entryIdB.toString()))
-        assertEquals(2, databaseA.entryDao().timelineSnapshot().size)
+            // 8. A catches up (the shared feed carries its own publish row too),
+            //    then B writes a draft WITHOUT publishing and pushes it.
+            SyncEngine(api(tokenA), storeA, coupleId).pullAll()
+            val privateIdB = UUID.randomUUID()
+            LocalEntryWriter(databaseB).save(command(coupleId, userIdB, "B 还没写完", privateIdB))
+            assertEquals(1, SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pushPending().applied)
+            assertEquals(0, SyncEngine(api(tokenA), storeA, coupleId).pullAll().pulled)
+            assertNull(databaseA.entryDao().findEntry(privateIdB.toString()))
+
+            // 9. Reverse reconnect: B publishes, A pulls and sees it.
+            val entryIdB = UUID.randomUUID()
+            LocalEntryWriter(databaseB).save(command(coupleId, userIdB, "B 的一天：台风天", entryIdB), publish = true)
+            assertEquals(2, SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pushPending().applied)
+            SyncEngine(api(tokenA), storeA, coupleId).pullAll()
+            assertNotNull(databaseA.entryDao().findEntry(entryIdB.toString()))
+
+            // 10. What each device can actually read: B's timeline holds both
+            //     published records, and its own unwritten-out draft is still
+            //     just a draft rather than a page of the shared book.
+            assertEquals(
+                setOf(entryIdA.toString(), entryIdB.toString()),
+                databaseB.entryDao().timelineSnapshot()
+                    .filter { it.state == "PUBLISHED" }.map { it.id }.toSet(),
+            )
+            assertEquals("DRAFT", databaseB.entryDao().findEntry(privateIdB.toString())!!.state)
+
+            // 11. App-process recreation: closing and reopening Room keeps everything.
+            databaseA.close()
+            databaseA = Room.databaseBuilder(context, AppDatabase::class.java, "slice-device-a.db").build()
+            assertNotNull(databaseA.entryDao().findEntry(entryIdA.toString()))
+            assertNotNull(databaseA.entryDao().findEntry(entryIdB.toString()))
         } finally {
             Dispatchers.resetMain()
         }

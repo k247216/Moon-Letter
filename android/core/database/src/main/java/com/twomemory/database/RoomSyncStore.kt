@@ -7,6 +7,7 @@ import com.twomemory.model.SyncStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.util.UUID
 
@@ -32,9 +33,13 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
             }
         }
 
-    override suspend fun markApplied(operationId: UUID) = withContext(Dispatchers.IO) {
-        database.outboxDao().delete(operationId.toString())
-    }
+    override suspend fun markApplied(operationId: UUID, serverEntrySnapshot: String?) =
+        withContext(Dispatchers.IO) {
+            database.withTransaction {
+                database.outboxDao().delete(operationId.toString())
+                if (serverEntrySnapshot != null) mergeEntrySnapshot(serverEntrySnapshot)
+            }
+        }
 
     override suspend fun markRetry(operationId: UUID, attemptCount: Int, nextAttemptAtEpochMillis: Long) =
         withContext(Dispatchers.IO) {
@@ -70,10 +75,32 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
         database.syncCursorDao().nextSequence(coupleId.toString()) ?: 0L
     }
 
+    /** A feed change is part of a page: malformed JSON fails the page, cursor included. */
+    private suspend fun applyEntryChange(change: RemoteChange) =
+        upsertEntry(JSONObject(change.payload), change.entityId.toString())
+
+    /**
+     * A push response carries the entry as the space now holds it. For a personal
+     * record this is the only channel that reports the author's own version back,
+     * because private drafts never enter the change feed. Bodies that are not an
+     * entry projection (a comment view, an empty response) are ignored: a failed
+     * merge must never invalidate an operation the server already accepted.
+     */
+    private suspend fun mergeEntrySnapshot(payload: String) {
+        val snapshot = parseObjectOrNull(payload) ?: return
+        if (!snapshot.has("id") || !snapshot.has("coupleId") || !snapshot.has("blocks")) return
+        upsertEntry(snapshot, snapshot.optString("id"))
+    }
+
+    private fun parseObjectOrNull(raw: String): JSONObject? = try {
+        JSONObject(raw)
+    } catch (expected: JSONException) {
+        null
+    }
+
     /** Upsert semantics make duplicate deliveries harmless. */
-    private suspend fun applyEntryChange(change: RemoteChange) {
-        val payload = JSONObject(change.payload)
-        val entryId = payload.optString("id", change.entityId.toString())
+    private suspend fun upsertEntry(payload: JSONObject, fallbackEntryId: String) {
+        val entryId = payload.optString("id", fallbackEntryId)
         val blocks = payload.optJSONArray("blocks") ?: JSONArray()
         database.entryDao().insertEntry(
             EntryEntity(

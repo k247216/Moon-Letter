@@ -36,9 +36,10 @@ class SyncEngine(
         for (operation in store.pendingOperations(limit = 50)) {
             currentCoroutineContext().ensureActive()
             try {
-                when (api.push(operation).status) {
+                val push = api.push(operation)
+                when (push.status) {
                     PushResult.Status.APPLIED, PushResult.Status.DUPLICATE -> {
-                        store.markApplied(operation.operationId)
+                        store.markApplied(operation.operationId, push.responseBody)
                         applied++
                     }
                     PushResult.Status.CONFLICT -> {

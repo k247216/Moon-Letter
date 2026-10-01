@@ -197,7 +197,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
                 state = editorState,
                 onTitleChange = editorViewModel::updateTitle,
                 onBodyChange = editorViewModel::updateBody,
-                onPublish = { editorViewModel.publish { state -> SyncSession.saveDraft(context, state, mode) } },
+                onPublish = { editorViewModel.publish { state -> SyncSession.publish(context, state, mode) } },
                 onClose = closeEditor,
                 mode = mode,
                 onModeChange = { editingMode = it },
@@ -206,7 +206,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
             SharedEditorRoute(
                 state = editorState,
                 blocks = emptyList(),
-                onPublish = { editorViewModel.publish { state -> SyncSession.saveDraft(context, state, mode) } },
+                onPublish = { editorViewModel.publish { state -> SyncSession.publish(context, state, mode) } },
                 onTitleChange = editorViewModel::updateTitle,
                 onBodyChange = editorViewModel::updateBody,
                 onClose = closeEditor,

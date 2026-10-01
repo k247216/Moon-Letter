@@ -30,6 +30,21 @@ class SyncEngineTest {
         assertEquals(listOf(first), store.applied)
     }
 
+    /**
+     * A personal draft never enters the space feed, so the push response is
+     * the only channel that returns the server-side row version. Dropping it
+     * would strand every later operation on a stale base version.
+     */
+    @Test
+    fun appliedPushForwardsTheServerEntrySnapshotToTheStore() = runTest {
+        val operationId = UUID.fromString("00000000-0000-0000-0000-000000000005")
+        val store = FakeStore(listOf(operation(operationId)))
+        val api = FakeApi(PushResult.Status.APPLIED)
+        api.pushBody = """{"id":"$operationId","state":"PUBLISHED"}"""
+        SyncEngine(api, store, coupleId).pushPending()
+        assertEquals(listOf(api.pushBody), store.appliedBodies)
+    }
+
     @Test
     fun retryUsesExponentialBackoffAndConflictIsPreserved() = runTest {
         val operationId = UUID.randomUUID()
@@ -161,12 +176,13 @@ class SyncEngineTest {
         var cancelOnPush = false
         val pushedIds = mutableListOf<UUID>()
         var pages: ArrayDeque<ChangePage> = ArrayDeque()
+        var pushBody: String? = null
 
         override suspend fun push(operation: PendingOperation): PushResult {
             pushedIds += operation.operationId
             if (cancelOnPush) throw kotlinx.coroutines.CancellationException("worker cancelled")
             if (throwOnPush) throw IOException("simulated timeout")
-            return PushResult(operation.operationId, apiStatus)
+            return PushResult(operation.operationId, apiStatus, pushBody)
         }
 
         override suspend fun pull(coupleId: UUID, after: Long, limit: Int): ChangePage {
@@ -180,11 +196,15 @@ class SyncEngineTest {
         private val failApply: Boolean = false,
     ) : SyncStore {
         val applied = mutableListOf<UUID>()
+        val appliedBodies = mutableListOf<String?>()
         val appliedChanges = mutableListOf<RemoteChange>()
         var retryAt: Long? = null
         var cursor: Long = 0
         override suspend fun pendingOperations(limit: Int) = operations
-        override suspend fun markApplied(operationId: UUID) { applied += operationId }
+        override suspend fun markApplied(operationId: UUID, serverEntrySnapshot: String?) {
+            applied += operationId
+            appliedBodies += serverEntrySnapshot
+        }
         override suspend fun markRetry(operationId: UUID, attemptCount: Int, nextAttemptAtEpochMillis: Long) {
             retryAt = nextAttemptAtEpochMillis
         }

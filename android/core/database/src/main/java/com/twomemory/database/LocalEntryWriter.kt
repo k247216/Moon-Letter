@@ -9,55 +9,75 @@ import java.util.UUID
 
 class LocalEntryWriter(private val database: AppDatabase) {
 
-    suspend fun save(command: LocalEntryCommand): UUID = withContext(Dispatchers.IO) {
-        require(command.occurredTimezone.isNotBlank()) { "occurrence timezone is required" }
-        command.blocks.forEach { block ->
-            require(block.type != com.twomemory.model.BlockType.TEXT ||
-                    block.payload.codePointCount(0, block.payload.length) <= 20_000) {
-                "text block exceeds 20000 Unicode code points"
+    suspend fun save(command: LocalEntryCommand, publish: Boolean = false): UUID =
+        withContext(Dispatchers.IO) {
+            require(command.occurredTimezone.isNotBlank()) { "occurrence timezone is required" }
+            command.blocks.forEach { block ->
+                require(block.type != com.twomemory.model.BlockType.TEXT ||
+                        block.payload.codePointCount(0, block.payload.length) <= 20_000) {
+                    "text block exceeds 20000 Unicode code points"
+                }
             }
-        }
-        database.withTransaction {
-            database.entryDao().insertEntry(
-                EntryEntity(
-                    id = command.entryId.toString(),
-                    coupleId = command.coupleId.toString(),
-                    authorId = command.authorId.toString(),
-                    mode = command.mode.name,
-                    state = "DRAFT",
-                    occurredAtEpochMillis = command.occurredAt.toEpochMilli(),
-                    occurredTimezone = command.occurredTimezone,
-                    title = command.title,
-                ),
-            )
-            database.entryDao().insertBlocks(command.blocks.map { block ->
-                EntryBlockEntity(
-                    id = block.id.toString(),
-                    entryId = command.entryId.toString(),
-                    type = block.type.name,
-                    orderKey = block.orderKey,
-                    authorId = block.authorId.toString(),
-                    payload = block.payload,
-                    assetId = block.assetId?.toString(),
+            database.withTransaction {
+                database.entryDao().insertEntry(
+                    EntryEntity(
+                        id = command.entryId.toString(),
+                        coupleId = command.coupleId.toString(),
+                        authorId = command.authorId.toString(),
+                        mode = command.mode.name,
+                        state = "DRAFT",
+                        occurredAtEpochMillis = command.occurredAt.toEpochMilli(),
+                        occurredTimezone = command.occurredTimezone,
+                        title = command.title,
+                    ),
                 )
-            })
-            database.outboxDao().insert(
-                OutboxOperationEntity(
-                    operationId = UUID.randomUUID().toString(),
-                    coupleId = command.coupleId.toString(),
-                    entityId = command.entryId.toString(),
-                    action = if (command.mode == com.twomemory.model.EntryMode.COLLABORATIVE) {
-                        "CREATE_SHARED_ENTRY"
-                    } else {
-                        "CREATE_ENTRY"
-                    },
-                    payload = createOperationPayload(command),
-                    baseVersion = 0,
-                ),
-            )
+                database.entryDao().insertBlocks(command.blocks.map { block ->
+                    EntryBlockEntity(
+                        id = block.id.toString(),
+                        entryId = command.entryId.toString(),
+                        type = block.type.name,
+                        orderKey = block.orderKey,
+                        authorId = block.authorId.toString(),
+                        payload = block.payload,
+                        assetId = block.assetId?.toString(),
+                    )
+                })
+                database.outboxDao().insert(
+                    OutboxOperationEntity(
+                        operationId = UUID.randomUUID().toString(),
+                        coupleId = command.coupleId.toString(),
+                        entityId = command.entryId.toString(),
+                        action = if (command.mode == com.twomemory.model.EntryMode.COLLABORATIVE) {
+                            "CREATE_SHARED_ENTRY"
+                        } else {
+                            "CREATE_ENTRY"
+                        },
+                        payload = createOperationPayload(command),
+                        baseVersion = 0,
+                    ),
+                )
+                if (publish) {
+                    // The server stores a new entry at row version 0 and the outbox
+                    // applies operations in insertion order, so a publish enqueued
+                    // here faces exactly that version.
+                    database.outboxDao().insert(publishOperation(command.coupleId, command.entryId, 0L))
+                }
+            }
+            command.entryId
         }
-        command.entryId
-    }
+
+    private fun publishOperation(coupleId: UUID, entryId: UUID, baseVersion: Long) =
+        OutboxOperationEntity(
+            operationId = UUID.randomUUID().toString(),
+            coupleId = coupleId.toString(),
+            entityId = entryId.toString(),
+            action = "PUBLISH_ENTRY",
+            payload = org.json.JSONObject().apply {
+                put("entryId", entryId.toString())
+                put("baseVersion", baseVersion)
+            }.toString(),
+            baseVersion = baseVersion,
+        )
 
     /**
      * Appends the caller's own perspective block to an existing shared entry:

@@ -128,6 +128,43 @@ class RoomSyncStoreTest {
         assertEquals(7L, databaseB.syncCursorDao().nextSequence(coupleId.toString()))
     }
 
+    /**
+     * A personal draft never reaches the change feed, so the push response is
+     * the only way the author's own device learns the server-side version.
+     */
+    @Test
+    fun pushSnapshotMergeAdoptsTheServerVersionAndConsumesTheOperation() = runBlocking {
+        val entryId = UUID.randomUUID()
+        LocalEntryWriter(databaseA).save(command(entryId), publish = true)
+        val store = RoomSyncStore(databaseA)
+
+        val pending = store.pendingOperations(10)
+        assertEquals(listOf("CREATE_ENTRY", "PUBLISH_ENTRY"), pending.map { it.action })
+
+        store.markApplied(pending[0].operationId, entryPayload(entryId.toString()))
+
+        assertEquals(1, store.pendingOperations(10).size)
+        val entry = databaseA.entryDao().findEntry(entryId.toString())
+        assertNotNull(entry)
+        assertEquals("PUBLISHED", entry!!.state)
+        assertEquals(1L, entry.rowVersion)
+    }
+
+    @Test
+    fun nonEntryPushBodyStillConsumesTheAcceptedOperation() = runBlocking {
+        val entryId = LocalEntryWriter(databaseA).save(command())
+        val store = RoomSyncStore(databaseA)
+        val operation = store.pendingOperations(10).single()
+
+        store.markApplied(
+            operation.operationId,
+            """{"id":"00000000-0000-0000-0000-0000000000c1","body":"今天的风很软"}""",
+        )
+
+        assertEquals(0, store.pendingOperations(10).size)
+        assertEquals("DRAFT", databaseA.entryDao().findEntry(entryId.toString())!!.state)
+    }
+
     @Test
     fun cursorAdvancesOnlyWithAppliedPage() = runBlocking {
         val store = RoomSyncStore(databaseB)
