@@ -44,6 +44,28 @@ abstract class EntryDao {
     )
     abstract suspend fun imageBlocksWithoutAsset(): List<EntryBlockEntity>
 
+    /**
+     * Published records only: the weekly re-encounter must never surface a draft
+     * that was written but deliberately not shared.
+     */
+    @Query(
+        "SELECT * FROM entries WHERE deleted = 0 AND state = 'PUBLISHED' " +
+            "ORDER BY occurredAtEpochMillis DESC, id DESC",
+    )
+    abstract suspend fun publishedEntries(): List<EntryEntity>
+
+    /**
+     * The record from the *other* member that landed on this device last. Ordered
+     * by rowid, not by occurredAt: writing about last weekend is new content with
+     * an older date, and the notice is about what just arrived. One row is enough —
+     * the notice says only that TA wrote something, so nothing else is read here.
+     */
+    @Query(
+        "SELECT * FROM entries WHERE deleted = 0 AND state = 'PUBLISHED' AND authorId != :notAuthorId " +
+            "ORDER BY rowid DESC LIMIT 1",
+    )
+    abstract suspend fun latestArrivedPublishedByOther(notAuthorId: String): EntryEntity?
+
     @Query("SELECT * FROM entry_blocks WHERE id = :blockId LIMIT 1")
     abstract suspend fun findBlock(blockId: String): EntryBlockEntity?
 

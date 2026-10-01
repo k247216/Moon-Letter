@@ -148,8 +148,7 @@ class SyncEngineTest {
         val operationId = UUID.randomUUID()
         val store = FakeStore(listOf(operation(operationId)))
         val api = FakeApi(PushResult.Status.RETRYABLE_FAILURE)
-        val outcome = runSyncCycle(SyncEngine(api, store, coupleId))
-        assertEquals(SyncOutcome.RETRY, outcome)
+        assertEquals(SyncOutcome.RETRY, runSyncCycle(SyncEngine(api, store, coupleId)))
     }
 
     @Test

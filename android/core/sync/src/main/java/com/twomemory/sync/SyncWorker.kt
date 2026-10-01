@@ -18,6 +18,13 @@ fun interface SyncEngineFactory {
 
 object SyncEngineRegistry {
     lateinit var factory: SyncEngineFactory
+
+    /**
+     * Runs inside the worker after a cycle that pulled changes, before WorkManager
+     * is allowed to consider the job done. The app owns what happens next (a
+     * notice); sync stays free of it and a no-op is the default.
+     */
+    var onCycleCompleted: suspend () -> Unit = { }
 }
 
 /** Outcome of one sync cycle; drives the WorkManager retry decision. */
@@ -43,7 +50,15 @@ class SyncWorker(
     override suspend fun doWork(): Result {
         val coupleId = inputData.getString(KEY_COUPLE_ID)?.let(UUID::fromString) ?: return Result.failure()
         val engine = SyncEngineRegistry.factory.create(coupleId)
-        return when (runSyncCycle(engine)) {
+        val outcome = runSyncCycle(engine)
+        if (outcome != SyncOutcome.FAILURE) {
+            // Runs after every cycle that could have applied changes, not just the
+            // one that pulled them: a worker cancelled or retried mid-pull would
+            // otherwise drop that notice for good. The app-side hook dedups, so
+            // running it again costs a query and never repeats a notice.
+            SyncEngineRegistry.onCycleCompleted()
+        }
+        return when (outcome) {
             SyncOutcome.SUCCESS -> Result.success()
             SyncOutcome.RETRY -> Result.retry()
             // A 401 means re-pair is needed; retrying blindly would not help.

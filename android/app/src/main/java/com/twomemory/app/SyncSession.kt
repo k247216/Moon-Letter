@@ -1,6 +1,9 @@
 package com.twomemory.app
 
 import android.content.Context
+import com.twomemory.app.notifications.MoonLetterNotifier
+import com.twomemory.app.notifications.NewEntryNotice
+import com.twomemory.app.notifications.WeeklyReviewWorker
 import com.twomemory.database.AppDatabase
 import com.twomemory.database.RoomSyncStore
 import com.twomemory.network.RetrofitCoupleDiaryApi
@@ -188,14 +191,28 @@ object SyncSession {
             }
         }
 
-    /** One-shot sync from app start / foreground return / manual refresh. */
-    suspend fun triggerSync(context: Context) {
+    /**
+     * Wires what the sync worker and the notices need. Runs from
+     * [MoonLetterApplication] too, because a background sync can start a process
+     * that never showed a screen — and then the engine factory and the notice hook
+     * have to already be in place.
+     */
+    fun installProcessHooks(context: Context) {
         val session = load(context) ?: return
-        // Images first (best effort), so the entry pushes with asset ids.
-        MediaUploadManager.uploadPendingImages(context)
         SyncEngineRegistry.factory = { coupleId ->
             engine(context, session.copy(coupleId = coupleId))
         }
+        SyncEngineRegistry.onCycleCompleted = { NewEntryNotice.announceIfNeeded(context) }
+        MoonLetterNotifier.ensureChannels(context)
+        WeeklyReviewWorker.schedule(context)
+    }
+
+    /** One-shot sync from app start / foreground return / manual refresh. */
+    suspend fun triggerSync(context: Context) {
+        val session = load(context) ?: return
+        installProcessHooks(context)
+        // Images first (best effort), so the entry pushes with asset ids.
+        MediaUploadManager.uploadPendingImages(context)
         SyncWorker.enqueue(context, session.coupleId)
     }
 }

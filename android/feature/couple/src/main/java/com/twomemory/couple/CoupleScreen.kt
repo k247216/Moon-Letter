@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -29,8 +31,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,6 +44,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +60,7 @@ import com.twomemory.designsystem.MoonLetterTheme
 import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
+import java.time.DayOfWeek
 import kotlinx.coroutines.launch
 
 @Composable
@@ -64,6 +71,13 @@ fun CoupleRoute(
     serverPartnerName: String = "",
     onSaveName: suspend (String) -> String = { it },
     onGenerateCode: suspend () -> PairingCode,
+    weeklyReviewEnabled: Boolean = true,
+    newEntryNoticeEnabled: Boolean = true,
+    reviewDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
+    reviewHour: Int = 20,
+    onWeeklyReviewChange: (Boolean) -> Unit = {},
+    onNewEntryNoticeChange: (Boolean) -> Unit = {},
+    onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -109,6 +123,13 @@ fun CoupleRoute(
         onSaveName = { scope.launch { viewModel.saveOwnName(onSaveName) } },
         onGenerateCode = { viewModel.generatePairingCode { onGenerateCode() } },
         onHideCode = viewModel::hidePairingCode,
+        weeklyReviewEnabled = weeklyReviewEnabled,
+        newEntryNoticeEnabled = newEntryNoticeEnabled,
+        reviewDayOfWeek = reviewDayOfWeek,
+        reviewHour = reviewHour,
+        onWeeklyReviewChange = onWeeklyReviewChange,
+        onNewEntryNoticeChange = onNewEntryNoticeChange,
+        onReviewTimeChange = onReviewTimeChange,
         onThemeChange = {
             viewModel.updateTheme(it)
             prefs.edit().putString("theme", it.name).apply()
@@ -127,8 +148,16 @@ fun CoupleScreen(
     onOwnAvatarChange: () -> Unit = {},
     onGenerateCode: () -> Unit = {},
     onHideCode: () -> Unit = {},
+    weeklyReviewEnabled: Boolean = true,
+    newEntryNoticeEnabled: Boolean = true,
+    reviewDayOfWeek: DayOfWeek = DayOfWeek.SUNDAY,
+    reviewHour: Int = 20,
+    onWeeklyReviewChange: (Boolean) -> Unit = {},
+    onNewEntryNoticeChange: (Boolean) -> Unit = {},
+    onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
 ) {
     var editingName by remember { mutableStateOf(false) }
+    var pickingHour by remember { mutableStateOf(false) }
     val draft = state.draftName.trim()
     val canSave = draft.isNotEmpty() && draft != state.ownName && !state.savingName
     Column(
@@ -238,6 +267,71 @@ fun CoupleScreen(
         ) {
             Column {
                 Text(
+                    "回看与通知",
+                    style = TwoMemoryTypography.body,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp),
+                )
+                SwitchRow(
+                    title = "每周回看",
+                    subtitle = "每周挑一条明显更早的记录，点开就是那一条。还没有值得回看的，就什么都不发。",
+                    checked = weeklyReviewEnabled,
+                    onCheckedChange = onWeeklyReviewChange,
+                )
+                if (weeklyReviewEnabled) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ReviewDays.forEach { day ->
+                            FilterChip(
+                                selected = reviewDayOfWeek == day,
+                                onClick = { onReviewTimeChange(day, reviewHour) },
+                                label = { Text(dayLabel(day)) },
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            "每周${dayLabel(reviewDayOfWeek)} ${"%02d:00".format(reviewHour)}",
+                            style = TwoMemoryTypography.caption,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f),
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { pickingHour = true }) { Text("改时间") }
+                    }
+                }
+                SwitchRow(
+                    title = "对方写了新的",
+                    subtitle = "同步完只说一声「TA 写了一条新的」，不含内容、不数条数、不攒未读。",
+                    checked = newEntryNoticeEnabled,
+                    onCheckedChange = onNewEntryNoticeChange,
+                )
+            }
+        }
+        if (pickingHour) {
+            ReviewTimeDialog(
+                initialHour = reviewHour,
+                onDismiss = { pickingHour = false },
+                onConfirm = { hour ->
+                    onReviewTimeChange(reviewDayOfWeek, hour)
+                    pickingHour = false
+                },
+            )
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 1.dp,
+        ) {
+            Column {
+                Text(
                     "换手机或重新配对",
                     style = TwoMemoryTypography.body,
                     modifier = Modifier.padding(start = 20.dp, top = 16.dp),
@@ -296,6 +390,64 @@ fun CoupleScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = TwoMemoryTypography.body)
+            Text(subtitle, style = TwoMemoryTypography.caption,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/** Only the hour is picked: the re-encounter is a moment in the week, not a deadline. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReviewTimeDialog(
+    initialHour: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val pickerState = rememberTimePickerState(initialHour = initialHour, initialMinute = 0, is24Hour = true)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onConfirm(pickerState.hour) }) { Text("好") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("先不改") } },
+        text = { TimePicker(state = pickerState) },
+    )
+}
+
+private val ReviewDays = listOf(
+    DayOfWeek.MONDAY,
+    DayOfWeek.TUESDAY,
+    DayOfWeek.WEDNESDAY,
+    DayOfWeek.THURSDAY,
+    DayOfWeek.FRIDAY,
+    DayOfWeek.SATURDAY,
+    DayOfWeek.SUNDAY,
+)
+
+private fun dayLabel(day: DayOfWeek) = when (day) {
+    DayOfWeek.MONDAY -> "周一"
+    DayOfWeek.TUESDAY -> "周二"
+    DayOfWeek.WEDNESDAY -> "周三"
+    DayOfWeek.THURSDAY -> "周四"
+    DayOfWeek.FRIDAY -> "周五"
+    DayOfWeek.SATURDAY -> "周六"
+    DayOfWeek.SUNDAY -> "周日"
 }
 
 @Composable

@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import com.twomemory.app.notifications.NotificationPreferences
+import com.twomemory.app.notifications.WeeklyReviewWorker
 import com.twomemory.couple.CoupleRoute
 import com.twomemory.couple.CoupleViewModel
 import com.twomemory.couple.PairingCode
@@ -173,7 +175,7 @@ object DraftStore {
 }
 
 @Composable
-fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
+fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId: String? = null) {
     val context = LocalContext.current
     var bound by remember { mutableStateOf(SyncSession.load(context) != null) }
     if (!bound) {
@@ -222,6 +224,19 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
         )
     }
     var openEntryId by remember { mutableStateOf<String?>(null) }
+
+    // A tapped notice opens exactly one record — and only when it is still here,
+    // so a record deleted since then cannot produce an empty page.
+    LaunchedEffect(initialEntryId) {
+        val entryId = initialEntryId ?: return@LaunchedEffect
+        if (database.entryDao().findEntry(entryId) != null) openEntryId = entryId
+    }
+
+    val notificationPrefs = remember { NotificationPreferences(context) }
+    var weeklyReviewEnabled by remember { mutableStateOf(notificationPrefs.weeklyReviewEnabled) }
+    var newEntryNoticeEnabled by remember { mutableStateOf(notificationPrefs.newEntryNoticeEnabled) }
+    var reviewDayOfWeek by remember { mutableStateOf(notificationPrefs.reviewDayOfWeek) }
+    var reviewHour by remember { mutableStateOf(notificationPrefs.reviewHour) }
     val editorViewModel = remember { EditorViewModel() }
     val editorState by editorViewModel.state.collectAsState()
 
@@ -380,6 +395,32 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
                     onGenerateCode = {
                         val issued = SyncSession.mintPairingCode(context)
                         PairingCode(issued.pairingTokenKind, issued.pairingToken)
+                    },
+                    weeklyReviewEnabled = weeklyReviewEnabled,
+                    newEntryNoticeEnabled = newEntryNoticeEnabled,
+                    reviewDayOfWeek = reviewDayOfWeek,
+                    reviewHour = reviewHour,
+                    onWeeklyReviewChange = { enabled ->
+                        notificationPrefs.weeklyReviewEnabled = enabled
+                        weeklyReviewEnabled = enabled
+                        if (enabled) {
+                            WeeklyReviewWorker.schedule(context, force = true)
+                        } else {
+                            WeeklyReviewWorker.cancel(context)
+                        }
+                    },
+                    onNewEntryNoticeChange = { enabled ->
+                        // Off also drops the one record id the notice remembered, so
+                        // switching it back on never announces what passed while off.
+                        notificationPrefs.newEntryNoticeEnabled = enabled
+                        newEntryNoticeEnabled = enabled
+                    },
+                    onReviewTimeChange = { day, hour ->
+                        notificationPrefs.reviewDayOfWeek = day
+                        notificationPrefs.reviewHour = hour
+                        reviewDayOfWeek = day
+                        reviewHour = hour
+                        WeeklyReviewWorker.schedule(context, force = true)
                     },
                 )
                 "album" -> AlbumPreviewScreen()

@@ -43,6 +43,7 @@ dependencies {
     implementation(project(":feature:couple"))
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
