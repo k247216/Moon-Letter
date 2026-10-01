@@ -34,6 +34,25 @@ public class DeviceSessionService {
         return rawToken;
     }
 
+    /**
+     * Revokes every still-active session of the member, then issues a fresh
+     * one (device replacement / recovery rotation). Revoking first keeps the
+     * single-active-session constraint satisfiable.
+     */
+    @Transactional
+    public String issueReplacementSession(UUID userId, UUID coupleId) {
+        revokeAllForUser(userId);
+        return issueSession(userId, coupleId);
+    }
+
+    /** Revokes all active sessions of the member; returns the revoked count. */
+    @Transactional
+    public int revokeAllForUser(UUID userId) {
+        return jdbcTemplate.update(
+                "UPDATE device_session SET revoked_at = now() WHERE user_id = ? AND revoked_at IS NULL",
+                userId);
+    }
+
     /** 256 bits of cryptographic randomness, base64url encoded (43 chars). */
     public String generateToken() {
         byte[] bytes = new byte[32];
