@@ -1,12 +1,11 @@
 package com.twomemory.app.entry;
 
 import com.twomemory.app.auth.SpaceAccessPolicy;
+import com.twomemory.app.sync.ChangeFeedService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -14,14 +13,29 @@ public class CommentService {
 
     private final JdbcTemplate jdbcTemplate;
     private final SpaceAccessPolicy accessPolicy;
+    private final ChangeFeedService changeFeedService;
 
-    public CommentService(JdbcTemplate jdbcTemplate, SpaceAccessPolicy accessPolicy) {
+    public CommentService(JdbcTemplate jdbcTemplate, SpaceAccessPolicy accessPolicy,
+                          ChangeFeedService changeFeedService) {
         this.jdbcTemplate = jdbcTemplate;
         this.accessPolicy = accessPolicy;
+        this.changeFeedService = changeFeedService;
     }
 
     @Transactional
     public CommentView addComment(UUID entryId, UUID authorId, String body, UUID replyToId) {
+        return addComment(entryId, authorId, null, body, replyToId);
+    }
+
+    /**
+     * Adds a comment. When commentId is supplied (sync path) it is adopted
+     * verbatim so retries stay idempotent; a duplicate insert returns the
+     * stored row. Every accepted comment appends a COMMENT change so the
+     * partner's pull delivers it.
+     */
+    @Transactional
+    public CommentView addComment(UUID entryId, UUID authorId, UUID commentId,
+                                  String body, UUID replyToId) {
         UUID coupleId = jdbcTemplate.queryForObject(
                 "SELECT couple_id FROM entry WHERE id = ? AND deleted_at IS NULL",
                 UUID.class, entryId);
@@ -35,11 +49,24 @@ public class CommentService {
                 throw new EntryValidationException("reply must target a comment in the same entry");
             }
         }
-        UUID commentId = UUID.randomUUID();
+        UUID id = commentId != null ? commentId : UUID.randomUUID();
+        if (commentId != null) {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT count(*) FROM comment WHERE id = ?", Integer.class, commentId);
+            if (exists != null && exists > 0) {
+                return readComment(commentId);
+            }
+        }
         jdbcTemplate.update("""
                 INSERT INTO comment(id, entry_id, author_id, body, reply_to_id, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, now(), now())
-                """, commentId, entryId, authorId, normalizedBody, replyToId);
+                """, id, entryId, authorId, normalizedBody, replyToId);
+        CommentView view = readComment(id);
+        changeFeedService.appendChange(coupleId, "COMMENT", entryId, "ADD", toJson(view));
+        return view;
+    }
+
+    private CommentView readComment(UUID commentId) {
         return jdbcTemplate.queryForObject("""
                 SELECT id, entry_id, author_id, body, reply_to_id, created_at
                 FROM comment WHERE id = ?
@@ -50,6 +77,19 @@ public class CommentService {
                 rs.getString("body"),
                 rs.getObject("reply_to_id", UUID.class),
                 rs.getTimestamp("created_at").toInstant()), commentId);
+    }
+
+    private String toJson(CommentView view) {
+        return "{\"entryId\":\"%s\",\"commentId\":\"%s\",\"authorId\":\"%s\",\"body\":%s,\"replyToId\":%s}"
+                .formatted(view.entryId(), view.id(), view.authorId(),
+                        quote(view.body()),
+                        view.replyToId() == null ? "null" : "\"" + view.replyToId() + "\"");
+    }
+
+    private static String quote(String raw) {
+        String escaped = raw.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+        return "\"" + escaped + "\"";
     }
 
     static String validateBody(String raw) {

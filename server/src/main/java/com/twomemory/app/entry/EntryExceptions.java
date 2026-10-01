@@ -1,13 +1,3 @@
-package com.twomemory.app.entry;
-
-class EntryValidationException extends RuntimeException {
-    EntryValidationException(String message) {
-        super(message);
-    }
-}
-
-class EntryAccessDeniedException extends RuntimeException {
-    EntryAccessDeniedException(String message) {
-        super(message);
-    }
-}
+// Package exception types live in their own files now:
+// EntryValidationException.java, EntryAccessDeniedException.java (public).
+// This placeholder exists because the runtime refuses file deletions.

@@ -162,7 +162,10 @@ public class EntryService {
     public EntryView readEntry(UUID entryId, UUID userId) {
         EntryRow entry = locklessEntry(entryId);
         accessPolicy.requireMember(userId, entry.coupleId());
-        if (entry.state() == EntryState.DRAFT && !entry.authorId().equals(userId)) {
+        // Personal drafts are private to the author; collaborative drafts are
+        // readable by the space (the partner contributes to them directly).
+        if (entry.state() == EntryState.DRAFT && entry.mode() == EntryMode.PERSONAL
+                && !entry.authorId().equals(userId)) {
             throw new EntryAccessDeniedException("personal draft is private");
         }
         return loadEntry(entryId);

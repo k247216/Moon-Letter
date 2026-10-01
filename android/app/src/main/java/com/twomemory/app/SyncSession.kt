@@ -100,8 +100,10 @@ object SyncSession {
     }
 
     /** One-shot sync from app start / foreground return / manual refresh. */
-    fun triggerSync(context: Context) {
+    suspend fun triggerSync(context: Context) {
         val session = load(context) ?: return
+        // Images first (best effort), so the entry pushes with asset ids.
+        MediaUploadManager.uploadPendingImages(context)
         SyncEngineRegistry.factory = { coupleId ->
             engine(context, session.copy(coupleId = coupleId))
         }

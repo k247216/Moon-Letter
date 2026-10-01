@@ -38,6 +38,11 @@ abstract class EntryDao {
     @Query("SELECT * FROM entries WHERE deleted = 0 ORDER BY occurredAtEpochMillis DESC, id DESC LIMIT 100")
     abstract suspend fun timelineSnapshot(): List<EntryEntity>
 
+    @Query(
+        "SELECT * FROM entry_blocks WHERE type = 'IMAGE' AND assetId IS NULL AND deleted = 0",
+    )
+    abstract suspend fun imageBlocksWithoutAsset(): List<EntryBlockEntity>
+
     fun observeTimeline(): Flow<PagingData<TimelineItem>> = Pager(
         config = PagingConfig(pageSize = 30, enablePlaceholders = false),
         pagingSourceFactory = ::timelineSource,

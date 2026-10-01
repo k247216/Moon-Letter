@@ -87,6 +87,24 @@ public class SyncController {
         return ResponseEntity.badRequest().body(new SyncError("SYNC_VALIDATION_ERROR", exception.getMessage()));
     }
 
+    @ExceptionHandler(com.twomemory.app.entry.EntryAccessDeniedException.class)
+    ResponseEntity<SyncError> forbidden(com.twomemory.app.entry.EntryAccessDeniedException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new SyncError("FORBIDDEN", exception.getMessage()));
+    }
+
+    @ExceptionHandler(com.twomemory.app.entry.EntryConflict.class)
+    ResponseEntity<SyncError> entryConflict(com.twomemory.app.entry.EntryConflict exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new SyncError("ENTRY_CONFLICT", exception.getMessage()));
+    }
+
+    @ExceptionHandler(com.twomemory.app.entry.EntryValidationException.class)
+    ResponseEntity<SyncError> entryValidation(com.twomemory.app.entry.EntryValidationException exception) {
+        return ResponseEntity.badRequest()
+                .body(new SyncError("ENTRY_VALIDATION_ERROR", exception.getMessage()));
+    }
+
     record SyncError(String code, String message) {
     }
 }

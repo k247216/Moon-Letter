@@ -1,0 +1,7 @@
+# Test-scope overrides: each @SpringBootTest context keeps a small pool so a
+# full-suite run (many cached contexts) stays under PostgreSQL max_connections.
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 1

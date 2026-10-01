@@ -1,6 +1,7 @@
 package com.twomemory.app.media;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
@@ -8,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
 @Component
+@ConditionalOnProperty(name = "moon-letter.storage.mode", havingValue = "s3")
 public class S3ObjectStorage implements ObjectStorage {
 
     private final String endpoint;

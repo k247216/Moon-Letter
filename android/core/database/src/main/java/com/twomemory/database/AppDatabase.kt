@@ -52,22 +52,51 @@ data class SyncCursorEntity(
     val nextSequence: Long = 0,
 )
 
+@Entity(tableName = "comments", primaryKeys = ["id"])
+data class CommentEntity(
+    val id: String,
+    val entryId: String,
+    val authorId: String,
+    val body: String,
+    val replyToId: String?,
+    val createdAtEpochMillis: Long,
+    val deleted: Boolean = false,
+)
+
 @Database(
-    entities = [EntryEntity::class, EntryBlockEntity::class, OutboxOperationEntity::class, SyncCursorEntity::class],
-    version = 1,
+    entities = [
+        EntryEntity::class,
+        EntryBlockEntity::class,
+        OutboxOperationEntity::class,
+        SyncCursorEntity::class,
+        CommentEntity::class,
+    ],
+    version = 2,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun entryDao(): EntryDao
     abstract fun outboxDao(): OutboxDao
     abstract fun syncCursorDao(): SyncCursorDao
+    abstract fun commentDao(): CommentDao
 
     companion object {
+        private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `comments` (" +
+                        "`id` TEXT NOT NULL, `entryId` TEXT NOT NULL, `authorId` TEXT NOT NULL, " +
+                        "`body` TEXT NOT NULL, `replyToId` TEXT, `createdAtEpochMillis` INTEGER NOT NULL, " +
+                        "`deleted` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
         fun build(context: android.content.Context): AppDatabase =
             androidx.room.Room.databaseBuilder(
                 context,
                 AppDatabase::class.java,
                 "moon-letter.db",
-            ).build()
+            ).addMigrations(MIGRATION_1_2).build()
     }
 }

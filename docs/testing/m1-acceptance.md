@@ -182,3 +182,12 @@
 - **测试**：竖切测试的第 1、2 步改为走真实 `SetupViewModel`+`RetrofitSessionApi` 代码路径（同一真服务端），并新增会话落盘回读断言——手机上将要执行的绑定路径首次被真 HTTP 覆盖。
 - **红灯两轮**：① RetrofitSessionApi 初版用裸 Gson，UUID 反序列化崩（PairResultDto.userId），补 UUID 适配器后过；② 测试侧 setupB 忘切 PARTNER_DEVICE 模式，canSubmit 按首设备校验静默拦下（顺带确认 UI 按钮禁用态同样依赖 canSubmit，行为正确）。
 - **结果**：`./gradlew :app:testDebugUnitTest` → `BUILD SUCCESSFUL`（EXIT=0）；`./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL`（EXIT=0）。
+
+### 记录 13：Task 12/13 功能链路（2026-10-01）
+
+- **Commit**：本轮功能提交（见 git log：shared chain、media chain、scripts）。
+- **Task 12 服务端**：同步 dispatcher 扩展 `CREATE_SHARED_ENTRY` / `APPEND_BLOCK` / `ADD_COMMENT` 三种操作（commentId 客户端生成、幂等重放；评论写变更流）。`SharedPerspectiveSyncTest`（独立真库 moon_letter_shared_test + 真 HTTP，双成员）：A 建共同记录 → B 追加视角块 → B 改 A 块 403 → 评论重放仅一行 → A 拉变更流见 CREATE/UPDATE/ADD → 双端读到同一条目（2 块、COLLABORATIVE）。附带：EntryService.readEntry 修正为仅个人草稿私有。
+- **Task 13 服务端**：`LocalObjectStorage`（磁盘存储，条件装配 `moon-letter.storage.mode`，缺省 local；S3 需显式开启）；`POST/GET /api/v1/media/{id}/data` 原始字节上传/下载（member 校验 + sha256/size 核验 + READY 状态机）；`ExportService/ExportController`：GET /api/v1/export 输出条目+块+评论 JSON（无任何密钥）。`MediaChainTest`（独立真库）：建票 → 上传字节 → READY → 伴侣下载字节一致 → 导出 JSON 不含 token/secret。`scripts/backup.sh`/`restore.sh`：pg_dump + 存储目录归档 + backup_health.tsv 健康行（每日调度为运维动作）。
+- **Android**：Room v2 `comments` 表 + MIGRATION_1_2；`RoomSyncStore` 应用 COMMENT 变更；`LocalEntryWriter.appendBlock/addComment`（Room+outbox 同事务）；`MediaApi`/`RetrofitMediaApi` + `MediaUploadManager`（同步前 best-effort 上传无 asset 的 IMAGE 块，回填 assetId 与 outbox payload）；SyncSession.triggerSync 挂接。
+- **结果**：`mvn test` 全套 EXIT=0（连接池收紧为 4/上下文后并行测试不再耗尽 PG 连接）；`./gradlew test :app:assembleDebug` → BUILD SUCCESSFUL。
+- **诚实记录**：共同记录的发布（PUBLISH）与图片选择器 UI 尚未接上；评论 UI 展示未做（数据链已通，属于下一轮「统一性修复」的 UI 段）。

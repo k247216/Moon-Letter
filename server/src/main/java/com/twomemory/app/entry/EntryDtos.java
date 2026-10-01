@@ -19,16 +19,10 @@ record PublishResult(EntryView entry, int revisionNo) {
 record ApplyChangesRequest(int baseRevision, List<BlockMutation> mutations) {
 }
 
-record ApplyChangesResult(EntryView entry, boolean merged) {
-}
-
 record ResolveConflictCommand(int baseRevision, List<BlockMutation> mutations) {
 }
 
 record CommentRequest(String body, UUID replyToId) {
-}
-
-record CommentView(UUID id, UUID entryId, UUID authorId, String body, UUID replyToId, Instant createdAt) {
 }
 
 record TimelineCursor(Instant occurredAt, UUID id) {

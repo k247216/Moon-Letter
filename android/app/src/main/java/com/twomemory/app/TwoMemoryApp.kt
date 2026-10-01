@@ -13,6 +13,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.twomemory.designsystem.MoonLetterTheme
 import com.twomemory.designsystem.TwoMemoryTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Composable
 fun TwoMemoryApp() {
@@ -37,7 +40,9 @@ fun TwoMemoryApp() {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                SyncSession.triggerSync(context)
+                CoroutineScope(Dispatchers.Default).launch {
+                    SyncSession.triggerSync(context)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

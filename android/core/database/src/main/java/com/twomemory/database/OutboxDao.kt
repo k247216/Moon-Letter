@@ -21,4 +21,11 @@ interface OutboxDao {
 
     @Query("SELECT * FROM outbox_operations WHERE operationId = :operationId LIMIT 1")
     suspend fun find(operationId: String): OutboxOperationEntity?
+
+    /** Refreshes a pending payload (e.g. after the image got its asset id). */
+    @Query(
+        "UPDATE outbox_operations SET payload = :payload " +
+            "WHERE entityId = :entityId AND action IN ('CREATE_SHARED_ENTRY', 'APPEND_BLOCK') AND state = 'PENDING'",
+    )
+    suspend fun replacePayloadForEntity(entityId: String, payload: String)
 }

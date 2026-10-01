@@ -52,10 +52,13 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
     ) = withContext(Dispatchers.IO) {
         database.withTransaction {
             for (change in changes) {
-                if (change.entityType != "ENTRY" || change.payload.isNullOrBlank()) {
+                if (change.payload.isNullOrBlank()) {
                     continue
                 }
-                applyEntryChange(change)
+                when (change.entityType) {
+                    "ENTRY" -> applyEntryChange(change)
+                    "COMMENT" -> applyCommentChange(change)
+                }
             }
             database.syncCursorDao().upsert(
                 SyncCursorEntity(coupleId = coupleId.toString(), nextSequence = nextSequence),
@@ -105,5 +108,25 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
     private fun mapState(raw: String): String = when (raw) {
         "PUBLISHED", "CAPSULE_LOCKED", "ARCHIVED" -> raw
         else -> "DRAFT"
+    }
+
+    /** Comment payloads come from the server's CommentView JSON. */
+    private suspend fun applyCommentChange(change: RemoteChange) {
+        val payload = JSONObject(change.payload)
+        val createdAt = when (val raw = payload.opt("createdAt")) {
+            is Number -> (raw.toDouble() * 1000).toLong()
+            is String -> runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrDefault(0L)
+            else -> 0L
+        }
+        database.commentDao().insert(
+            CommentEntity(
+                id = payload.optString("id", change.entityId.toString()),
+                entryId = payload.optString("entryId", change.entityId.toString()),
+                authorId = payload.optString("authorId"),
+                body = payload.optString("body"),
+                replyToId = if (payload.isNull("replyToId")) null else payload.optString("replyToId"),
+                createdAtEpochMillis = createdAt,
+            ),
+        )
     }
 }

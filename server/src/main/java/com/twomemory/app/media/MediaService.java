@@ -77,6 +77,18 @@ public class MediaService {
         return markFailedInternal(userId, assetId, code);
     }
 
+    /** The asset row for authorization checks on raw data transfer. */
+    public MediaAssetView readAsset(UUID userId, UUID assetId) {
+        MediaAssetView asset = jdbcTemplate.queryForObject("""
+                SELECT id, couple_id, owner_id, kind::text AS kind, status::text AS status,
+                       object_key, mime_type, byte_size, width, height, duration_ms,
+                       sha256, NULL AS failure_code
+                FROM media_asset WHERE id = ? AND deleted_at IS NULL
+                """, this::mapAsset, assetId);
+        accessPolicy.requireMember(userId, asset.coupleId());
+        return asset;
+    }
+
     public void requireReady(UUID coupleId, Collection<UUID> assetIds) {
         if (assetIds == null || assetIds.isEmpty()) {
             return;
