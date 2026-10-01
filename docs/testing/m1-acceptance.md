@@ -281,7 +281,7 @@
 
 ### 记录 20：无明显破绽——响应式呈现、草稿归属与假数据清理（2026-10-01）
 
-- **Commits**：`d107bba`（本轮 Android 侧全部改动 + 本条台账另一次 docs 提交）。**更正记录 18 的「本地领先 origin 34 个提交」**：`562e402`/`94a08d7`/`d7ed275` 在其后已按授权推送，`git branch -vv` 当前实测 `ahead 2`（`f7b8d21` 与本条）；推送仍是一次一批、逐次授权，不视为长期许可。
+- **Commits**：`d107bba`（响应式呈现、草稿分槽、遮挡与假数据清理的全部 Android 改动）、`fe697d7`（详情页状态栏 inset + 本条台账两处更正）、以及 docs 提交本身。**更正记录 18 的「本地领先 origin 34 个提交」**：`562e402`/`94a08d7`/`d7ed275` 在其后已按授权推送，`git branch -vv` 当前实测 ahead 4；推送仍是一次一批、逐次授权，不视为长期许可。
 - **门槛清单第 3 项**「无明显破绽：Scaffold 遮挡、时间线刷新这些毛刺清掉」，顺带收尾第 2 项的呈现面与第 4 项的签署观感。服务端本轮**未改动**。
 - **时间线毛刺的根因**：`TimelineViewModel` 收的是一个一次性 `loader`，靠 `LaunchedEffect(selectedKey, editingMode)` 与发布后的 `refresh()` 手动重查——离开再回来才刷新，同步线程写入（WorkManager 拉到伴侣的新记录）时页面**不会动**，她看到的永远是进页时的那一帧。改为 `observer: () -> Flow<List<TimelineItem>>`，唯一入口是 Room 的失效驱动流；`refresh()` 与两处轮询 `LaunchedEffect` 全部删除，「本地写完立刻可见」变成一条测试而不是一个操作顺序（`aSingleLocalWriteReachesTheScreenWithNoRefreshCall`）。
 - **两个隐藏的呈现缺陷**：① 旧 `timelineSnapshot()` 带 `LIMIT 100`，第 101 页回忆会**静默消失**——删掉该查询，只留无上限的 `observeTimeline()`，`ORDER BY occurredAtEpochMillis DESC, id DESC` 一份实现；② 每条记录一次 `blocks(id)` 的 N+1，改为一条全表 `observeBlocks()` 流在内存里分组，一次发射拼出预览与首图。记录详情页同样从 `loader`+`open()`+`reload()` 改为三条流 `combine(observeEntry, observeBlocks, observeForEntry)`，伴侣的回应落到本页时不需要重开。
