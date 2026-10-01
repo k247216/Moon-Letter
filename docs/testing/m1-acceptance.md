@@ -420,6 +420,6 @@
 
 ### 记录 28：相册与城市页接入真实本地投影（2026-10-01）
 
-- **Commit**：`d697e94 feat(ui): make album and city views data-driven`，已推送到 `origin/m1-stable-recording-loop`；计划文档末尾修正为 `15c9971`。
+- **Commit**：`d697e94 feat(ui): make album and city views data-driven` + `6b68ab8 fix(ui): accept city snapshot name fields`，均已推送到 `origin/m1-stable-recording-loop`；计划文档末尾修正为 `15c9971`。
 - **实现**：相册从 Room `entry_blocks` 的已发布 IMAGE/VIDEO 派生月份、日期、作者和来源记录；图片复用本机/远端 asset 渲染，视频明确回到原记录。城市页从已发布 LOCATION block 派生城市故事，地图区域不可用时列表仍能阅读；两页都不请求实时定位、不造演示数据。
 - **测试边界**：新增 `FutureFeatureScreensTest`，但本机未运行 Compose instrumentation、Gradle 或真机；因此相册/城市页仍为 **NOT RUN**，服务端媒体/位置接口尚未接通，不能标记 V2/V3 或 M1 完成。
