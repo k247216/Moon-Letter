@@ -92,11 +92,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        fun build(context: android.content.Context): AppDatabase =
-            androidx.room.Room.databaseBuilder(
-                context,
+        /**
+         * One handle per process: the editor, the sync engine and the uploader all
+         * write the same file, and separate connections would contend for it.
+         */
+        @Volatile
+        private var instance: AppDatabase? = null
+
+        fun build(context: android.content.Context): AppDatabase = instance ?: synchronized(this) {
+            instance ?: androidx.room.Room.databaseBuilder(
+                context.applicationContext,
                 AppDatabase::class.java,
                 "moon-letter.db",
-            ).addMigrations(MIGRATION_1_2).build()
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+        }
     }
 }

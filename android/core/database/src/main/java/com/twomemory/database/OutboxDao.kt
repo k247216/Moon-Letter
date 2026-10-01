@@ -22,10 +22,13 @@ interface OutboxDao {
     @Query("SELECT * FROM outbox_operations WHERE operationId = :operationId LIMIT 1")
     suspend fun find(operationId: String): OutboxOperationEntity?
 
-    /** Refreshes a pending payload (e.g. after the image got its asset id). */
+    /** Operations held back because an image of their entry has no asset yet. */
     @Query(
-        "UPDATE outbox_operations SET payload = :payload " +
-            "WHERE entityId = :entityId AND action IN ('CREATE_SHARED_ENTRY', 'APPEND_BLOCK') AND state = 'PENDING'",
+        "SELECT * FROM outbox_operations WHERE entityId = :entityId AND state = 'MEDIA_PENDING' ORDER BY rowid",
     )
-    suspend fun replacePayloadForEntity(entityId: String, payload: String)
+    suspend fun mediaPendingForEntity(entityId: String): List<OutboxOperationEntity>
+
+    /** Re-queues one held operation with its assets filled in; rowid order is kept. */
+    @Query("UPDATE outbox_operations SET state = 'PENDING', payload = :payload WHERE operationId = :operationId")
+    suspend fun release(operationId: String, payload: String)
 }

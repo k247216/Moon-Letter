@@ -19,6 +19,7 @@ data class TimelineEntryUi(
     val author: String,
     val title: String?,
     val body: String = "",
+    val photo: com.twomemory.model.TimelinePhoto? = null,
     val shared: Boolean = false,
     val mine: Boolean = false,
     /** Still only on this device: published records never stay in DRAFT here. */
@@ -58,26 +59,32 @@ class TimelineViewModel(
         refresh()
     }
 
-    private fun TimelineItem.toUi(): TimelineEntryUi {
-        val zone = runCatching { ZoneId.of(occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
-        val local = occurredAt.atZone(zone)
-        val date = local.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA))
-        val time = local.format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA))
-        val mine = currentUserId != null && authorId == currentUserId
-        return TimelineEntryUi(
-            id = id.toString(),
-            dateLabel = date,
-            timeLabel = time,
-            author = when {
-                mine -> ownName.ifBlank { "我" }
-                else -> partnerName.ifBlank { "伴侣" }
-            },
-            title = title?.takeIf { it.isNotBlank() },
-            // Body must be the real content text; title is rendered separately.
-            body = preview ?: title.orEmpty(),
-            shared = mode == com.twomemory.model.EntryMode.COLLABORATIVE,
-            mine = mine,
-            unsent = state == com.twomemory.model.EntryState.DRAFT,
-        )
-    }
+    private fun TimelineItem.toUi() = toEntryUi(ownName, partnerName, currentUserId)
+}
+
+/** Author naming and date rendering shared by the timeline and a record's page. */
+internal fun TimelineItem.toEntryUi(
+    ownName: String,
+    partnerName: String,
+    currentUserId: UUID?,
+): TimelineEntryUi {
+    val zone = runCatching { ZoneId.of(occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
+    val local = occurredAt.atZone(zone)
+    val mine = currentUserId != null && authorId == currentUserId
+    return TimelineEntryUi(
+        id = id.toString(),
+        dateLabel = local.format(DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)),
+        timeLabel = local.format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA)),
+        author = when {
+            mine -> ownName.ifBlank { "我" }
+            else -> partnerName.ifBlank { "伴侣" }
+        },
+        title = title?.takeIf { it.isNotBlank() },
+        // Body must be the real content text; title is rendered separately.
+        body = preview ?: title.orEmpty(),
+        photo = photo,
+        shared = mode == com.twomemory.model.EntryMode.COLLABORATIVE,
+        mine = mine,
+        unsent = state == com.twomemory.model.EntryState.DRAFT,
+    )
 }

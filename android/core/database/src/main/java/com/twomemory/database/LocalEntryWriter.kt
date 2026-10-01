@@ -1,6 +1,8 @@
 package com.twomemory.database
 
 import androidx.room.withTransaction
+import com.twomemory.model.BlockType
+import com.twomemory.model.LocalBlockCommand
 import com.twomemory.model.LocalEntryCommand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,19 +56,23 @@ class LocalEntryWriter(private val database: AppDatabase) {
                         },
                         payload = createOperationPayload(command),
                         baseVersion = 0,
+                        state = if (command.blocks.awaitsAsset()) MEDIA_PENDING else "PENDING",
                     ),
                 )
                 if (publish) {
                     // The server stores a new entry at row version 0 and the outbox
                     // applies operations in insertion order, so a publish enqueued
-                    // here faces exactly that version.
-                    database.outboxDao().insert(publishOperation(command.coupleId, command.entryId, 0L))
+                    // here faces exactly that version. Both operations gate together:
+                    // a publish must never overtake a create whose picture is missing.
+                    database.outboxDao().insert(
+                        publishOperation(command.coupleId, command.entryId, 0L, command.blocks.awaitsAsset()),
+                    )
                 }
             }
             command.entryId
         }
 
-    private fun publishOperation(coupleId: UUID, entryId: UUID, baseVersion: Long) =
+    private fun publishOperation(coupleId: UUID, entryId: UUID, baseVersion: Long, waitsForAsset: Boolean) =
         OutboxOperationEntity(
             operationId = UUID.randomUUID().toString(),
             coupleId = coupleId.toString(),
@@ -77,6 +83,7 @@ class LocalEntryWriter(private val database: AppDatabase) {
                 put("baseVersion", baseVersion)
             }.toString(),
             baseVersion = baseVersion,
+            state = if (waitsForAsset) MEDIA_PENDING else "PENDING",
         )
 
     /**
@@ -113,9 +120,48 @@ class LocalEntryWriter(private val database: AppDatabase) {
                     action = "APPEND_BLOCK",
                     payload = payloadJson,
                     baseVersion = 0,
+                    state = if (block.awaitsAsset()) MEDIA_PENDING else "PENDING",
                 ),
             )
         }
+    }
+
+    /**
+     * Records a finished upload and, when that was the entry's last missing
+     * picture, releases the whole entry to the queue in one transaction.
+     */
+    suspend fun attachAsset(blockId: UUID, assetId: UUID): Unit = withContext(Dispatchers.IO) {
+        database.withTransaction {
+            val block = database.entryDao().findBlock(blockId.toString()) ?: return@withTransaction
+            database.entryDao().insertBlocks(listOf(block.copy(assetId = assetId.toString())))
+            releaseEntry(block.entryId)
+        }
+    }
+
+    private suspend fun releaseEntry(entryId: String) {
+        val gated = database.outboxDao().mediaPendingForEntity(entryId)
+        if (gated.isEmpty() || database.entryDao().imagesWithoutAsset(entryId) > 0) return
+        val assetsByBlock = database.entryDao().blocks(entryId)
+            .mapNotNull { block -> block.assetId?.let { block.id to it } }
+            .toMap()
+        for (operation in gated) {
+            database.outboxDao().release(operation.operationId, fillAssets(operation.payload, assetsByBlock))
+        }
+    }
+
+    /** Patches the stored operation JSON in place, so its shape stays the server's contract. */
+    private fun fillAssets(payload: String, assetsByBlock: Map<String, String>): String {
+        val json = org.json.JSONObject(payload)
+        json.optJSONArray("blocks")?.let { blocks ->
+            for (index in 0 until blocks.length()) {
+                assetsByBlock[blocks.getJSONObject(index).optString("blockId")]
+                    ?.let { blocks.getJSONObject(index).put("assetId", it) }
+            }
+        }
+        json.optJSONObject("block")?.let { block ->
+            assetsByBlock[block.optString("blockId")]?.let { block.put("assetId", it) }
+        }
+        return json.toString()
     }
 
     /**
@@ -198,3 +244,10 @@ class LocalEntryWriter(private val database: AppDatabase) {
         }
     }
 }
+
+/** Outbox rows in this state are invisible to the sync engine until their pictures land. */
+private const val MEDIA_PENDING = "MEDIA_PENDING"
+
+private fun LocalBlockCommand.awaitsAsset(): Boolean = type == BlockType.IMAGE && assetId == null
+
+private fun List<LocalBlockCommand>.awaitsAsset(): Boolean = any { it.awaitsAsset() }

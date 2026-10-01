@@ -36,7 +36,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.twomemory.designsystem.EntryPhoto
 import com.twomemory.designsystem.R
 import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.TwoMemoryIcons
@@ -51,9 +53,10 @@ fun TimelineRoute(
     viewModel: TimelineViewModel,
     coverBitmap: ImageBitmap? = null,
     onChangeCover: () -> Unit = {},
+    onOpen: (String) -> Unit = {},
 ) {
     val entries by viewModel.entries.collectAsState()
-    TimelineScreen(entries, coverBitmap, onChangeCover)
+    TimelineScreen(entries, coverBitmap, onChangeCover, onOpen)
 }
 
 @Composable
@@ -61,6 +64,7 @@ fun TimelineScreen(
     entries: List<TimelineEntryUi>,
     coverBitmap: ImageBitmap? = null,
     onChangeCover: () -> Unit = {},
+    onOpen: (String) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -82,6 +86,7 @@ fun TimelineScreen(
                 TimelineRow(
                     entry,
                     isMine = entry.mine,
+                    onOpen = onOpen,
                     modifier = Modifier.padding(horizontal = 28.dp),
                 )
                 Spacer(Modifier.height(18.dp))
@@ -204,7 +209,12 @@ private fun StitchDivider(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modifier = Modifier) {
+private fun TimelineRow(
+    entry: TimelineEntryUi,
+    isMine: Boolean,
+    onOpen: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
@@ -223,7 +233,9 @@ private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modif
             }
         }
         Spacer(Modifier.size(14.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f).clickable { onOpen(entry.id) },
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.size(26.dp).clip(CircleShape)
@@ -276,15 +288,30 @@ private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modif
                 Spacer(Modifier.height(4.dp))
             }
             if (entry.body.isNotBlank()) {
-                Text(entry.body, style = TwoMemoryTypography.body)
+                Text(
+                    entry.body,
+                    style = TwoMemoryTypography.body,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            entry.photo?.let { photo ->
+                Spacer(Modifier.height(8.dp))
+                EntryPhoto(
+                    localPath = photo.localPath,
+                    assetId = photo.assetId,
+                    modifier = Modifier.height(150.dp),
+                    contentDescription = "记录里的照片",
+                )
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(TwoMemoryIcons.Like, contentDescription = "喜欢", tint = TwoMemoryColors.WarmBeigeAccent,
-                    modifier = Modifier.size(21.dp))
-                Spacer(Modifier.width(16.dp))
-                Icon(TwoMemoryIcons.Comment, contentDescription = "评论", tint = TwoMemoryColors.WarmBeigeMuted,
-                    modifier = Modifier.size(21.dp))
+                Icon(
+                    TwoMemoryIcons.Comment,
+                    contentDescription = "看这条记录",
+                    tint = TwoMemoryColors.WarmBeigeMuted,
+                    modifier = Modifier.size(21.dp).clickable { onOpen(entry.id) },
+                )
             }
         }
     }

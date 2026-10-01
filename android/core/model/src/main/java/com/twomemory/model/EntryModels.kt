@@ -41,6 +41,37 @@ data class TimelineItem(
     val authorId: UUID? = null,
     /** Plain text preview of the first content block, for the timeline card. */
     val preview: String? = null,
+    /** Where this entry's first picture lives, when it has one. */
+    val photo: TimelinePhoto? = null,
+)
+
+/** A picture address: the copy this phone kept, or the one the server holds. */
+data class TimelinePhoto(val localPath: String?, val assetId: String?)
+
+data class EntryBlock(
+    val id: UUID,
+    val type: BlockType,
+    val orderKey: Long,
+    /** Text of a TEXT block; already unwrapped from its stored payload. */
+    val text: String? = null,
+    /** Picture this device kept a copy of, when there is one. */
+    val localPath: String? = null,
+    /** Server asset to fetch when no local copy exists. */
+    val assetId: String? = null,
+)
+
+data class EntryComment(
+    val id: UUID,
+    val entryId: UUID,
+    val authorId: UUID?,
+    val body: String,
+    val createdAt: Instant,
+)
+
+data class EntryDetail(
+    val entry: TimelineItem,
+    val blocks: List<EntryBlock>,
+    val comments: List<EntryComment>,
 )
 
 data class PendingOperation(

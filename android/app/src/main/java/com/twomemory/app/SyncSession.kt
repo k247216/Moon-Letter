@@ -112,6 +112,14 @@ object SyncSession {
         return SyncEngine(api, RoomSyncStore(database), session.coupleId)
     }
 
+    /** Lets any page fetch a picture that only the server holds. */
+    fun installPhotoSource(session: Session) {
+        val api = com.twomemory.network.RetrofitMediaApi.create()
+        com.twomemory.designsystem.EntryPhotos.remoteBytes = { assetId ->
+            api.download(session.baseUrl, session.token, java.util.UUID.fromString(assetId))
+        }
+    }
+
     /**
      * Writes the record through Room + outbox and publishes it in the same batch,
      * then triggers a sync. Offline this leaves a private draft plus two pending
@@ -123,7 +131,6 @@ object SyncSession {
         mode: com.twomemory.model.EntryMode = com.twomemory.model.EntryMode.PERSONAL,
     ) {
         val session = load(context) ?: error("设备尚未绑定：请先完成 bootstrap 与配对")
-        val payload = org.json.JSONObject().put("text", state.body).toString()
         com.twomemory.database.LocalEntryWriter(AppDatabase.build(context)).save(
             com.twomemory.model.LocalEntryCommand(
                 coupleId = session.coupleId,
@@ -132,19 +139,41 @@ object SyncSession {
                 occurredAt = state.occurrenceTime,
                 occurredTimezone = state.timezone,
                 title = state.title.ifBlank { null },
-                blocks = listOf(
-                    com.twomemory.model.LocalBlockCommand(
-                        type = com.twomemory.model.BlockType.TEXT,
-                        orderKey = 0,
-                        payload = payload,
-                        authorId = session.userId,
-                    ),
-                ),
+                blocks = state.blocks(session.userId),
             ),
             publish = true,
         )
         triggerSync(context)
     }
+
+    /** Text first, then the pictures in the order they were chosen. */
+    private fun com.twomemory.editor.EditorUiState.blocks(authorId: UUID) =
+        mutableListOf<com.twomemory.model.LocalBlockCommand>().apply {
+            if (body.isNotBlank()) {
+                add(
+                    com.twomemory.model.LocalBlockCommand(
+                        type = com.twomemory.model.BlockType.TEXT,
+                        orderKey = 0,
+                        payload = org.json.JSONObject().put("text", body).toString(),
+                        authorId = authorId,
+                    ),
+                )
+            }
+            photos.forEachIndexed { index, photo ->
+                add(
+                    com.twomemory.model.LocalBlockCommand(
+                        id = photo.id,
+                        type = com.twomemory.model.BlockType.IMAGE,
+                        orderKey = (index + 1).toLong(),
+                        payload = org.json.JSONObject()
+                            .put("localPath", photo.localPath)
+                            .put("mime", photo.mimeType)
+                            .toString(),
+                        authorId = authorId,
+                    ),
+                )
+            }
+        }
 
     /** One-shot sync from app start / foreground return / manual refresh. */
     suspend fun triggerSync(context: Context) {

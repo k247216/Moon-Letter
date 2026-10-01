@@ -68,6 +68,7 @@ fun PersonalEditorScreen(
     onClose: () -> Unit = {},
     mode: EntryMode = EntryMode.PERSONAL,
     onModeChange: (EntryMode) -> Unit = {},
+    photoActions: EditorPhotoActions? = null,
 ) {
     Scaffold(
         bottomBar = {
@@ -83,7 +84,7 @@ fun PersonalEditorScreen(
                     )
                     Spacer(Modifier.size(8.dp))
                 }
-                EditorAttachmentToolbar()
+                EditorAttachmentToolbar(onImageClick = photoActions?.pick)
             }
         },
     ) { padding ->
@@ -133,6 +134,11 @@ fun PersonalEditorScreen(
                         inner()
                     }
                 },
+            )
+            EditorPhotoStrip(
+                photos = state.photos,
+                photoError = state.photoError,
+                onRemove = { photoActions?.remove?.invoke(it) },
             )
             Spacer(Modifier.size(100.dp))
         }
@@ -190,7 +196,7 @@ fun RecordModeSwitch(mode: EntryMode, onModeChange: (EntryMode) -> Unit) {
 }
 
 @Composable
-fun EditorAttachmentToolbar(onAttachmentClick: ((String) -> Unit)? = null) {
+fun EditorAttachmentToolbar(onImageClick: (() -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,10 +210,13 @@ fun EditorAttachmentToolbar(onAttachmentClick: ((String) -> Unit)? = null) {
             "城市" to TwoMemoryIcons.Location,
             "更多" to TwoMemoryIcons.More,
         ).forEach { (label, icon) ->
+            val images = label == "图片"
             IconButton(
-                onClick = { onAttachmentClick?.invoke(label) },
-                enabled = onAttachmentClick != null,
-                modifier = Modifier.semantics { contentDescription = "$label（暂未开放）" },
+                onClick = { onImageClick?.invoke() },
+                enabled = images && onImageClick != null,
+                modifier = Modifier.semantics {
+                    contentDescription = if (images) "添加照片" else "$label（暂未开放）"
+                },
             ) {
                 Icon(icon, contentDescription = label)
             }

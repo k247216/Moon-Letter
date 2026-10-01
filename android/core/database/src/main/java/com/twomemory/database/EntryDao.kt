@@ -47,6 +47,15 @@ abstract class EntryDao {
     )
     abstract suspend fun imageBlocksWithoutAsset(): List<EntryBlockEntity>
 
+    @Query("SELECT * FROM entry_blocks WHERE id = :blockId LIMIT 1")
+    abstract suspend fun findBlock(blockId: String): EntryBlockEntity?
+
+    @Query(
+        "SELECT COUNT(*) FROM entry_blocks WHERE entryId = :entryId AND type = 'IMAGE' " +
+            "AND assetId IS NULL AND deleted = 0",
+    )
+    abstract suspend fun imagesWithoutAsset(entryId: String): Int
+
     fun observeTimeline(): Flow<PagingData<TimelineItem>> = Pager(
         config = PagingConfig(pageSize = 30, enablePlaceholders = false),
         pagingSourceFactory = ::timelineSource,

@@ -31,14 +31,21 @@ import com.twomemory.designsystem.TwoMemoryTheme
 import com.twomemory.editor.EditorViewModel
 import com.twomemory.editor.PersonalEditorScreen
 import com.twomemory.editor.SharedEditorRoute
+import com.twomemory.editor.rememberEditorPhotoActions
 import com.twomemory.model.EntryMode
 import com.twomemory.model.EntryState
 import com.twomemory.model.TimelineItem
+import com.twomemory.timeline.EntryDetailRoute
+import com.twomemory.timeline.EntryDetailViewModel
 import com.twomemory.timeline.TimelineRoute
 import com.twomemory.timeline.TimelineViewModel
+import org.json.JSONArray
 import org.json.JSONObject
 
-private fun com.twomemory.database.EntryEntity.toTimelineItem(preview: String?) = TimelineItem(
+private fun com.twomemory.database.EntryEntity.toTimelineItem(
+    preview: String?,
+    photo: com.twomemory.model.TimelinePhoto?,
+) = TimelineItem(
     id = java.util.UUID.fromString(id),
     coupleId = java.util.UUID.fromString(coupleId),
     mode = EntryMode.valueOf(mode),
@@ -48,16 +55,60 @@ private fun com.twomemory.database.EntryEntity.toTimelineItem(preview: String?) 
     title = title,
     authorId = java.util.UUID.fromString(authorId),
     preview = preview,
+    photo = photo,
 )
 
-private fun previewOf(type: String, payload: String): String? = when (type) {
-    "TEXT" -> runCatching { JSONObject(payload).optString("text", payload) }.getOrNull() ?: payload
-    "IMAGE" -> "[图片]"
-    "VIDEO" -> "[视频]"
-    "AUDIO" -> "[语音]"
-    "MUSIC" -> "[音乐]"
-    "LOCATION" -> "[位置]"
-    else -> null
+private fun payloadOf(block: com.twomemory.database.EntryBlockEntity) =
+    runCatching { JSONObject(block.payload) }.getOrElse { JSONObject() }
+
+private fun previewOf(blocks: List<com.twomemory.database.EntryBlockEntity>): String? =
+    blocks.firstOrNull { it.type == "TEXT" }?.let { block ->
+        payloadOf(block).optString("text").takeIf { it.isNotBlank() } ?: block.payload
+    }
+
+private fun photoOf(blocks: List<com.twomemory.database.EntryBlockEntity>) =
+    blocks.firstOrNull { it.type == "IMAGE" && (it.assetId != null || it.entryPath != null) }?.let { block ->
+        com.twomemory.model.TimelinePhoto(block.entryPath, block.assetId)
+    }
+
+/** The copy this phone kept, when the record's picture is still readable here. */
+private val com.twomemory.database.EntryBlockEntity.entryPath: String?
+    get() = payloadOf(this).optString("localPath").takeIf {
+        it.isNotBlank() && java.io.File(it).isFile
+    }
+
+private fun com.twomemory.database.EntryBlockEntity.toEntryBlock(): com.twomemory.model.EntryBlock {
+    val payload = payloadOf(this)
+    return com.twomemory.model.EntryBlock(
+        id = java.util.UUID.fromString(id),
+        type = com.twomemory.model.BlockType.valueOf(type),
+        orderKey = orderKey,
+        text = if (type == "TEXT") payload.optString("text").takeIf { it.isNotBlank() } ?: payload.toString() else null,
+        localPath = entryPath,
+        assetId = assetId,
+    )
+}
+
+private fun com.twomemory.database.CommentEntity.toEntryComment() = com.twomemory.model.EntryComment(
+    id = java.util.UUID.fromString(id),
+    entryId = java.util.UUID.fromString(entryId),
+    authorId = runCatching { java.util.UUID.fromString(authorId) }.getOrNull(),
+    body = body,
+    createdAt = java.time.Instant.ofEpochMilli(createdAtEpochMillis),
+)
+
+/** Everything one record's page shows, read straight from this device's Room. */
+private suspend fun loadEntryDetail(
+    database: com.twomemory.database.AppDatabase,
+    entryId: String,
+): com.twomemory.model.EntryDetail? {
+    val entity = database.entryDao().findEntry(entryId) ?: return null
+    val blocks = database.entryDao().blocks(entryId)
+    return com.twomemory.model.EntryDetail(
+        entry = entity.toTimelineItem(previewOf(blocks), photoOf(blocks)),
+        blocks = blocks.map { it.toEntryBlock() },
+        comments = database.commentDao().commentsForEntry(entryId).map { it.toEntryComment() },
+    )
 }
 
 /** Unpublished editor text survives process death through SharedPreferences. */
@@ -68,27 +119,52 @@ object DraftStore {
         context: android.content.Context,
         title: String,
         body: String,
+        photos: List<com.twomemory.editor.EditorPhoto> = emptyList(),
         mode: EntryMode = EntryMode.PERSONAL,
     ) {
-        if (title.isBlank() && body.isBlank()) return
+        if (title.isBlank() && body.isBlank() && photos.isEmpty()) return
+        val storedPhotos = JSONArray().apply {
+            photos.forEach { photo ->
+                put(JSONObject().put("id", photo.id.toString())
+                    .put("localPath", photo.localPath)
+                    .put("mime", photo.mimeType))
+            }
+        }
         context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit()
             .putString("title", title)
             .putString("body", body)
+            .putString("photos", storedPhotos.toString())
             .putString("mode", mode.name)
             .apply()
     }
 
-    data class Draft(val title: String, val body: String, val mode: EntryMode)
+    data class Draft(
+        val title: String,
+        val body: String,
+        val mode: EntryMode,
+        val photos: List<com.twomemory.editor.EditorPhoto> = emptyList(),
+    )
 
     fun load(context: android.content.Context): Draft? {
         val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
         val title = prefs.getString("title", null).orEmpty()
         val body = prefs.getString("body", null).orEmpty()
-        if (title.isBlank() && body.isBlank()) return null
+        val photos = runCatching {
+            val array = JSONArray(prefs.getString("photos", "[]").orEmpty())
+            (0 until array.length()).map { index ->
+                val photo = array.getJSONObject(index)
+                com.twomemory.editor.EditorPhoto(
+                    id = java.util.UUID.fromString(photo.getString("id")),
+                    localPath = photo.getString("localPath"),
+                    mimeType = photo.optString("mime", "image/jpeg"),
+                )
+            }
+        }.getOrDefault(emptyList())
+        if (title.isBlank() && body.isBlank() && photos.isEmpty()) return null
         val mode = runCatching {
             EntryMode.valueOf(prefs.getString("mode", EntryMode.PERSONAL.name).orEmpty())
         }.getOrDefault(EntryMode.PERSONAL)
-        return Draft(title, body, mode)
+        return Draft(title, body, mode, photos)
     }
 
     fun clear(context: android.content.Context) {
@@ -130,19 +206,20 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
     }
     val coupleViewModel = remember { CoupleViewModel() }
     var cachedNames by remember { mutableStateOf(SyncSession.loadNames(context)) }
+    val database = remember { AppDatabase.build(context) }
     val timelineViewModel = remember {
-        val dao = AppDatabase.build(context).entryDao()
+        val dao = database.entryDao()
         TimelineViewModel(
             loader = {
                 dao.timelineSnapshot().map { entity ->
-                    val preview = dao.blocks(entity.id)
-                        .firstNotNullOfOrNull { previewOf(it.type, it.payload) }
-                    entity.toTimelineItem(preview)
+                    val blocks = dao.blocks(entity.id)
+                    entity.toTimelineItem(previewOf(blocks), photoOf(blocks))
                 }
             },
             currentUserId = SyncSession.load(context)?.userId,
         )
     }
+    var openEntryId by remember { mutableStateOf<String?>(null) }
     val editorViewModel = remember { EditorViewModel() }
     val editorState by editorViewModel.state.collectAsState()
 
@@ -150,6 +227,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
     // read once when the app is entered, and again after a rename succeeds.
     // Typing in the name field must not reach the network.
     LaunchedEffect(Unit) {
+        SyncSession.load(context)?.let(SyncSession::installPhotoSource)
         SyncSession.refreshNames(context)
         cachedNames = SyncSession.loadNames(context)
     }
@@ -176,22 +254,25 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
             if (editorState.saved) editorViewModel.reset()
             DraftStore.load(context)?.let { draft ->
                 editingMode = draft.mode
-                editorViewModel.restore(draft.title, draft.body)
+                editorViewModel.restore(draft.title, draft.body, draft.photos)
             }
         }
         BackHandler {
-            DraftStore.save(context, editorState.title, editorState.body, mode)
+            DraftStore.save(context, editorState.title, editorState.body, editorState.photos, mode)
             editingMode = null
         }
         DisposableEffect(mode) {
             onDispose {
-                if (!editorState.saved) DraftStore.save(context, editorState.title, editorState.body, mode)
+                if (!editorState.saved) {
+                    DraftStore.save(context, editorState.title, editorState.body, editorState.photos, mode)
+                }
             }
         }
         val closeEditor = {
-            DraftStore.save(context, editorState.title, editorState.body, mode)
+            DraftStore.save(context, editorState.title, editorState.body, editorState.photos, mode)
             editingMode = null
         }
+        val photoActions = rememberEditorPhotoActions(editorViewModel)
         if (mode == EntryMode.PERSONAL) {
             PersonalEditorScreen(
                 state = editorState,
@@ -201,6 +282,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
                 onClose = closeEditor,
                 mode = mode,
                 onModeChange = { editingMode = it },
+                photoActions = photoActions,
             )
         } else {
             SharedEditorRoute(
@@ -211,8 +293,37 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
                 onBodyChange = editorViewModel::updateBody,
                 onClose = closeEditor,
                 onModeChange = { editingMode = it },
+                photoActions = photoActions,
             )
         }
+        return
+    }
+
+    openEntryId?.let { entryId ->
+        val detailViewModel = remember(entryId) {
+            EntryDetailViewModel(
+                loader = { id -> loadEntryDetail(database, id) },
+                addComment = { id, body ->
+                    val session = SyncSession.load(context)
+                        ?: error("设备尚未绑定：请先完成 bootstrap 与配对")
+                    com.twomemory.database.LocalEntryWriter(database).addComment(
+                        coupleId = session.coupleId,
+                        entryId = java.util.UUID.fromString(id),
+                        commentId = java.util.UUID.randomUUID(),
+                        authorId = session.userId,
+                        body = body,
+                    )
+                    SyncSession.triggerSync(context)
+                },
+                currentUserId = SyncSession.load(context)?.userId,
+            )
+        }
+        LaunchedEffect(entryId) { detailViewModel.open(entryId) }
+        LaunchedEffect(cachedNames) {
+            detailViewModel.updateNames(cachedNames.own, cachedNames.partner)
+        }
+        BackHandler { openEntryId = null }
+        EntryDetailRoute(detailViewModel, onBack = { openEntryId = null })
         return
     }
 
@@ -234,6 +345,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
                     viewModel = timelineViewModel,
                     coverBitmap = coverBitmap,
                     onChangeCover = { coverPicker.launch(arrayOf("image/*")) },
+                    onOpen = { openEntryId = it },
                 )
                 "couple" -> CoupleRoute(
                     viewModel = coupleViewModel,

@@ -49,13 +49,14 @@ fun SharedEditorRoute(
     onBodyChange: (String) -> Unit = {},
     onClose: () -> Unit = {},
     onModeChange: (EntryMode) -> Unit = {},
+    photoActions: EditorPhotoActions? = null,
 ) {
     Scaffold(
         bottomBar = {
             Column(
                 modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
                     .navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
-            ) { EditorAttachmentToolbar() }
+            ) { EditorAttachmentToolbar(onImageClick = photoActions?.pick) }
         },
     ) { padding ->
         Column(
@@ -114,6 +115,14 @@ fun SharedEditorRoute(
                         }
                     },
                 )
+            }
+            EditorPhotoStrip(
+                photos = state.photos,
+                photoError = state.photoError,
+                onRemove = { photoActions?.remove?.invoke(it) },
+            )
+            state.error?.let {
+                Text(it, style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.error)
             }
             blocks.forEach { block ->
                 AuthorBlock(

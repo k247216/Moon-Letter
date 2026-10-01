@@ -39,8 +39,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.json.JSONObject
-import java.io.File
-import java.sql.DriverManager
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -66,59 +64,24 @@ class TwoDeviceRecordingLoopTest {
     private val jsonMediaType = "application/json".toMediaType()
 
     companion object {
-        private const val ADMIN_URL = "jdbc:postgresql://localhost:5432/postgres"
-        private const val DB_USER = "moon_letter"
-        private const val DB_PASSWORD = "moon_letter_dev_only"
         private const val TEST_DB = "moon_letter_slice_test"
         private const val BASE_URL = "http://127.0.0.1:18080"
         private const val BOOTSTRAP_SECRET = "task11-slice-secret"
 
         @JvmStatic
-        private var serverProcess: Process? = null
+        private var running: RealServerHarness.Running? = null
 
         @BeforeClass
         @JvmStatic
         fun startRealServer() {
-            DriverManager.getConnection(ADMIN_URL, DB_USER, DB_PASSWORD).use { connection ->
-                connection.createStatement().use { statement ->
-                    statement.execute("DROP DATABASE IF EXISTS $TEST_DB WITH (FORCE)")
-                    statement.execute("CREATE DATABASE $TEST_DB")
-                }
-            }
-            val serverDir = File("../../server/target")
-            val jar = serverDir.listFiles { file ->
-                file.name.endsWith(".jar") && !file.name.contains("original")
-            }?.firstOrNull() ?: error("server jar missing; run `mvn -DskipTests package` in server/ first")
-            val java = (System.getenv("JAVA_HOME") ?: error("JAVA_HOME not set")) + "\\bin\\java.exe"
-            serverProcess = ProcessBuilder(
-                java, "-jar", jar.absolutePath,
-                "--server.port=18080",
-                "--spring.datasource.url=jdbc:postgresql://localhost:5432/$TEST_DB",
-                "--spring.datasource.username=$DB_USER",
-                "--spring.datasource.password=$DB_PASSWORD",
-                "--moon-letter.bootstrap.secret=$BOOTSTRAP_SECRET",
-            ).redirectOutput(ProcessBuilder.Redirect.appendTo(File("../../server/target/slice-server.log")))
-                .redirectErrorStream(true)
-                .start()
-            val client = OkHttpClient.Builder()
-                .connectTimeout(2, TimeUnit.SECONDS).readTimeout(2, TimeUnit.SECONDS).build()
-            var up = false
-            repeat(60) {
-                runCatching {
-                    client.newCall(Request.Builder().url("$BASE_URL/actuator/health").build()).execute()
-                }.getOrNull()?.use { response ->
-                    if (response.isSuccessful) up = true
-                }
-                if (!up) Thread.sleep(1000)
-            }
-            check(up) { "real server did not become healthy; see server/target/slice-server.log" }
+            running = RealServerHarness.start(18080, TEST_DB, BOOTSTRAP_SECRET, "slice-server.log")
         }
 
         @AfterClass
         @JvmStatic
         fun stopRealServer() {
-            serverProcess?.destroy()
-            serverProcess?.waitFor()
+            running?.let(RealServerHarness::stop)
+            running = null
         }
     }
 
