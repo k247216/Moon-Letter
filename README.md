@@ -123,6 +123,9 @@ java -jar target/moon-letter-server-0.1.0-SNAPSHOT.jar \
 
 签发的那一个令牌只打印到 stdout 一次；`session_admin_audit` 记录动作与目标用户，**从不保存令牌材料**。coupleId 由成员归属反查，不需要手填。
 
+- **它作用在你给的那个库上**：想练手就克隆一份——`CREATE DATABASE moon_letter_drill TEMPLATE moon_letter;`，把 `--spring.datasource.url` 指过去，练完 `DROP DATABASE`。对着手机正在用的库跑 `revoke-all`，两台手机会在几秒内掉线，只能靠 `issue` 出来的新令牌回去。
+- `issue` 走的是「先吊销再签发」，旧令牌当场失效；拿到新令牌后要在应用里重新填一次服务器地址与它，旧设备上那份复制粘贴不来的令牌不会再有用。
+
 更常见的场景不需要这条命令：重装但密钥还在时，重新 bootstrap 会找回创始成员自己的槽位；只是伴侣那台掉线时，还能用的那台在「我们」页生成配对码，对方用它以 `REJOIN` 回到原来的成员位。完整顺序见 `docs/testing/open-day-runbook.md`。
 
 ## 验证入口
