@@ -14,9 +14,16 @@ import java.util.UUID
  * and server base URL. Populated by bootstrap/pairing (Task 11), read here
  * to build the real sync pipeline.
  */
+/**
+ * Default points at the development machine's LAN address so a real phone on
+ * the same network reaches the server without typing an URL. Emulator builds
+ * override this to 10.0.2.2 when needed.
+ */
+const val DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"
+
 object SyncSession {
 
-    const val DEFAULT_BASE_URL = "http://10.0.2.2:8080"
+    const val DEFAULT_BASE_URL = DEFAULT_DEV_BASE_URL
 
     private const val PREFS = "moon_letter_session"
 

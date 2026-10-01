@@ -21,14 +21,14 @@
 | Gate | 必须证明 | 建议命令或材料 | 当前状态 | 证据 |
 |---|---|---|---|---|
 | S1 服务启动 | 干净环境配置、Flyway、health | `mvn spring-boot:run` + health 响应 | **PASS（Task 1）** | 见 §6 记录 1 |
-| S2 认证与隔离 | bootstrap、一次配对、两 token、第三方拒绝 | real HTTP integration test | NOT RUN | — |
-| S3 同步正确性 | typed mutation、幂等、业务写入与 change 同事务 | server focused tests | NOT RUN | — |
-| S4 游标并发 | 同空间事务逆序压力下不漏变更 | `ChangeFeedOrderingTest` 重复运行 | NOT RUN | — |
-| S5 Server E2E | `RANDOM_PORT` + real PostgreSQL + real HTTP | `SelfUseRecordingLoopE2ETest` | NOT RUN | — |
-| A1 Android 构建 | 所有模块编译并产出 APK | `./gradlew :app:assembleDebug` | NOT RUN | — |
-| A2 Room/outbox | 本地事务、重启保留、page+cursor 原子提交 | JVM 双 Room 夹具（Robolectric + 真实 Room 数据库文件） | NOT RUN | — |
-| A3 Android 网络链 | Retrofit、真实 Room、真实 server | JVM 夹具内的真实 Retrofit → 真实 Spring Boot/PostgreSQL | NOT RUN | — |
-| E1 双端闭环 | A 离线写入后在 B 的 Room 与 UI 出现 | 夹具日志（两个 Room + 真实 HTTP）+ 至少一台真机的互见录像；证据须写明配对端用的是真机还是具名模拟器 | NOT RUN | — |
+| S2 认证与隔离 | bootstrap、一次配对、两 token、第三方拒绝 | real HTTP integration test | **PASS（Task 2/3）** | 见 §6 记录 2、3 |
+| S3 同步正确性 | typed mutation、幂等、业务写入与 change 同事务 | server focused tests | **PASS（Task 5）** | 见 §6 记录 5 |
+| S4 游标并发 | 同空间事务逆序压力下不漏变更 | `ChangeFeedOrderingTest` 重复运行 | **PASS（Task 6）** | 见 §6 记录 6 |
+| S5 Server E2E | `RANDOM_PORT` + real PostgreSQL + real HTTP | `SelfUseRecordingLoopE2ETest` | **PASS（Task 7）** | 见 §6 记录 7 |
+| A1 Android 构建 | 所有模块编译并产出 APK | `./gradlew :app:assembleDebug` | **PASS（Task 8）** | 见 §6 记录 8 |
+| A2 Room/outbox | 本地事务、重启保留、page+cursor 原子提交 | JVM 双 Room 夹具（Robolectric + 真实 Room 数据库文件） | **PASS（Task 9）** | 见 §6 记录 9 |
+| A3 Android 网络链 | Retrofit、真实 Room、真实 server | JVM 夹具内的真实 Retrofit → 真实 Spring Boot/PostgreSQL | **PASS（Task 10/11）** | 见 §6 记录 10、11 |
+| E1 双端闭环 | A 离线写入后在 B 的 Room 与 UI 出现 | 夹具日志（两个 Room + 真实 HTTP）+ 至少一台真机的互见录像；证据须写明配对端用的是真机还是具名模拟器 | **部分通过（Task 11 夹具链路 PASS；真机 UI 互见录像 NOT RUN）** | 见 §6 记录 11 |
 | E2 故障恢复 | 超时重试、重复 ID、逆序重连、进程重启 | 脚本、日志、数据库查询 | NOT RUN | — |
 | D1 备份恢复 | 数据与媒体可恢复且校验一致 | 恢复演练报告 | NOT RUN | — |
 | D2 选择性导出 | JSON + 可读文档 + 原媒体，无密钥 | 样例导出包与检查清单 | NOT RUN | — |
@@ -162,3 +162,22 @@
 - **测试**：SyncEngineTest 扩到 7 个：FIFO push、超时后复用同一幂等 ID 重试成功、pull 循环到 has_more=false 且游标=9、401 推/拉均停止并报 needsRePair、失败前游标不变、指数退避与冲突保留。
 - **结果**：`./gradlew :core:sync:testDebugUnitTest :app:assembleDebug` → `BUILD SUCCESSFUL`（EXIT=0，7/7）；全模块 `./gradlew test` → `BUILD SUCCESSFUL`（EXIT=0）。
 - **TDD 红灯**：一处测试缺陷（FakeApi 在抛超时异常前未记录 ID），修正后转绿；另修正一处 SyncEngine 缺 import。
+
+### 记录 11：Task 11 个人文字双端竖切（2026-10-01）
+
+- **Commits**：`8491f67 feat(sync): two-device recording loop end-to-end`（竖切与两处服务端修复）；绑定入口见记录 12。
+- **测试形态**：按 Task 8 既定决策以 JVM 夹具为主证明——`TwoDeviceRecordingLoopTest`（Robolectric + **两个独立真 Room 数据库文件** + **真 Retrofit HTTP** + **真实 Spring Boot 进程**（server jar，端口 18080）+ **真 PostgreSQL**（独立库 `moon_letter_slice_test`）），位于 `android/app/src/test/`。无 fake server、无内存 store。
+- **覆盖**：A 经真实绑定流程初始化（SetupViewModel+RetrofitSessionApi：bootstrap → 换发配对令牌）→ B 用同一令牌配对取得独立会话 → 会话 SharedPreferences 落盘回读 → A 离线写（Room+outbox 同事务）→ B 先拉确认为空 → A 推送 → 幂等重放（replayed=true，仅一条）→ B 从自己 Room 读到同 ID 条目（标题「傍晚散步」与块数一致）→ 反向 B 写 A 拉 → 双库杀进程重开数据完好、timeline 2 条。
+- **竖切暴露并修复的缺陷**：
+  1. 服务端 `SyncOperationDispatcher` 自行 `UUID.randomUUID()` 生成 entryId，无视客户端本地 ID（违背 local-first）——改为 `CreateEntryCommand` 携带客户端 entryId，服务端采纳；
+  2. 服务端 `EntryView` 缺 title/occurredAt/occurredTimezone，B 端拉到裸 ID——`EntryView`/`EntryRow`/SQL 映射同步扩列。
+- **结果**：`mvn test`（服务端）→ `Tests run: 48, Failures: 0`；`./gradlew :app:testDebugUnitTest` → `BUILD SUCCESSFUL`（EXIT=0），竖切 1/1 通过；`./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL`（EXIT=0，app-debug.apk ≈20.5 MB）。
+- **诚实记录**：E1 的真机互见录像部分仍未完成（需要两台目标设备，属 Task 11a/14 现场证据）；本记录仅覆盖 JVM 夹具链路。UI 侧（TimelineViewModel/编辑器）已确认只读 Room、经 Room 写入，但整链 UI 现场验证待真机。
+
+### 记录 12：设备绑定入口（Task 11a 前置，2026-10-01）
+
+- **背景**：Task 11 竖切绿了但真机装上 APK 无法绑定——`SyncSession` 只能被测试注入，App 没有任何 bootstrap/配对 UI；manifest 也没开 cleartext（真机 HTTP 到局域网服务器必被拦）。没有这个入口，Task 11a「当天开始真实使用」无从谈起。
+- **实现**：`core:network` 新增 `SessionApi`/`RetrofitSessionApi`（POST /api/v1/bootstrap、/api/v1/couple/{id}/pairing-token、/api/v1/couple/pair；UUID Gson 适配器；按 baseUrl 每次构建 client，支持换机换地址）；app 新增 `SetupScreen`/`SetupViewModel`（「我是第一位」：地址+称呼+BOOTSTRAP_SECRET → 建空间 → 展示一次性配对令牌；「我是伴侣」：地址+令牌 → 配对入空间；会话经 LaunchedEffect 落盘 SharedPreferences）；`AppNavigation` 无会话时整屏进 Setup；manifest 开 `usesCleartextTraffic`（自签名 HTTP 开发期决策，M2 换 HTTPS 时收回）；默认服务器地址改为开发机局域网 IP `http://10.138.79.194:8080`。
+- **测试**：竖切测试的第 1、2 步改为走真实 `SetupViewModel`+`RetrofitSessionApi` 代码路径（同一真服务端），并新增会话落盘回读断言——手机上将要执行的绑定路径首次被真 HTTP 覆盖。
+- **红灯两轮**：① RetrofitSessionApi 初版用裸 Gson，UUID 反序列化崩（PairResultDto.userId），补 UUID 适配器后过；② 测试侧 setupB 忘切 PARTNER_DEVICE 模式，canSubmit 按首设备校验静默拦下（顺带确认 UI 按钮禁用态同样依赖 canSubmit，行为正确）。
+- **结果**：`./gradlew :app:testDebugUnitTest` → `BUILD SUCCESSFUL`（EXIT=0）；`./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL`（EXIT=0）。

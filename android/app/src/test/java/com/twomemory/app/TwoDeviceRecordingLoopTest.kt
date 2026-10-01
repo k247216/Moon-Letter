@@ -13,8 +13,14 @@ import com.twomemory.model.EntryMode
 import com.twomemory.model.PendingOperation
 import com.twomemory.network.PushResult
 import com.twomemory.network.RetrofitCoupleDiaryApi
+import com.twomemory.network.RetrofitSessionApi
 import com.twomemory.sync.SyncEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -174,23 +180,47 @@ class TwoDeviceRecordingLoopTest {
 
     @Test
     fun twoDevicesRecordAndSeeEachOthersEntries() = runBlocking {
-        // 1. Device A bootstraps the installation.
-        val boot = JSONObject(call("POST", "/api/v1/bootstrap",
-            JSONObject().put("displayName", "小满").toString(), null))
-        val tokenA = boot.getString("token")
-        val coupleId = UUID.fromString(boot.getString("coupleId"))
-        val userIdA = UUID.fromString(boot.getString("userId"))
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        try {
+            // 1. Device A bootstraps the installation through the REAL setup
+            //    flow the app ships (SetupViewModel + RetrofitSessionApi).
+            val setupA = SetupViewModel(RetrofitSessionApi.create())
+            setupA.updateServerUrl(baseUrl)
+            setupA.updateBootstrapSecret(bootstrapSecret)
+            setupA.updateDisplayName("小满")
+            setupA.bootstrap()
+            awaitSetupIdle(setupA)
+            val setupState = setupA.state.value
+            assertEquals(SetupViewModel.Phase.WAITING_PARTNER, setupState.phase)
+            val boundA = setupState.boundSession!!
+            val tokenA = boundA.token
+            val coupleId = boundA.coupleId
+            val userIdA = boundA.userId
+            val pairingToken = setupState.shownPairingToken.orEmpty()
+            assertTrue("pairing token expected", pairingToken.isNotBlank())
 
-        // 2. Device B pairs and receives its own session.
-        val pairingToken = JSONObject(
-            call("POST", "/api/v1/couple/$coupleId/pairing-token", "{}", tokenA),
-        ).getString("pairingToken")
-        val pairBody = JSONObject(
-            call("POST", "/api/v1/couple/pair",
-                JSONObject().put("token", pairingToken).toString(), null),
-        )
-        val tokenB = pairBody.getString("deviceToken")
-        val userIdB = UUID.fromString(pairBody.getString("userId"))
+            // 2. Device B pairs through the same real flow and gets its own session.
+            val setupB = SetupViewModel(RetrofitSessionApi.create())
+            setupB.updateMode(SetupViewModel.Mode.PARTNER_DEVICE)
+            setupB.updateServerUrl(baseUrl)
+            setupB.updatePairingToken(pairingToken)
+            setupB.pair()
+            awaitSetupIdle(setupB)
+            assertEquals(
+                "pair failed: phase=${setupB.state.value.phase} error=${setupB.state.value.error}",
+                SetupViewModel.Phase.BOUND, setupB.state.value.phase,
+            )
+            val boundB = setupB.state.value.boundSession!!
+            val tokenB = boundB.token
+            val userIdB = boundB.userId
+            assertEquals(coupleId, boundB.coupleId)
+
+            // The screen persists the issued session; prove the roundtrip works.
+            SyncSession.save(context, tokenA, coupleId, userIdA, baseUrl)
+            val loaded = SyncSession.load(context)!!
+            assertEquals(coupleId, loaded.coupleId)
+            assertEquals(userIdA, loaded.userId)
+            assertEquals(baseUrl, loaded.baseUrl)
 
         // 3. Device A writes OFFLINE: Room + outbox commit, nothing synced yet.
         val storeA = RoomSyncStore(databaseA)
@@ -229,5 +259,17 @@ class TwoDeviceRecordingLoopTest {
         assertNotNull(databaseA.entryDao().findEntry(entryIdA.toString()))
         assertNotNull(databaseA.entryDao().findEntry(entryIdB.toString()))
         assertEquals(2, databaseA.entryDao().timelineSnapshot().size)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    /** The setup flow runs on Dispatchers.IO under the hood; wait for it to settle. */
+    private suspend fun awaitSetupIdle(viewModel: SetupViewModel) {
+        val deadline = System.currentTimeMillis() + 30_000
+        while (viewModel.state.value.busy) {
+            check(System.currentTimeMillis() < deadline) { "setup flow timed out" }
+            delay(50)
+        }
     }
 }

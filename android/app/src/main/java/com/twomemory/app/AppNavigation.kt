@@ -19,6 +19,7 @@ import com.twomemory.couple.CoupleViewModel
 import com.twomemory.database.AppDatabase
 import com.twomemory.designsystem.MoonLetterBottomNavigation
 import com.twomemory.designsystem.MoonLetterTheme
+import com.twomemory.designsystem.TwoMemoryTheme
 import com.twomemory.editor.EditorViewModel
 import com.twomemory.editor.PersonalEditorScreen
 import com.twomemory.model.EntryMode
@@ -40,6 +41,13 @@ private fun com.twomemory.database.EntryEntity.toTimelineItem() = TimelineItem(
 @Composable
 fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
     val context = LocalContext.current
+    var bound by remember { mutableStateOf(SyncSession.load(context) != null) }
+    if (!bound) {
+        TwoMemoryTheme {
+            SetupScreen(onBound = { bound = true })
+        }
+        return
+    }
     var selectedKey by remember { mutableStateOf("timeline") }
     var editing by remember { mutableStateOf(false) }
     val timelineViewModel = remember {
