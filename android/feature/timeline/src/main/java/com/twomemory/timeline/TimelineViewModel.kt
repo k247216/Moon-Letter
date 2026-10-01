@@ -21,6 +21,8 @@ data class TimelineEntryUi(
     val body: String = "",
     val shared: Boolean = false,
     val mine: Boolean = false,
+    /** Still only on this device: published records never stay in DRAFT here. */
+    val unsent: Boolean = false,
 )
 
 /**
@@ -75,6 +77,7 @@ class TimelineViewModel(
             body = preview ?: title.orEmpty(),
             shared = mode == com.twomemory.model.EntryMode.COLLABORATIVE,
             mine = mine,
+            unsent = state == com.twomemory.model.EntryState.DRAFT,
         )
     }
 }

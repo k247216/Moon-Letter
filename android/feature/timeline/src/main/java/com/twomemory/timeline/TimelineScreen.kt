@@ -258,6 +258,17 @@ private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modif
                     style = TwoMemoryTypography.caption,
                     color = TwoMemoryColors.WarmBeigeMuted,
                 )
+                if (entry.unsent) {
+                    Spacer(Modifier.size(7.dp))
+                    Text(
+                        "未寄出",
+                        style = TwoMemoryTypography.caption,
+                        color = TwoMemoryColors.WarmBeigeMuted,
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                            .background(TwoMemoryColors.WarmBeigeLine.copy(alpha = .55f))
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                    )
+                }
             }
             Spacer(Modifier.height(6.dp))
             if (entry.title != null) {
