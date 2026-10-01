@@ -52,11 +52,16 @@ class SyncEngine(
                     PushResult.Status.RETRYABLE_FAILURE -> {
                         scheduleRetry(operation)
                         retried++
+                        // Strict FIFO: never send a later operation past one
+                        // that failed — ordering is the correctness contract.
+                        return SyncResult(applied = applied, retried = retried, conflicts = conflicts)
                     }
                 }
             } catch (failure: Throwable) {
+                if (failure is kotlinx.coroutines.CancellationException) throw failure
                 scheduleRetry(operation)
                 retried++
+                return SyncResult(applied = applied, retried = retried, conflicts = conflicts)
             }
         }
         return SyncResult(applied = applied, retried = retried, conflicts = conflicts)

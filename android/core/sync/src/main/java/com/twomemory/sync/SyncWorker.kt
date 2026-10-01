@@ -20,6 +20,22 @@ object SyncEngineRegistry {
     lateinit var factory: SyncEngineFactory
 }
 
+/** Outcome of one sync cycle; drives the WorkManager retry decision. */
+enum class SyncOutcome { SUCCESS, RETRY, FAILURE }
+
+/**
+ * One push+pull cycle, independent of WorkManager so the retry policy is
+ * unit-testable: a retryable push must not be reported as success.
+ */
+suspend fun runSyncCycle(engine: SyncEngine): SyncOutcome {
+    val push = engine.pushPending()
+    if (push.needsRePair) return SyncOutcome.FAILURE
+    if (push.retried > 0) return SyncOutcome.RETRY
+    val pull = engine.pullAll()
+    if (pull.needsRePair) return SyncOutcome.FAILURE
+    return if (pull.failed != null) SyncOutcome.RETRY else SyncOutcome.SUCCESS
+}
+
 class SyncWorker(
     appContext: Context,
     params: WorkerParameters,
@@ -27,11 +43,12 @@ class SyncWorker(
     override suspend fun doWork(): Result {
         val coupleId = inputData.getString(KEY_COUPLE_ID)?.let(UUID::fromString) ?: return Result.failure()
         val engine = SyncEngineRegistry.factory.create(coupleId)
-        engine.pushPending()
-        val pull = engine.pullAll()
-        // A 401 means re-pair is needed; retrying blindly would not help.
-        if (pull.needsRePair) return Result.failure()
-        return if (pull.failed != null) Result.retry() else Result.success()
+        return when (runSyncCycle(engine)) {
+            SyncOutcome.SUCCESS -> Result.success()
+            SyncOutcome.RETRY -> Result.retry()
+            // A 401 means re-pair is needed; retrying blindly would not help.
+            SyncOutcome.FAILURE -> Result.failure()
+        }
     }
 
     companion object {

@@ -101,6 +101,51 @@ class SyncEngineTest {
         assertFalse(result.needsRePair)
     }
 
+    @Test
+    fun firstRetryableFailureStopsStrictFifoBeforeSecondOperation() = runTest {
+        val first = UUID.fromString("00000000-0000-0000-0000-000000000003")
+        val second = UUID.fromString("00000000-0000-0000-0000-000000000004")
+        val store = FakeStore(listOf(operation(first), operation(second)))
+        val api = FakeApi(PushResult.Status.RETRYABLE_FAILURE)
+        val result = SyncEngine(api, store, coupleId).pushPending()
+        assertEquals(1, result.retried)
+        // Strict FIFO: the second operation must not be attempted after the
+        // first failed; ordering would otherwise break server-side sequence.
+        assertEquals(listOf(first), api.pushedIds)
+        assertNotNull(store.retryAt)
+    }
+
+    @Test
+    fun cancellationPropagatesInsteadOfBeingSwallowedAsRetry() = runTest {
+        val operationId = UUID.randomUUID()
+        val store = FakeStore(listOf(operation(operationId)))
+        val api = FakeApi(PushResult.Status.APPLIED)
+        api.cancelOnPush = true
+        val engine = SyncEngine(api, store, coupleId)
+        val result = runCatching { engine.pushPending() }
+        assertTrue(result.isFailure, "cancellation must propagate")
+        assertTrue(result.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+        assertNull(store.retryAt)
+    }
+
+    @Test
+    fun runSyncCycleReturnsRetryWhenPushWasRetryable() = runTest {
+        val operationId = UUID.randomUUID()
+        val store = FakeStore(listOf(operation(operationId)))
+        val api = FakeApi(PushResult.Status.RETRYABLE_FAILURE)
+        val outcome = runSyncCycle(SyncEngine(api, store, coupleId))
+        assertEquals(SyncOutcome.RETRY, outcome)
+    }
+
+    @Test
+    fun runSyncCycleReturnsFailureOnRePairAndSuccessOtherwise() = runTest {
+        val store = FakeStore(emptyList())
+        val unauthorized = FakeApi(PushResult.Status.UNAUTHORIZED)
+        assertEquals(SyncOutcome.FAILURE, runSyncCycle(SyncEngine(unauthorized, store, coupleId)))
+        val ok = FakeApi(PushResult.Status.APPLIED)
+        assertEquals(SyncOutcome.SUCCESS, runSyncCycle(SyncEngine(ok, store, coupleId)))
+    }
+
     private fun change(sequence: Long) =
         RemoteChange(sequence, "ENTRY", UUID.randomUUID(), "CREATE", "{}")
 
@@ -113,11 +158,13 @@ class SyncEngineTest {
         private val page: ChangePage = ChangePage(emptyList(), 0, false),
     ) : CoupleDiaryApi {
         var throwOnPush = false
+        var cancelOnPush = false
         val pushedIds = mutableListOf<UUID>()
         var pages: ArrayDeque<ChangePage> = ArrayDeque()
 
         override suspend fun push(operation: PendingOperation): PushResult {
             pushedIds += operation.operationId
+            if (cancelOnPush) throw kotlinx.coroutines.CancellationException("worker cancelled")
             if (throwOnPush) throw IOException("simulated timeout")
             return PushResult(operation.operationId, apiStatus)
         }
