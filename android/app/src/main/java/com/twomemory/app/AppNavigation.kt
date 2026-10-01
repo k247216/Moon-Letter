@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import com.twomemory.couple.CoupleRoute
 import com.twomemory.couple.CoupleViewModel
+import com.twomemory.couple.PairingCode
 import com.twomemory.database.AppDatabase
 import com.twomemory.designsystem.MoonLetterBottomNavigation
 import com.twomemory.designsystem.MoonLetterTheme
@@ -375,6 +376,10 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}) {
                             partner = cachedNames.partner,
                         )
                         saved
+                    },
+                    onGenerateCode = {
+                        val issued = SyncSession.mintPairingCode(context)
+                        PairingCode(issued.pairingTokenKind, issued.pairingToken)
                     },
                 )
                 "album" -> AlbumPreviewScreen()

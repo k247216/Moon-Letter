@@ -37,7 +37,16 @@ data class SpaceViewDto(
     val members: List<MemberViewDto> = emptyList(),
 )
 
-data class PairingTokenResultDto(val couple: CoupleViewDto = CoupleViewDto(), val pairingToken: String = "")
+/**
+ * A freshly minted pairing token. [pairingTokenKind] is INVITE while the space
+ * still has a free member slot and REJOIN when it is full, i.e. the token opens
+ * one specific member's own slot again.
+ */
+data class PairingTokenResultDto(
+    val couple: CoupleViewDto = CoupleViewDto(),
+    val pairingToken: String = "",
+    val pairingTokenKind: String = "INVITE",
+)
 
 data class PairRequestDto(val token: String, val displayName: String? = null)
 

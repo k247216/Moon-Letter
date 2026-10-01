@@ -67,6 +67,7 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
         val busy: Boolean = false,
         val error: String? = null,
         val shownPairingToken: String? = null,
+        val shownPairingTokenKind: String = "INVITE",
         val boundSession: BoundSession? = null,
         val sessionSaved: Boolean = false,
     ) {
@@ -103,13 +104,14 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
                         busy = false,
                         phase = Phase.WAITING_PARTNER,
                         shownPairingToken = tokenInfo.pairingToken,
+                        shownPairingTokenKind = tokenInfo.pairingTokenKind,
                         boundSession = BoundSession(s.serverUrl, result.token, result.coupleId, result.userId),
                     )
                 }
             } catch (e: SetupHttpException) {
                 val reason = when (e.code) {
                     403 -> "初始化密钥不对，请核对后重试"
-                    409 -> "这个空间已经初始化过了：请在另一台手机上改用「我是伴侣」+ 配对令牌进入"
+                    409 -> "这个空间里已经没有可以找回的成员了：请先让另一位还在的手机重新生成配对码"
                     else -> "服务器返回 HTTP ${e.code}"
                 }
                 mutate { it.copy(busy = false, error = reason) }
@@ -136,8 +138,8 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
                 }
             } catch (e: SetupHttpException) {
                 val reason = when (e.code) {
-                    409 -> "配对令牌已用过或已过期：请在第一台手机上重新获取"
-                    403 -> "配对令牌无效，请核对后重试"
+                    409 -> "配对码已用过或已过期：请在另一台手机的「我们」里重新生成一个"
+                    403 -> "配对码不对，请核对后重试"
                     else -> "服务器返回 HTTP ${e.code}"
                 }
                 mutate { it.copy(busy = false, error = reason) }
@@ -193,12 +195,19 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (state.phase == SetupViewModel.Phase.WAITING_PARTNER) {
-                    Text("空间已建好", style = MaterialTheme.typography.titleMedium)
+                    Text("空间已准备好", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "把下面这段配对令牌发到伴侣设备，在对方手机的「我是伴侣」里粘贴。",
+                        "把下面这段配对码发到另一台手机，在它的「我是伴侣」里粘贴就能进来。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (state.shownPairingTokenKind == "REJOIN") {
+                        Text(
+                            "这个空间两位都齐了，所以这个码认的是另一位成员自己的位置：只有丢了手机的那一位能用它回来，陌生人的手机进不来。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     SelectionContainer {
                         Text(
                             state.shownPairingToken.orEmpty(),
@@ -258,7 +267,7 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
                             OutlinedTextField(
                                 value = state.pairingTokenInput,
                                 onValueChange = viewModel::updatePairingToken,
-                                label = { Text("配对令牌") },
+                                label = { Text("配对码") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                             )

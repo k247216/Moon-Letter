@@ -110,4 +110,45 @@ class CoupleViewModelTest {
         assertEquals(0, calls)
         assertEquals("阿屿", viewModel.state.value.ownName)
     }
+
+    @Test
+    fun aMintedCodeIsShownWithTheSlotTheServerBoundItTo() = runTest {
+        val viewModel = CoupleViewModel()
+
+        viewModel.generatePairingCode { PairingCode("REJOIN", "b".repeat(43)) }
+
+        val state = viewModel.state.value
+        assertEquals("b".repeat(43), state.pairingCode)
+        assertEquals("REJOIN", state.pairingCodeKind)
+        assertNull(state.codeError)
+        assertTrue(!state.generatingCode)
+    }
+
+    @Test
+    fun aFailedMintDropsTheCodeItCouldNotReplace() = runTest {
+        val viewModel = CoupleViewModel()
+        viewModel.generatePairingCode { PairingCode("INVITE", "a".repeat(43)) }
+        assertEquals("a".repeat(43), viewModel.state.value.pairingCode)
+
+        viewModel.generatePairingCode { throw IOException("连不上服务器") }
+
+        val state = viewModel.state.value
+        assertNull(state.pairingCode)
+        assertNotNull(state.codeError)
+    }
+
+    @Test
+    fun hidingACodeAsksTheServerForNothing() = runTest {
+        var calls = 0
+        val viewModel = CoupleViewModel()
+        viewModel.generatePairingCode {
+            calls++
+            PairingCode("INVITE", "a".repeat(43))
+        }
+
+        viewModel.hidePairingCode()
+
+        assertNull(viewModel.state.value.pairingCode)
+        assertEquals(1, calls)
+    }
 }

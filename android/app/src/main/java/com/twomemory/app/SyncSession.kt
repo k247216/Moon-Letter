@@ -82,6 +82,19 @@ object SyncSession {
     }
 
     /**
+     * Mints a fresh pairing code for this space. The server decides what the code
+     * opens: a free member slot makes it an invitation, a full space binds it to
+     * the other member's own slot, so a lost or reinstalled phone comes back as
+     * the same person instead of a third member. Throws when the server refuses,
+     * so the screen never shows a code that was never issued.
+     */
+    suspend fun mintPairingCode(context: Context): com.twomemory.network.PairingTokenResultDto {
+        val session = load(context) ?: error("设备尚未绑定：请先完成 bootstrap 与配对")
+        return com.twomemory.network.RetrofitSessionApi.create()
+            .pairingToken(session.baseUrl, session.token, session.coupleId)
+    }
+
+    /**
      * Returns null (and clears the damaged record) when anything is missing
      * or corrupt, so the app falls back to the binding screen instead of
      * crashing on startup.

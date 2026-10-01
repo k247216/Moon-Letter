@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -62,6 +63,7 @@ fun CoupleRoute(
     serverOwnName: String = "",
     serverPartnerName: String = "",
     onSaveName: suspend (String) -> String = { it },
+    onGenerateCode: suspend () -> PairingCode,
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -105,6 +107,8 @@ fun CoupleRoute(
         onOwnNameChange = viewModel::updateOwnName,
         onOwnAvatarChange = { avatarPicker.launch(arrayOf("image/*")) },
         onSaveName = { scope.launch { viewModel.saveOwnName(onSaveName) } },
+        onGenerateCode = { viewModel.generatePairingCode { onGenerateCode() } },
+        onHideCode = viewModel::hidePairingCode,
         onThemeChange = {
             viewModel.updateTheme(it)
             prefs.edit().putString("theme", it.name).apply()
@@ -121,6 +125,8 @@ fun CoupleScreen(
     onSaveName: () -> Unit = {},
     ownAvatarBitmap: ImageBitmap? = null,
     onOwnAvatarChange: () -> Unit = {},
+    onGenerateCode: () -> Unit = {},
+    onHideCode: () -> Unit = {},
 ) {
     var editingName by remember { mutableStateOf(false) }
     val draft = state.draftName.trim()
@@ -221,6 +227,71 @@ fun CoupleScreen(
                         onClick = { onThemeChange(MoonLetterTheme.PURE_WHITE) },
                         label = { Text("纯白") },
                     )
+                }
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 1.dp,
+        ) {
+            Column {
+                Text(
+                    "换手机或重新配对",
+                    style = TwoMemoryTypography.body,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp),
+                )
+                Text(
+                    "把生成的码发到另一台手机，它在「我是伴侣」里粘贴就能进空间。每次新生成都会让上一个码作废。",
+                    style = TwoMemoryTypography.caption,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f),
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp),
+                )
+                state.codeError?.let {
+                    Text(
+                        it,
+                        style = TwoMemoryTypography.caption,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 6.dp),
+                    )
+                }
+                state.pairingCode?.let { code ->
+                    SelectionContainer {
+                        Text(
+                            code,
+                            style = TwoMemoryTypography.caption,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                        )
+                    }
+                    Text(
+                        if (state.pairingCodeKind == "REJOIN") {
+                            "一次有效，15 分钟内。空间里两个位置都已经被占，所以这个码认的是另一位成员自己的位置——只有丢手机的 TA 能用它回来，陌生人进不来，以前的记录也还是 TA 的。"
+                        } else {
+                            "一次有效，15 分钟内。"
+                        },
+                        style = TwoMemoryTypography.caption,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = .55f),
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 6.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Button(onClick = onGenerateCode, enabled = !state.generatingCode) {
+                        Text(
+                            when {
+                                state.generatingCode -> "正在生成…"
+                                state.pairingCode == null -> "生成配对码"
+                                else -> "换一个新的码"
+                            }
+                        )
+                    }
+                    if (state.pairingCode != null) {
+                        TextButton(onClick = onHideCode) { Text("藏起来") }
+                    }
                 }
             }
         }

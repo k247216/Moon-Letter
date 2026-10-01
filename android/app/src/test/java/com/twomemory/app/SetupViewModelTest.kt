@@ -39,12 +39,13 @@ class SetupViewModelTest {
     private class FakeSessionApi : SessionApi {
         var pairedWith: String? = null
         var renamedTo: String? = null
+        var pairingTokenKind = "INVITE"
 
         override suspend fun bootstrap(baseUrl: String, secret: String, displayName: String) =
             BootstrapResultDto(OWNER, COUPLE, "owner-token")
 
         override suspend fun pairingToken(baseUrl: String, bearer: String, coupleId: UUID) =
-            PairingTokenResultDto(CoupleViewDto(coupleId), "pairing-token")
+            PairingTokenResultDto(CoupleViewDto(coupleId), "pairing-token", pairingTokenKind)
 
         override suspend fun pair(baseUrl: String, pairingToken: String, displayName: String): PairResultDto {
             pairedWith = displayName
@@ -100,5 +101,20 @@ class SetupViewModelTest {
         assertEquals("阿屿", api.pairedWith)
         assertEquals(SetupViewModel.Phase.BOUND, viewModel.state.value.phase)
         assertEquals(PARTNER, assertNotNull(viewModel.state.value.boundSession).userId)
+    }
+
+    @Test
+    fun theWaitingPanelCarriesWhatTheServerSaidTheCodeIsFor() = runTest {
+        val api = FakeSessionApi().apply { pairingTokenKind = "REJOIN" }
+        val viewModel = SetupViewModel(api)
+        viewModel.updateDisplayName("小满")
+        viewModel.updateBootstrapSecret("s3cret")
+
+        viewModel.bootstrap()
+
+        val state = viewModel.state.value
+        assertEquals(SetupViewModel.Phase.WAITING_PARTNER, state.phase)
+        assertEquals("REJOIN", state.shownPairingTokenKind)
+        assertEquals(OWNER, assertNotNull(state.boundSession).userId)
     }
 }

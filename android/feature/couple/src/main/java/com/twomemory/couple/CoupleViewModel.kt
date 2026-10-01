@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+/** A pairing code the server just issued, and the slot it opens. */
+data class PairingCode(val kind: String, val token: String)
+
 /**
  * ownName/partnerName are the names the server holds; draftName is what she is
  * typing right now and never leaves the device until she presses 保存.
@@ -20,6 +23,10 @@ data class CoupleUiState(
     val nameError: String? = null,
     val ownAvatar: String? = null,
     val theme: MoonLetterTheme = MoonLetterTheme.WARM_BEIGE,
+    val pairingCode: String? = null,
+    val pairingCodeKind: String? = null,
+    val generatingCode: Boolean = false,
+    val codeError: String? = null,
 )
 
 class CoupleViewModel : ViewModel() {
@@ -68,5 +75,38 @@ class CoupleViewModel : ViewModel() {
                 )
             }
         }
+    }
+
+    /**
+     * Asks [remote] for a fresh pairing code. The server retires the outstanding
+     * code as soon as a new one is minted, so a failed mint drops the code that
+     * was on screen too: keeping it would show a token that can no longer pair.
+     */
+    fun generatePairingCode(remote: suspend () -> PairingCode) {
+        if (mutableState.value.generatingCode) return
+        mutableState.value = mutableState.value.copy(generatingCode = true, codeError = null)
+        viewModelScope.launch {
+            try {
+                val code = remote()
+                mutableState.value = mutableState.value.copy(
+                    generatingCode = false,
+                    pairingCode = code.token,
+                    pairingCodeKind = code.kind,
+                    codeError = null,
+                )
+            } catch (exception: Exception) {
+                mutableState.value = mutableState.value.copy(
+                    generatingCode = false,
+                    pairingCode = null,
+                    pairingCodeKind = null,
+                    codeError = "配对码没拿到：${exception.message ?: "网络异常"}",
+                )
+            }
+        }
+    }
+
+    /** Local-only: the code stays valid on the server until a new one replaces it. */
+    fun hidePairingCode() {
+        mutableState.value = mutableState.value.copy(pairingCode = null, pairingCodeKind = null, codeError = null)
     }
 }
