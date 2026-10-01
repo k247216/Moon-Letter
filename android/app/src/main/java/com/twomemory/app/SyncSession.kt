@@ -1,6 +1,7 @@
 package com.twomemory.app
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.twomemory.app.notifications.MoonLetterNotifier
 import com.twomemory.app.notifications.NewEntryNotice
 import com.twomemory.app.notifications.WeeklyReviewWorker
@@ -46,9 +47,13 @@ object SyncSession {
 
     data class Names(val own: String, val partner: String)
 
+    /** The file [loadNames] reads: a page showing those names listens here. */
+    fun sessionPrefs(context: Context): SharedPreferences =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
     /** Persisted display names; blank when never fetched. */
     fun loadNames(context: Context): Names {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = sessionPrefs(context)
         return Names(
             own = prefs.getString("ownName", null).orEmpty(),
             partner = prefs.getString("partnerName", null).orEmpty(),
@@ -66,7 +71,7 @@ object SyncSession {
             // A name the space does not have yet stays unknown rather than blanking
             // the one this device already shows.
             if (own.isBlank() && partner.isBlank()) return@runCatching
-            val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            val editor = sessionPrefs(context).edit()
             if (own.isNotBlank()) editor.putString("ownName", own)
             if (partner.isNotBlank()) editor.putString("partnerName", partner)
             editor.apply()
@@ -229,9 +234,19 @@ object SyncSession {
         SyncEngineRegistry.factory = { coupleId ->
             engine(context, session.copy(coupleId = coupleId))
         }
-        SyncEngineRegistry.onCycleCompleted = { NewEntryNotice.announceIfNeeded(context) }
+        SyncEngineRegistry.onCycleCompleted = { runCycleSideEffects(context) }
         MoonLetterNotifier.ensureChannels(context)
         WeeklyReviewWorker.schedule(context)
+    }
+
+    /**
+     * What a finished cycle owes the app beyond the rows it applied: the display
+     * names converge from the space read, because a rename travels on no channel
+     * of its own — the change feed carries records and comments only.
+     */
+    suspend fun runCycleSideEffects(context: Context) {
+        refreshNames(context)
+        NewEntryNotice.announceIfNeeded(context)
     }
 
     /** One-shot sync from app start / foreground return / manual refresh. */

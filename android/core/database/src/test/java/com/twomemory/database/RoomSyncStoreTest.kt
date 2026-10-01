@@ -188,6 +188,28 @@ class RoomSyncStoreTest {
         assertNull(databaseB.syncCursorDao().nextSequence(coupleId.toString()))
     }
 
+    /** A change type this build cannot read has to stop the page, not be walked past. */
+    @Test
+    fun unknownChangeTypeFailsThePageInsteadOfBeingSkipped() = runBlocking {
+        val store = RoomSyncStore(databaseB)
+        val entryId = "00000000-0000-0000-0000-000000000501"
+        try {
+            store.applyChangesAtomically(
+                coupleId,
+                listOf(
+                    RemoteChange(8, "ENTRY", UUID.fromString(entryId), "CREATE", entryPayload(entryId)),
+                    RemoteChange(9, "PROFILE", UUID.fromString(entryId), "UPDATE", """{"displayName":"小满"}"""),
+                ),
+                nextSequence = 9,
+            )
+            throw AssertionError("expected a change nothing reads to fail the page")
+        } catch (expected: Exception) {
+            // the readable half rolls back with it, so nothing is half-applied
+        }
+        assertNull(databaseB.entryDao().findEntry(entryId))
+        assertNull(databaseB.syncCursorDao().nextSequence(coupleId.toString()))
+    }
+
     /**
      * A personal draft never reaches the change feed, so the push response is
      * the only way the author's own device learns the server-side version.

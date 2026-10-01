@@ -1,6 +1,7 @@
 package com.twomemory.app
 
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -461,6 +463,21 @@ fun AppNavigation(
     }
     val coupleViewModel = remember { CoupleViewModel() }
     var cachedNames by remember { mutableStateOf(SyncSession.loadNames(context)) }
+    // Her rename lands in these two keys at the end of a sync cycle, and every page
+    // reads this cache — so the cache has to wake the pages instead of waiting for
+    // the next launch. Remembered: SharedPreferences holds its listeners weakly.
+    val namesListener = remember {
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == "ownName" || key == "partnerName") {
+                cachedNames = SyncSession.loadNames(context)
+            }
+        }
+    }
+    DisposableEffect(namesListener) {
+        val prefs = SyncSession.sessionPrefs(context)
+        prefs.registerOnSharedPreferenceChangeListener(namesListener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(namesListener) }
+    }
     val database = remember { AppDatabase.build(context) }
     val roomEntries by database.entryDao().observeTimeline().collectAsState(initial = emptyList())
     val roomBlocks by database.entryDao().observeBlocks().collectAsState(initial = emptyList())

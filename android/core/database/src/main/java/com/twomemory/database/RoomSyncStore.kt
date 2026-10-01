@@ -64,6 +64,9 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
                 when (change.entityType) {
                     "ENTRY" -> applyEntryChange(change)
                     "COMMENT" -> applyCommentChange(change)
+                    // Falling through here would advance the cursor past a row this
+                    // build cannot read, and that change would be gone for good.
+                    else -> throw JSONException("nothing reads ${change.entityType} changes yet")
                 }
             }
             database.syncCursorDao().upsert(

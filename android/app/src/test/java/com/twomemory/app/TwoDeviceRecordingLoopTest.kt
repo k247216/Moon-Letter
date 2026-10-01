@@ -208,6 +208,16 @@ class TwoDeviceRecordingLoopTest {
             )
             assertEquals("小满呀", SyncSession.loadNames(context).own)
 
+            // 2.6 A name rides no change-feed row, so the other phone converges it
+            //     when its own cycle finishes: that is what the cycle hook is for.
+            SyncSession.sessionPrefs(context).edit().clear().apply()
+            SyncSession.save(context, tokenB, coupleId, userIdB, baseUrl)
+            assertEquals("", SyncSession.loadNames(context).partner)
+            SyncSession.runCycleSideEffects(context)
+            assertEquals("小满呀", SyncSession.loadNames(context).partner)
+            assertEquals("阿屿", SyncSession.loadNames(context).own)
+            SyncSession.save(context, tokenA, coupleId, userIdA, baseUrl)
+
             // 3. Device A writes OFFLINE and taps 发布: Room holds a draft, the
             //    outbox holds the create followed by the publish.
             val storeA = RoomSyncStore(databaseA)
