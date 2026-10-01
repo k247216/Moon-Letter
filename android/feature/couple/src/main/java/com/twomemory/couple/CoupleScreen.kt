@@ -78,6 +78,7 @@ fun CoupleRoute(
     onWeeklyReviewChange: (Boolean) -> Unit = {},
     onNewEntryNoticeChange: (Boolean) -> Unit = {},
     onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
+    versionLabel: String = "M1 · 0.1.0",
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -135,6 +136,7 @@ fun CoupleRoute(
             prefs.edit().putString("theme", it.name).apply()
             onThemeChange(it)
         },
+        versionLabel = versionLabel,
     )
 }
 
@@ -155,6 +157,7 @@ fun CoupleScreen(
     onWeeklyReviewChange: (Boolean) -> Unit = {},
     onNewEntryNoticeChange: (Boolean) -> Unit = {},
     onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
+    versionLabel: String = "M1 · 0.1.0",
 ) {
     var editingName by remember { mutableStateOf(false) }
     var pickingHour by remember { mutableStateOf(false) }
@@ -389,6 +392,12 @@ fun CoupleScreen(
                 }
             }
         }
+        Text(
+            "月笺 · $versionLabel",
+            style = TwoMemoryTypography.caption,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .42f),
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 2.dp),
+        )
     }
 }
 

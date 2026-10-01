@@ -379,6 +379,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
                 )
                 "couple" -> CoupleRoute(
                     viewModel = coupleViewModel,
+                    versionLabel = "M1 · ${BuildConfig.VERSION_NAME}",
                     onThemeChange = onThemeChange,
                     serverOwnName = cachedNames.own,
                     serverPartnerName = cachedNames.partner,

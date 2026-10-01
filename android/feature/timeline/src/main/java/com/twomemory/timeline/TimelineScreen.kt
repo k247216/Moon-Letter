@@ -77,14 +77,9 @@ fun TimelineScreen(
         if (entries.isEmpty()) {
             item { EmptyTimeline() }
         }
-        entries.groupBy { it.dateLabel }.forEach { (day, dayEntries) ->
-            item(key = "header-$day") {
-                DayStitchHeader(day, Modifier.padding(horizontal = 26.dp))
-            }
-            items(dayEntries, key = { it.id }) { entry ->
-                TimelineRow(entry = entry, onOpen = onOpen, modifier = Modifier.padding(horizontal = 24.dp))
-                Spacer(Modifier.height(22.dp))
-            }
+        items(entries, key = { it.id }) { entry ->
+            TimelineRow(entry = entry, onOpen = onOpen, modifier = Modifier.padding(horizontal = 24.dp))
+            Spacer(Modifier.height(22.dp))
         }
         item { Spacer(Modifier.height(32.dp)) }
     }
@@ -92,7 +87,10 @@ fun TimelineScreen(
 
 @Composable
 private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().height(236.dp)) {
+    Box(
+        modifier = Modifier.fillMaxWidth().height(198.dp)
+            .background(MaterialTheme.colorScheme.background),
+    ) {
         if (coverBitmap != null) {
             Image(
                 bitmap = coverBitmap,
@@ -100,45 +98,50 @@ private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit)
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
-        } else {
-            Image(
-                painter = painterResource(R.drawable.moonletter_cover_default),
-                contentDescription = "首页封面",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            Box(Modifier.fillMaxSize().background(Color(0x520F1722)))
         }
-        Box(Modifier.fillMaxSize().background(Color(0x520F1722)))
         Column(
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 30.dp, end = 82.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 29.dp, top = 42.dp, end = 58.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                "和你一起，\n把平凡的日子\n缝成闪闪发光的线。",
+                "我们的时光",
                 style = TwoMemoryTypography.display,
-                color = Color.White,
+                color = if (coverBitmap == null) MaterialTheme.colorScheme.onBackground else Color.White,
             )
-            Text("中秋，是我们的纪念日", style = TwoMemoryTypography.caption, color = Color(0xFFFFE1A8))
+            Text(
+                "中秋 · 仍在一起写着",
+                style = TwoMemoryTypography.body,
+                color = if (coverBitmap == null) MaterialTheme.colorScheme.onBackground.copy(alpha = .82f) else Color.White.copy(alpha = .88f),
+            )
         }
         Row(
-            modifier = Modifier.align(Alignment.BottomEnd)
-                .clip(RoundedCornerShape(topStart = 18.dp))
+            modifier = Modifier.align(Alignment.TopEnd)
+                .clip(RoundedCornerShape(18.dp))
                 .clickable(onClick = onChangeCover)
-                .background(Color.Black.copy(alpha = 0.28f))
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .background(
+                    if (coverBitmap == null) MaterialTheme.colorScheme.surface.copy(alpha = .72f)
+                    else Color.Black.copy(alpha = .28f),
+                )
+                .padding(horizontal = 12.dp, vertical = 9.dp)
+                .padding(top = 30.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(TwoMemoryIcons.Camera, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Icon(
+                TwoMemoryIcons.Camera,
+                contentDescription = "更换背景图",
+                tint = if (coverBitmap == null) MaterialTheme.colorScheme.onSurface else Color.White,
+                modifier = Modifier.size(20.dp),
+            )
             Spacer(Modifier.width(6.dp))
-            Text("换一张", style = TwoMemoryTypography.caption, color = Color.White)
+            Text(
+                "换一张",
+                style = TwoMemoryTypography.caption,
+                color = if (coverBitmap == null) MaterialTheme.colorScheme.onSurface else Color.White,
+            )
         }
     }
-    Column(modifier = Modifier.padding(horizontal = 26.dp, vertical = 19.dp)) {
-        Text("我们的时光", style = TwoMemoryTypography.display, fontWeight = FontWeight.Medium)
-        Text("每一个认真生活的瞬间，都值得被记下来", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
-        Spacer(Modifier.height(11.dp))
-        StitchDivider()
-    }
+    Spacer(Modifier.height(13.dp))
 }
 
 @Composable
@@ -211,16 +214,20 @@ private fun TimelineRow(entry: TimelineEntryUi, onOpen: (String) -> Unit, modifi
         ) {
             Column(modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(entry.dateLabel, style = TwoMemoryTypography.body, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.weight(1f))
+                    Text(entry.timeLabel, style = TwoMemoryTypography.body, color = TwoMemoryColors.WarmBeigeMuted)
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Image(
                         painter = painterResource(if (entry.mine) R.drawable.moonletter_avatar_xiaoman else R.drawable.moonletter_avatar_ayu),
                         contentDescription = "${entry.author}的头像",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(34.dp).clip(CircleShape),
+                        modifier = Modifier.size(32.dp).clip(CircleShape),
                     )
                     Spacer(Modifier.width(9.dp))
                     Text(entry.author, style = TwoMemoryTypography.title, color = if (entry.mine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF6F8268))
-                    Spacer(Modifier.width(9.dp))
-                    Text(entry.timeLabel, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
                     if (entry.shared) {
                         Spacer(Modifier.width(8.dp))
                         Text("共同", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)

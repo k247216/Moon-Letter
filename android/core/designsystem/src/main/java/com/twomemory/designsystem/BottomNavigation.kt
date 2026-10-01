@@ -3,14 +3,13 @@ package com.twomemory.designsystem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -42,8 +41,11 @@ val MoonLetterTabs = listOf(
 fun MoonLetterBottomNavigation(selectedKey: String, onSelect: (BottomTab) -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-        shadowElevation = 10.dp,
+        // The reference uses one quiet lavender rail for all five actions;
+        // selection is shown by the small pill, not by a floating action
+        // button that competes with the records.
+        color = Color(0xFFF4ECFA),
+        shadowElevation = 1.dp,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 14.dp, vertical = 8.dp),
@@ -52,25 +54,23 @@ fun MoonLetterBottomNavigation(selectedKey: String, onSelect: (BottomTab) -> Uni
         ) {
             MoonLetterTabs.forEach { tab ->
                 val selected = selectedKey == tab.key
-                val tint = if (selected || tab.key == "create") {
+                val tint = if (selected) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f)
                 }
                 Column(
-                    modifier = Modifier.clip(CircleShape).clickable { onSelect(tab) }.padding(horizontal = 9.dp, vertical = 3.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(28.dp))
+                        .clickable { onSelect(tab) }
+                        .background(
+                            if (selected) Color(0xFFE7D9F6) else Color.Transparent,
+                            RoundedCornerShape(28.dp),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    if (tab.key == "create") {
-                        Box(
-                            modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(tab.icon, contentDescription = tab.contentDescription, tint = Color.White, modifier = Modifier.size(28.dp))
-                        }
-                    } else {
-                        Icon(tab.icon, contentDescription = tab.contentDescription, tint = tint, modifier = Modifier.size(26.dp))
-                    }
+                    Icon(tab.icon, contentDescription = tab.contentDescription, tint = tint, modifier = Modifier.size(27.dp))
                     Text(tab.label, style = TwoMemoryTypography.caption, color = tint)
                 }
             }

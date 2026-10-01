@@ -19,3 +19,6 @@ Task 3: Ruling: focused detail Compose tests and the Room-backed device open pat
 Task 4: Ruling: after a successful local save, keep the editor visible with `等待同步` and change the primary action to `返回时间轴`; this makes the persistence state observable and avoids silently equating local Room success with partner visibility.
 Task 4: Ruling: shared partner block fields are optional on `EditorUiState` until the database/sync layer supplies author-owned blocks; the UI renders them read-only when present and keeps the existing create flow unchanged when absent.
 Task 4: Ruling: focused editor tests and keyboard/200% screenshot verification remain pending on the SDK machine; local verification is `git diff --check` and source inspection.
+
+Task 5: Ruling: the shell remains the sole owner of the bottom bar and modal routes. The default home now follows the supplied reference hierarchy (plain warm-beige header, 中秋 copy, date/time inside each paper card, lavender five-tab rail); a user-selected cover remains an explicit opt-in. The profile screen shows editable avatar/name, persisted beige/white theme choices, future routes as honest `还没开放`, and an M1/version evidence label.
+Task 5: Ruling: focused navigation/profile tests and the 390x844 screenshot remain pending on the SDK machine; local verification is `git diff --check` and source inspection.
