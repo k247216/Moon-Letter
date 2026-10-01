@@ -88,8 +88,8 @@ fun CoupleRoute(
     onOpenExport: () -> Unit = {},
     onOpenPastToday: () -> Unit = {},
     onOpenWeeklySummary: () -> Unit = {},
-    anniversaryName: String = "我们的中秋",
-    anniversaryDate: String = "农历八月十五",
+    anniversaryName: String = "",
+    anniversaryDate: String = "",
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -181,8 +181,8 @@ fun CoupleScreen(
     onOpenExport: () -> Unit = {},
     onOpenPastToday: () -> Unit = {},
     onOpenWeeklySummary: () -> Unit = {},
-    anniversaryName: String = "我们的中秋",
-    anniversaryDate: String = "农历八月十五",
+    anniversaryName: String = "",
+    anniversaryDate: String = "",
 ) {
     var editingName by remember { mutableStateOf(false) }
     var pickingHour by remember { mutableStateOf(false) }
@@ -215,7 +215,11 @@ fun CoupleScreen(
                 modifier = Modifier.align(Alignment.BottomStart).padding(start = 26.dp, bottom = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                Text("中秋，是我们的纪念日", style = TwoMemoryTypography.title, color = Color.White)
+                Text(
+                    if (anniversaryName.isBlank()) "还没有纪念日，先定一个日子" else "${anniversaryName}，是我们的纪念日",
+                    style = TwoMemoryTypography.title,
+                    color = Color.White,
+                )
                 Text("把平凡的日子，写成只属于我们的故事", style = TwoMemoryTypography.caption, color = Color.White.copy(alpha = .86f))
             }
         }
@@ -251,7 +255,7 @@ fun CoupleScreen(
                 Icon(TwoMemoryIcons.Calendar, contentDescription = null, tint = TwoMemoryColors.WarmBeigeAccent, modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(anniversaryName.ifBlank { "我们的中秋" }, style = TwoMemoryTypography.title)
+                    Text(anniversaryName.ifBlank { "还没有纪念日" }, style = TwoMemoryTypography.title)
                     Text(anniversaryDate.ifBlank { "还没有设置日期" }, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
                 }
                 Icon(TwoMemoryIcons.Chevron, contentDescription = "编辑纪念日", tint = TwoMemoryColors.WarmBeigeMuted)

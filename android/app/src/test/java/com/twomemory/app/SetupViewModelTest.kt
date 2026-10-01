@@ -55,6 +55,14 @@ class SetupViewModelTest {
         override suspend fun readSpace(baseUrl: String, bearer: String, coupleId: UUID) =
             SpaceViewDto(COUPLE, listOf(MemberViewDto(OWNER, ProfileViewDto("小满"))))
 
+        override suspend fun exportSpace(
+            baseUrl: String,
+            bearer: String,
+            coupleId: UUID,
+            from: String?,
+            to: String?,
+        ): String = throw AssertionError("setup never exports the space")
+
         override suspend fun updateOwnProfile(
             baseUrl: String,
             bearer: String,

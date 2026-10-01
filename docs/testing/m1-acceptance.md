@@ -468,3 +468,14 @@
 
 - **本轮内容**：资料页右上角设置图标现在打开明确说明，指出主题、头像、名字、回看和通知均在当前页面操作；不再保留无响应的禁用按钮。
 - **验证边界**：新增 `CoupleScreenTest.settingsIconExplainsWhereLocalControlsLive`；本机未运行 Compose instrumentation 或真机。
+
+### 记录 37：合并进来的 UI 轮次根本没编译，先修编译再把假承诺改成真话（2026-10-02）
+
+- **先说清楚发生了什么**：`a0a8ae6`/`1e3e73b`/`696d493` 那几批 UI 改动里埋着 5 处编译错误，合并（`ef4274c`）之后本机第一次真正跑 Gradle 才全部暴露：`"$name的视角"`（汉字是合法 Kotlin 标识符字符，模板必须写成 `${name}`）×2、`EntryDetailViewModel` 引用不存在的 `entry.unsent`（真实字段是 `state`）、`toolsPrefs` 定义在一个会提前 return 的 lambda 里、`designsystem` 测试缺 `kotlin.test.junit`、`EntryDetailScreenTest` 给非空 `body` 传 `null`。
+- **测试基建**：`kotlin("test")` 在 Android 模块不带 JUnit 支持，`import kotlin.test.Test` 直接不解析——`designsystem`/`network`/`couple` 三处补 `libs.kotlin.test.junit`；`ShareIntentParserTest` 构造真实 `Intent`/`Uri`，改成 Robolectric（`@Config(sdk = [34])`）才跑得动。
+- **假承诺改真话**：纪念日卡片原文写着「服务端同步后，另一台设备会按同一条日期规则重新计算」和「倒计时会使用空间和设备的真实时区」——服务端**没有** anniversary 的任何实现（V1 的 `anniversary` 表至今无 Java 读写），本机倒计时只是本地日期相减，两句都删掉换成「这条规则目前只保存在这台手机上」；导出的 `DATE_RANGE`/`ALL` 原本点了只会显示「已提交 · 等待生成」，是纯粹的死按钮，且文案承诺 ZIP 与媒体打包；相册筛选的 `FilterChip` 上带着媒体条数（不统计红线），改成「全部」。
+- **新的真实能力**：`SessionApi.exportSpace` 接 `GET api/v1/export?coupleId&from&to`，用设备 bearer；起止日期按当天 00:00 / 23:59:59.999 转成 instant；空结果、超长、未绑定、HTTP 失败都在屏上写清楚。分享走 `ACTION_SEND` 文本（应用内**没有** FileProvider），binder 单事务装不下，超过 200k 字符直接提示「用按时间范围分批导出」而不是崩溃。
+- **修正记录 34 的口径**：该条写「正文不写入普通偏好」。时间胶囊正文原来是被静默丢弃的（保存后读不回来），现在与 DraftStore 同源存进 `moon_letter_tools` 明文偏好——没有服务端 `time_capsule` 实现之前，本机留存是唯一诚实的选项；到期才显示，且仍不进任何导出。**代价**：清除应用数据或重装会连信一起没。
+- **演示内容清掉**：首页 hero 的「中秋 · 仍在一起写着」、`我们` 页封面上硬编码的「中秋，是我们的纪念日」、纪念日表单默认值「我们的中秋 / 农历八月十五」全部移除，改成空态文案。开档第一眼不能是别人的日子。
+- **绿灯口径**：Android JVM **87 例 / 0 失败 / 0 跳过**（app 26、core:sync 19、core:database 12、feature:timeline 12、feature/couple 11、core:network 3、core:designsystem 3、core:model 1）；`:app:assembleDebug` 成功，`app/build/outputs/apk/debug/app-debug.apk` 20,970,868 字节（00:59）；新增 `compileDebugAndroidTestKotlin` 进本轮口径——全模块通过，正是它抓出上面第 5 个编译错误（此前 androidTest 从未在本机编译过）。服务端本轮未改动，沿用记录中的 63 例。
+- **必须知道的边界（未真机验证）**：Compose 渲染与交互断言只在 androidTest，本机无模拟器，D1/D2、V4/V5、H1–H8 仍为 **NOT RUN**；`capsuleIsDue` 是本机判断，不是服务端锁；导出 JSON 不含 revision 号（`ExportService` 的 SELECT 里有 `current_revision_no` 但没映射进结果），照片文件不在导出内；纪念日同步、服务端时间胶囊、ZIP/相册备份、「过去的今天」完整度都还没做。

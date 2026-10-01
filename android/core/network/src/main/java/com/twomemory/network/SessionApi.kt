@@ -11,6 +11,7 @@ import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -87,6 +88,19 @@ interface SessionApi {
         userId: UUID,
         displayName: String,
     ): ProfileViewDto
+
+    /**
+     * Reads the space's export JSON from the server. The server returns entries
+     * with their blocks and comments, and never includes tokens.
+     * [from] and [to] are instants; omit either to leave that side unbounded.
+     */
+    suspend fun exportSpace(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+        from: String? = null,
+        to: String? = null,
+    ): String
 }
 
 internal interface SessionRetrofitApi {
@@ -111,6 +125,13 @@ internal interface SessionRetrofitApi {
         @Path("userId") userId: UUID,
         @Body body: UpdateProfileRequestDto,
     ): Response<ProfileViewDto>
+
+    @GET("api/v1/export")
+    suspend fun exportSpace(
+        @Query("coupleId") coupleId: UUID,
+        @Query("from") from: String?,
+        @Query("to") to: String?,
+    ): Response<okhttp3.ResponseBody>
 }
 
 class RetrofitSessionApi private constructor(
@@ -168,6 +189,20 @@ class RetrofitSessionApi private constructor(
             }
             response.body() ?: throw SetupHttpException(response.code(), "empty body")
         }
+
+    override suspend fun exportSpace(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+        from: String?,
+        to: String?,
+    ): String = withContext(Dispatchers.IO) {
+        val response = api(baseUrl, bearer).exportSpace(coupleId, from, to)
+        if (!response.isSuccessful) {
+            throw SetupHttpException(response.code(), response.errorBody()?.string().orEmpty().take(200))
+        }
+        response.body()?.string().orEmpty()
+    }
 
     companion object {
         /** Gson cannot construct UUID by reflection; register explicit adapters. */

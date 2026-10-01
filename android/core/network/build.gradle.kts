@@ -30,4 +30,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.kotlinx.coroutines.core)
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlin.test.junit)
 }

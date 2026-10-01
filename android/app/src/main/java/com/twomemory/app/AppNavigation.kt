@@ -256,6 +256,21 @@ private fun com.twomemory.database.CommentEntity.toEntryComment() = com.twomemor
 )
 
 /**
+ * A share sheet carries its text through a single binder transaction, so an
+ * export longer than this is reported on screen instead of crashing the chooser.
+ */
+private const val MAX_SHARE_CHARS = 200_000
+
+/** Turns a day the couple typed into the instant the export endpoint expects. */
+private fun exportInstant(day: String, endOfDay: Boolean): String? {
+    val date = runCatching { java.time.LocalDate.parse(day.trim()) }.getOrNull() ?: return null
+    val atTime = date.atTime(
+        if (endOfDay) java.time.LocalTime.MAX else java.time.LocalTime.MIN,
+    )
+    return atTime.atZone(java.time.ZoneId.systemDefault()).toInstant().toString()
+}
+
+/**
  * Unpublished editor text survives process death through SharedPreferences.
  * Every record type owns its own slot, so a half-written personal record is
  * never replaced by a half-written shared one.
@@ -367,8 +382,10 @@ fun AppNavigation(
     var selectedKey by remember { mutableStateOf("timeline") }
     var editingMode by remember { mutableStateOf<EntryMode?>(null) }
     var toolRoute by remember { mutableStateOf<CoupleToolRoute?>(null) }
+    var exportStatus by remember { mutableStateOf<String?>(null) }
     var reviewRoute by remember { mutableStateOf<MemoryReviewRoute?>(null) }
     val visualPrefs = remember { context.getSharedPreferences("moon_letter_visuals", android.content.Context.MODE_PRIVATE) }
+    val toolsPrefs = remember { context.getSharedPreferences("moon_letter_tools", android.content.Context.MODE_PRIVATE) }
     var coverUri by remember { mutableStateOf(visualPrefs.getString("coverUri", null)) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -588,52 +605,88 @@ fun AppNavigation(
 
     toolRoute?.let { route ->
         BackHandler { toolRoute = null }
-        val toolsPrefs = context.getSharedPreferences("moon_letter_tools", android.content.Context.MODE_PRIVATE)
         RelationshipToolsScreen(
             route = route,
             onBack = { toolRoute = null },
             onSaveAnniversary = { draft ->
-                context.getSharedPreferences("moon_letter_tools", android.content.Context.MODE_PRIVATE).edit()
+                toolsPrefs.edit()
                     .putString("anniversaryName", draft.name)
                     .putString("anniversaryDate", draft.date)
                     .putBoolean("anniversaryRepeats", draft.repeatsYearly)
                     .apply()
             },
             onSaveCapsule = { draft ->
-                // Keep only lock metadata locally. The plaintext and unlock
-                // enforcement belong to the server; never put the letter into
-                // ordinary preferences or the local-cache export.
-                context.getSharedPreferences("moon_letter_tools", android.content.Context.MODE_PRIVATE).edit()
+                // No capsule endpoint exists on the server yet, so the letter stays on
+                // this device — same plaintext preferences DraftStore already uses for
+                // unsent text. Hidden here until the unlock date; never in an export.
+                toolsPrefs.edit()
                     .putString("capsuleTitle", draft.title)
+                    .putString("capsuleBody", draft.body)
                     .putString("capsuleUnlockDate", draft.unlockDate)
                     .putBoolean("capsuleLocked", true)
                     .apply()
             },
-            onStartExport = { scope ->
-                if (scope == com.twomemory.couple.ExportScope.LOCAL_CACHE) {
-                    toolScope.launch {
-                        val session = SyncSession.load(context)
-                        val names = SyncSession.loadNames(context)
-                        val document = LocalExportBuilder.build(
-                            database = database,
-                            currentUserId = session?.userId,
-                            ownName = names.own,
-                            partnerName = names.partner,
-                        )
-                        val text = document.markdown + "\n\n---\n\n# 机器可读 JSON\n\n" + document.json
-                        val share = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "月笺本机缓存导出（Markdown + JSON）")
-                            putExtra(Intent.EXTRA_TEXT, text)
+            onStartExport = { scope, from, to ->
+                toolScope.launch {
+                    val bounds = if (scope == com.twomemory.couple.ExportScope.DATE_RANGE) {
+                        val start = from?.let { exportInstant(it, endOfDay = false) }
+                        val end = to?.let { exportInstant(it, endOfDay = true) }
+                        if ((from != null && start == null) || (to != null && end == null)) {
+                            exportStatus = "日期没认出来，请写成 2026-10-01 这样的形式"
+                            return@launch
                         }
-                        context.startActivity(Intent.createChooser(share, "分享月笺导出"))
+                        start to end
+                    } else null to null
+                    exportStatus = "正在准备导出…"
+                    val session = SyncSession.load(context)
+                    val outcome = runCatching {
+                        if (scope == com.twomemory.couple.ExportScope.LOCAL_CACHE) {
+                            val names = SyncSession.loadNames(context)
+                            val document = LocalExportBuilder.build(
+                                database = database,
+                                currentUserId = session?.userId,
+                                ownName = names.own,
+                                partnerName = names.partner,
+                            )
+                            "月笺本机缓存导出（Markdown + JSON）" to
+                                (document.markdown + "\n\n---\n\n# 机器可读 JSON\n\n" + document.json)
+                        } else {
+                            val bound = session
+                                ?: throw IllegalStateException("这台手机还没有绑定空间，服务端没有可读的记录")
+                            val json = com.twomemory.network.RetrofitSessionApi.create { bound.token }
+                                .exportSpace(bound.baseUrl, bound.token, bound.coupleId, bounds.first, bounds.second)
+                            "月笺服务端导出（JSON）" to json
+                        }
                     }
+                    outcome.fold(
+                        onSuccess = { (subject, text) ->
+                            when {
+                                text.isBlank() -> exportStatus = "这次导出是空的：还没有可读到的记录"
+                                text.length > MAX_SHARE_CHARS ->
+                                    exportStatus = "导出的文本太长，分享面板放不下；请用「按时间范围」分批导出"
+                                else -> {
+                                    exportStatus = null
+                                    val share = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, subject)
+                                        putExtra(Intent.EXTRA_TEXT, text)
+                                    }
+                                    context.startActivity(Intent.createChooser(share, "分享月笺导出"))
+                                }
+                            }
+                        },
+                        onFailure = { failure ->
+                            exportStatus = "导出没完成：${failure.message ?: "请重试"}"
+                        },
+                    )
                 }
             },
-            initialAnniversaryName = toolsPrefs.getString("anniversaryName", "我们的中秋").orEmpty(),
-            initialAnniversaryDate = toolsPrefs.getString("anniversaryDate", "农历八月十五").orEmpty(),
+            exportStatus = exportStatus,
+            initialAnniversaryName = toolsPrefs.getString("anniversaryName", "").orEmpty(),
+            initialAnniversaryDate = toolsPrefs.getString("anniversaryDate", "").orEmpty(),
             initialAnniversaryRepeats = toolsPrefs.getBoolean("anniversaryRepeats", true),
             initialCapsuleTitle = toolsPrefs.getString("capsuleTitle", "").orEmpty(),
+            initialCapsuleBody = toolsPrefs.getString("capsuleBody", "").orEmpty(),
             initialCapsuleUnlockDate = toolsPrefs.getString("capsuleUnlockDate", "").orEmpty(),
             initialCapsuleLocked = toolsPrefs.getBoolean("capsuleLocked", false),
         )
@@ -723,8 +776,8 @@ fun AppNavigation(
                     onOpenExport = { toolRoute = CoupleToolRoute.EXPORT },
                     onOpenPastToday = { reviewRoute = MemoryReviewRoute.PAST_TODAY },
                     onOpenWeeklySummary = { reviewRoute = MemoryReviewRoute.WEEKLY_SUMMARY },
-                    anniversaryName = toolsPrefs.getString("anniversaryName", "我们的中秋").orEmpty(),
-                    anniversaryDate = toolsPrefs.getString("anniversaryDate", "农历八月十五").orEmpty(),
+                    anniversaryName = toolsPrefs.getString("anniversaryName", "").orEmpty(),
+                    anniversaryDate = toolsPrefs.getString("anniversaryDate", "").orEmpty(),
                 )
                 "album" -> AlbumPreviewScreen(media = albumMedia, onOpenEntry = { openEntryId = it })
                 "map" -> CityMapPreviewScreen(

@@ -99,7 +99,7 @@ fun AlbumPreviewScreen(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = .62f),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = filter == "ALL", onClick = { filter = "ALL" }, label = { Text("全部 ${media.size}") })
+            FilterChip(selected = filter == "ALL", onClick = { filter = "ALL" }, label = { Text("全部") })
             FilterChip(selected = filter == "IMAGE", onClick = { filter = "IMAGE" }, label = { Text("照片") })
             FilterChip(selected = filter == "VIDEO", onClick = { filter = "VIDEO" }, label = { Text("视频") })
         }

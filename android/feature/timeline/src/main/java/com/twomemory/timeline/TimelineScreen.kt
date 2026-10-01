@@ -127,7 +127,7 @@ private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit)
                 color = Color.White.copy(alpha = .94f),
             )
             Text(
-                "中秋 · 仍在一起写着",
+                "只属于你们两个人的空间。",
                 style = TwoMemoryTypography.body,
                 color = Color.White.copy(alpha = .82f),
             )
