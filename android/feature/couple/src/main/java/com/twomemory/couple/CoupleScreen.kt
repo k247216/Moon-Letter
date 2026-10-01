@@ -79,6 +79,9 @@ fun CoupleRoute(
     onNewEntryNoticeChange: (Boolean) -> Unit = {},
     onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
     versionLabel: String = "M1 · 0.1.0",
+    onOpenAnniversary: () -> Unit = {},
+    onOpenCapsule: () -> Unit = {},
+    onOpenExport: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("moon_letter_profile", android.content.Context.MODE_PRIVATE) }
@@ -137,6 +140,9 @@ fun CoupleRoute(
             onThemeChange(it)
         },
         versionLabel = versionLabel,
+        onOpenAnniversary = onOpenAnniversary,
+        onOpenCapsule = onOpenCapsule,
+        onOpenExport = onOpenExport,
     )
 }
 
@@ -158,6 +164,9 @@ fun CoupleScreen(
     onNewEntryNoticeChange: (Boolean) -> Unit = {},
     onReviewTimeChange: (DayOfWeek, Int) -> Unit = { _, _ -> },
     versionLabel: String = "M1 · 0.1.0",
+    onOpenAnniversary: () -> Unit = {},
+    onOpenCapsule: () -> Unit = {},
+    onOpenExport: () -> Unit = {},
 ) {
     var editingName by remember { mutableStateOf(false) }
     var pickingHour by remember { mutableStateOf(false) }
@@ -237,9 +246,9 @@ fun CoupleScreen(
             shadowElevation = 1.dp,
         ) {
             Column {
-                SettingsRow(TwoMemoryIcons.Calendar, "纪念日与倒计时", "管理属于我们的重要日子")
-                SettingsRow(TwoMemoryIcons.Capsule, "时间胶囊", "给未来的我们留下一段此刻的心情")
-                SettingsRow(TwoMemoryIcons.Export, "数据与导出", "备份我们的回忆")
+                SettingsRow(TwoMemoryIcons.Calendar, "纪念日与倒计时", "管理属于我们的重要日子", onClick = onOpenAnniversary)
+                SettingsRow(TwoMemoryIcons.Capsule, "时间胶囊", "给未来的我们留下一段此刻的心情", onClick = onOpenCapsule)
+                SettingsRow(TwoMemoryIcons.Export, "数据与导出", "备份我们的回忆", onClick = onOpenExport)
                 Text(
                     "显示主题",
                     style = TwoMemoryTypography.body,
@@ -460,9 +469,15 @@ private fun dayLabel(day: DayOfWeek) = when (day) {
 }
 
 @Composable
-private fun SettingsRow(icon: ImageVector, title: String, subtitle: String) {
+private fun SettingsRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(30.dp))
@@ -472,11 +487,7 @@ private fun SettingsRow(icon: ImageVector, title: String, subtitle: String) {
             Text(subtitle, style = TwoMemoryTypography.caption,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = .5f))
         }
-        Text(
-            "还没开放",
-            style = TwoMemoryTypography.caption,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = .38f),
-        )
+        Icon(TwoMemoryIcons.Chevron, contentDescription = "打开$title", tint = MaterialTheme.colorScheme.onSurface.copy(alpha = .42f))
     }
 }
 

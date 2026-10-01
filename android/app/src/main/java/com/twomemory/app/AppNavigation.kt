@@ -16,6 +16,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,8 +25,10 @@ import androidx.compose.ui.platform.LocalContext
 import com.twomemory.app.notifications.NotificationPreferences
 import com.twomemory.app.notifications.WeeklyReviewWorker
 import com.twomemory.couple.CoupleRoute
+import com.twomemory.couple.CoupleToolRoute
 import com.twomemory.couple.CoupleViewModel
 import com.twomemory.couple.PairingCode
+import com.twomemory.couple.RelationshipToolsScreen
 import com.twomemory.database.AppDatabase
 import com.twomemory.designsystem.MoonLetterBottomNavigation
 import com.twomemory.designsystem.MoonLetterTheme
@@ -42,6 +45,7 @@ import com.twomemory.timeline.EntryDetailViewModel
 import com.twomemory.timeline.TimelineRoute
 import com.twomemory.timeline.TimelineViewModel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.ZoneId
@@ -273,6 +277,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
     }
     var selectedKey by remember { mutableStateOf("timeline") }
     var editingMode by remember { mutableStateOf<EntryMode?>(null) }
+    var toolRoute by remember { mutableStateOf<CoupleToolRoute?>(null) }
     val visualPrefs = remember { context.getSharedPreferences("moon_letter_visuals", android.content.Context.MODE_PRIVATE) }
     var coverUri by remember { mutableStateOf(visualPrefs.getString("coverUri", null)) }
     val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -328,6 +333,7 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
     var reviewHour by remember { mutableStateOf(notificationPrefs.reviewHour) }
     val editorViewModel = remember { EditorViewModel() }
     val editorState by editorViewModel.state.collectAsState()
+    val toolScope = rememberCoroutineScope()
 
     // Real display names win over the placeholder couple state: the space is
     // read once when the app is entered, and again after a rename succeeds.
@@ -460,6 +466,56 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
         return
     }
 
+    toolRoute?.let { route ->
+        BackHandler { toolRoute = null }
+        val toolsPrefs = context.getSharedPreferences("moon_letter_tools", android.content.Context.MODE_PRIVATE)
+        RelationshipToolsScreen(
+            route = route,
+            onBack = { toolRoute = null },
+            onSaveAnniversary = { draft ->
+                context.getSharedPreferences("moon_letter_tools", android.content.Context.MODE_PRIVATE).edit()
+                    .putString("anniversaryName", draft.name)
+                    .putString("anniversaryDate", draft.date)
+                    .putBoolean("anniversaryRepeats", draft.repeatsYearly)
+                    .apply()
+            },
+            onSaveCapsule = {
+                // Capsule plaintext and unlock enforcement belong to the server;
+                // do not put a private letter into ordinary preferences here.
+            },
+            onStartExport = { scope ->
+                if (scope == com.twomemory.couple.ExportScope.LOCAL_CACHE) {
+                    toolScope.launch {
+                        val entries = database.entryDao().publishedEntries()
+                        val text = buildString {
+                            appendLine("月笺本机缓存导出")
+                            appendLine("导出范围：已发布记录")
+                            appendLine()
+                            entries.forEach { entry ->
+                                val blocks = database.entryDao().blocks(entry.id)
+                                appendLine("## ${entry.title.orEmpty().ifBlank { "未命名记录" }}")
+                                appendLine("发生时间：${entry.occurredAtEpochMillis} (${entry.occurredTimezone})")
+                                appendLine("记录 ID：${entry.id}")
+                                previewOf(blocks)?.let { appendLine(it) }
+                                appendLine()
+                            }
+                        }
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "月笺本机缓存导出")
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }
+                        context.startActivity(Intent.createChooser(share, "分享月笺导出"))
+                    }
+                }
+            },
+            initialAnniversaryName = toolsPrefs.getString("anniversaryName", "我们的中秋").orEmpty(),
+            initialAnniversaryDate = toolsPrefs.getString("anniversaryDate", "农历八月十五").orEmpty(),
+            initialAnniversaryRepeats = toolsPrefs.getBoolean("anniversaryRepeats", true),
+        )
+        return
+    }
+
     Scaffold(
         bottomBar = {
             MoonLetterBottomNavigation(selectedKey) { tab ->
@@ -527,6 +583,9 @@ fun AppNavigation(onThemeChange: (MoonLetterTheme) -> Unit = {}, initialEntryId:
                         reviewHour = hour
                         WeeklyReviewWorker.schedule(context, force = true)
                     },
+                    onOpenAnniversary = { toolRoute = CoupleToolRoute.ANNIVERSARY },
+                    onOpenCapsule = { toolRoute = CoupleToolRoute.CAPSULE },
+                    onOpenExport = { toolRoute = CoupleToolRoute.EXPORT },
                 )
                 "album" -> AlbumPreviewScreen(media = albumMedia, onOpenEntry = { openEntryId = it })
                 "map" -> CityMapPreviewScreen(stories = cityStories, onOpenEntry = { openEntryId = it })

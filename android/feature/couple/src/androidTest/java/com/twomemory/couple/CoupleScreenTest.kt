@@ -3,6 +3,7 @@ package com.twomemory.couple
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.twomemory.designsystem.MoonLetterTheme
 import org.junit.Rule
@@ -41,6 +42,6 @@ class CoupleScreenTest {
             )
         }
         composeRule.onNodeWithText("纪念日与倒计时").assertIsDisplayed()
-        composeRule.onNodeWithText("还没开放").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("打开纪念日与倒计时").assertIsDisplayed()
     }
 }
