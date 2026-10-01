@@ -43,7 +43,14 @@ public class SyncOperationDispatcher {
         }
     }
 
-    record DispatchOutcome(UUID entityId, String entityType, String operation, String responseBody) {
+    /**
+     * @param mutationOwnsChangeRow true when the service executing this operation already
+     *     appended its own change row, so the sync controller must not append another one.
+     *     Double-appending turns one mutation into two feed rows and makes every replay,
+     *     even under a fresh operation id, grow the feed for a change that did not happen.
+     */
+    record DispatchOutcome(UUID entityId, String entityType, String operation, String responseBody,
+                           boolean mutationOwnsChangeRow) {
     }
 
     private final EntryService entryService;
@@ -156,7 +163,8 @@ public class SyncOperationDispatcher {
         UUID replyToId = parseOptionalUuid(root.path("replyToId"));
         CommentView view = commentService.addComment(entryId, actorId, commentId, body, replyToId);
         try {
-            return new DispatchOutcome(entryId, "COMMENT", "ADD", objectMapper.writeValueAsString(view));
+            return new DispatchOutcome(entryId, "COMMENT", "ADD",
+                    objectMapper.writeValueAsString(view), true);
         } catch (Exception exception) {
             throw new IllegalStateException("could not serialize comment view", exception);
         }
@@ -182,7 +190,8 @@ public class SyncOperationDispatcher {
 
     private DispatchOutcome entryOutcome(EntryView entry, String operation) {
         try {
-            return new DispatchOutcome(entry.id(), "ENTRY", operation, objectMapper.writeValueAsString(entry));
+            return new DispatchOutcome(entry.id(), "ENTRY", operation,
+                    objectMapper.writeValueAsString(entry), false);
         } catch (Exception exception) {
             throw new IllegalStateException("could not serialize entry view", exception);
         }

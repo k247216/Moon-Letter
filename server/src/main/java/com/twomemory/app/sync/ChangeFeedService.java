@@ -56,6 +56,17 @@ public class ChangeFeedService {
         return sequence;
     }
 
+    /**
+     * High-water sequence for the couple. Used when the mutation itself appended
+     * the change row, so the wake-up notification still reports a real position.
+     */
+    public long lastSequence(UUID coupleId) {
+        return jdbcTemplate.query("""
+                SELECT last_space_sequence FROM couple_sync_state WHERE couple_id = ?
+                """, (rs, rowNum) -> rs.getLong(1), coupleId)
+                .stream().findFirst().orElse(0L);
+    }
+
     public ChangePage readChanges(UUID userId, UUID coupleId, long after, int limit) {
         accessPolicy.requireMember(userId, coupleId);
         return readChanges(coupleId, after, limit);

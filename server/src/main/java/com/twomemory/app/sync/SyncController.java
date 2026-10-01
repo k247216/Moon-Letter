@@ -55,9 +55,11 @@ public class SyncController {
                 request.operationId(), userId, request.payloadHash(), () -> {
                     SyncOperationDispatcher.DispatchOutcome outcome = operationDispatcher.dispatch(
                             userId, request.coupleId(), request.operationType(), request.payload());
-                    long latest = changeFeedService.appendChange(
-                            request.coupleId(), outcome.entityType(), outcome.entityId(),
-                            outcome.operation(), outcome.responseBody());
+                    long latest = outcome.mutationOwnsChangeRow()
+                            ? changeFeedService.lastSequence(request.coupleId())
+                            : changeFeedService.appendChange(
+                                    request.coupleId(), outcome.entityType(), outcome.entityId(),
+                                    outcome.operation(), outcome.responseBody());
                     sequence.set(latest);
                     return new MutationResult(200, outcome.responseBody(), false);
                 });

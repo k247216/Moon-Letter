@@ -155,6 +155,13 @@ class SharedPerspectiveSyncTest {
         int commentRows = countComments(entryId);
         assertThat(commentRows).isEqualTo(1);
 
+        // One comment is one feed row: the mutation owns its change row,
+        // and the sync controller must not append a second copy of it.
+        int commentFeedRows = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM sync_change WHERE couple_id = ? AND entity_type = 'COMMENT'",
+                Integer.class, coupleId);
+        assertThat(commentFeedRows).isEqualTo(1);
+
         // 5. A pulls the change feed: the first three changes are
         //    CREATE (A's entry), UPDATE (B's block), COMMENT ADD.
         JsonNode feed = objectMapper.valueToTree(pullChanges(TOKEN_A).getBody());

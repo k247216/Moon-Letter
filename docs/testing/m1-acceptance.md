@@ -191,3 +191,14 @@
 - **Android**：Room v2 `comments` 表 + MIGRATION_1_2；`RoomSyncStore` 应用 COMMENT 变更；`LocalEntryWriter.appendBlock/addComment`（Room+outbox 同事务）；`MediaApi`/`RetrofitMediaApi` + `MediaUploadManager`（同步前 best-effort 上传无 asset 的 IMAGE 块，回填 assetId 与 outbox payload）；SyncSession.triggerSync 挂接。
 - **结果**：`mvn test` 全套 EXIT=0（连接池收紧为 4/上下文后并行测试不再耗尽 PG 连接）；`./gradlew test :app:assembleDebug` → BUILD SUCCESSFUL。
 - **诚实记录**：共同记录的发布（PUBLISH）与图片选择器 UI 尚未接上；评论 UI 展示未做（数据链已通，属于下一轮「统一性修复」的 UI 段）。
+
+### 记录 14：接手复核 + 变更行单一归属（2026-10-01）
+
+- **接手现场**：上一轮执行留下一个未提交改动使**服务端整体无法编译**——`SyncOperationDispatcher` 引用了不存在的嵌套类型 `EntryService.PublishResult`（`PublishResult` 实为 `entry` 包的顶层 record 且包私有）。该半成品已保存为 `E:\MoonLetter\publish-entry-WIP.patch` 并将文件恢复至 HEAD，编译与全套测试随即转绿。本地分支 `m1-stable-recording-loop` 领先 origin **25 个提交**未推送。
+- **真库现状核查（重要，改变了对 M1 的理解）**：dev 库 `moon_letter` 实测 2 users / 5 entries / 2 device sessions，而 `entry.state` **全部为 DRAFT**、`sync_change` 的 operation **全部为 CREATE、零条 PUBLISH**。即 App 的「发布」按钮只做本地草稿落库与 `saveDraft`，**发布语义在客户端整条缺失**；两条已推送的记录（A 3 条、B 2 条）从未真正发布。此前"双端互见"之所以看起来成立，是因为下一个缺陷把它掩盖了：个人草稿的 CREATE 变更行无状态过滤地进入伴侣变更流（`ChangeFeedService.readChanges` 不过滤），被对端 `RoomSyncStore.applyEntryChange` 无条件写入本地 Room，并被无 state 过滤的时间线 SQL 直接渲染——**对方的未发布私密草稿全文出现在自己设备上并显示出来**，违反规格 §4 表格与 §6.4「草稿不进入伴侣 change feed」。二者分别记为待修项（发布链、草稿可见性边界），对应 Gate E1/H4 之外的新阻塞。
+- **本轮修复：一次变更操作只写一条变更行**。`CommentService.addComment` 与 `EntryService.publish` 自行追加 `sync_change`，而 `SyncController` 又按 `DispatchOutcome` 追加一次，同一次评论产生两条变更行；换一个新的 `operationId` 重放同一评论时，service 走"已存在"早退不加行、controller 仍加一行，于是**重放也在让变更流增长**（规格 §3.1 第 7 项要求重复请求不产生重复业务结果）。
+- **TDD 红灯**：在既有 `SharedPerspectiveSyncTest` 增加断言"一条评论只允许一条 COMMENT 变更行"，首跑 `expected: 1 but was: 3`（`Tests run: 1, Failures: 1`），证实上述双重追加与重放增长并存。
+- **实现**：`DispatchOutcome` 增加 `mutationOwnsChangeRow` 归属标记，`addComment` 置 true、`entryOutcome`（CREATE/UPDATE）置 false；`SyncController` 仅在标记为 false 时追加变更行，标记为 true 时改取 `ChangeFeedService.lastSequence(coupleId)` 作为唤醒通知的真实序号（不新增通知语义）。
+- **绿灯**：`JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn test` → `Tests run: 53, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`，EXIT=0。
+- **环境**：Windows 11；OpenJDK 21.0.2；Maven 3.9.15；Docker `postgres:18-alpine`（容器 `infra-postgres-1`，5432）；测试库 `moon_letter_*_test` 各自独立。注意系统默认 `java` 为 25，会导致 surefire 的 Mockito/Byte Buddy agent 初始化失败，必须显式指定 JDK 21。
+- **未完成**：发布链（服务端 `PUBLISH_ENTRY` 类型化操作 + 客户端真正发布 + `EntryView` 暴露版本供 `baseVersion`）、个人草稿可见性边界、以及由它们挡住的 H1/H2/E1 真机证据。
