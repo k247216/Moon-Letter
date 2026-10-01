@@ -142,7 +142,20 @@ class SharedPerspectiveSyncTest {
         ResponseEntity<Map> denied = postOperation("APPEND_BLOCK", forgedPayload, TOKEN_B);
         assertThat(denied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
-        // 4. B adds a comment; the same operation id replays without a second row.
+        // 4. A publishes the shared entry. B's append above moved the entry
+        //    version, so A publishes against the newest version it has seen.
+        long versionAfterAppend = objectMapper.readTree(extractBody(appended))
+                .path("rowVersion").asLong(-1);
+        assertThat(versionAfterAppend)
+                .as("the append response must carry the version a client publishes against")
+                .isNotEqualTo(-1L);
+        String publishPayload = objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "baseVersion", versionAfterAppend));
+        assertThat(postOperation("PUBLISH_ENTRY", publishPayload, TOKEN_A).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+
+        // 5. B adds a comment; the same operation id replays without a second row.
         UUID commentId = UUID.randomUUID();
         String commentPayload = objectMapper.writeValueAsString(Map.of(
                 "entryId", entryId.toString(),
@@ -158,33 +171,31 @@ class SharedPerspectiveSyncTest {
         // One comment is one feed row: the mutation owns its change row,
         // and the sync controller must not append a second copy of it.
         int commentFeedRows = jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM sync_change WHERE couple_id = ? AND entity_type = 'COMMENT'",
-                Integer.class, coupleId);
+                "SELECT count(*) FROM sync_change WHERE couple_id = ? AND entity_type = 'COMMENT'"
+                        + " AND entity_id = ?",
+                Integer.class, coupleId, entryId);
         assertThat(commentFeedRows).isEqualTo(1);
 
-        // 5. A pulls the change feed: the rows about this entry, in order. The feed is
+        // 6. A pulls the change feed: the rows about this entry, in order. The feed is
         //    shared with other tests in this database, so positions are not meaningful.
-        java.util.List<JsonNode> own = new java.util.ArrayList<>();
-        for (JsonNode change : objectMapper.valueToTree(pullChanges(TOKEN_A).getBody()).path("changes")) {
-            if (entryId.toString().equals(change.path("entityId").asText())) {
-                own.add(change);
-            }
-        }
-        assertThat(own).hasSizeGreaterThanOrEqualTo(3);
+        java.util.List<JsonNode> own = changesAbout(TOKEN_A, entryId);
+        assertThat(own).hasSize(4);
         assertThat(own.get(0).path("operation").asText()).isEqualTo("CREATE");
         assertThat(own.get(0).path("entityType").asText()).isEqualTo("ENTRY");
         assertThat(own.get(1).path("operation").asText()).isEqualTo("UPDATE");
-        assertThat(own.get(2).path("entityType").asText()).isEqualTo("COMMENT");
-        assertThat(own.get(2).path("operation").asText()).isEqualTo("ADD");
+        assertThat(own.get(2).path("operation").asText()).isEqualTo("PUBLISH");
+        assertThat(own.get(3).path("entityType").asText()).isEqualTo("COMMENT");
+        assertThat(own.get(3).path("operation").asText()).isEqualTo("ADD");
 
-        // 6. Both members read the same entry: two blocks, B's block intact.
+        // 7. Both members read the same entry: two blocks, B's block intact.
         JsonNode viewA = objectMapper.valueToTree(getEntry(entryId, TOKEN_A).getBody());
         JsonNode viewB = objectMapper.valueToTree(getEntry(entryId, TOKEN_B).getBody());
         assertThat(viewA.path("blocks").size()).isEqualTo(2);
         assertThat(viewB.path("blocks").size()).isEqualTo(2);
         assertThat(viewB.path("mode").asText()).isEqualTo("COLLABORATIVE");
+        assertThat(viewB.path("state").asText()).isEqualTo("PUBLISHED");
 
-        // 7. Duplicate APPEND_BLOCK with the same operation id replays once.
+        // 8. Duplicate APPEND_BLOCK with the same operation id replays once.
         UUID appendOperationId = UUID.randomUUID();
         String replayPayload = objectMapper.writeValueAsString(Map.of(
                 "entryId", entryId.toString(),
@@ -203,43 +214,104 @@ class SharedPerspectiveSyncTest {
     }
 
     @Test
-    void personalDraftPublishesThroughSyncOperationWithOnePublishRow() throws Exception {
+    void personalDraftStaysOutOfTheFeedAndPublishCarriesTheWholeEntry() throws Exception {
         UUID entryId = UUID.randomUUID();
         String createPayload = objectMapper.writeValueAsString(Map.of(
                 "entryId", entryId.toString(),
                 "authorId", userA.toString(),
-                "title", "第一次真正的发布",
+                "title", "只有我自己看得见的草稿",
                 "occurredAt", "2026-10-01T12:00:00Z",
                 "occurredTimezone", "Asia/Shanghai",
                 "blocks", java.util.List.of(Map.of(
                         "blockId", UUID.randomUUID().toString(),
                         "type", "TEXT",
                         "orderKey", 0,
-                        "text", "正文。"))));
+                        "text", "私密正文第一段。"))));
         ResponseEntity<Map> created = postOperation("CREATE_PERSONAL_ENTRY", createPayload, TOKEN_A);
         assertThat(created.getStatusCode()).as("create: %s", created.getBody()).isEqualTo(HttpStatus.OK);
 
-        long rowVersion = objectMapper.readTree(extractBody(created)).path("rowVersion").asLong(-1);
-        assertThat(rowVersion)
-                .as("the create response must carry the version a client publishes against")
-                .isNotEqualTo(-1L);
+        // A keeps writing in the same draft. Every private edit stays private:
+        // the couple feed is what delivers content to the partner device, so a
+        // personal draft must not append a row to it at all.
+        String appendPayload = objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "block", Map.of(
+                        "blockId", UUID.randomUUID().toString(),
+                        "type", "TEXT",
+                        "orderKey", 1,
+                        "text", "私密正文第二段。")));
+        ResponseEntity<Map> appended = postOperation("APPEND_BLOCK", appendPayload, TOKEN_A);
+        assertThat(appended.getStatusCode()).as("append: %s", appended.getBody()).isEqualTo(HttpStatus.OK);
+        long versionAfterAppend = objectMapper.readTree(extractBody(appended)).path("rowVersion").asLong(-1);
+        assertThat(versionAfterAppend).isNotEqualTo(-1L);
+
+        assertThat(entryFeedRows(entryId)).isZero();
+        assertThat(changesAbout(TOKEN_B, entryId)).isEmpty();
+        assertThat(getEntry(entryId, TOKEN_B).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        // An unpublished record has no audience: not even a comment.
+        String commentPayload = objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "commentId", UUID.randomUUID().toString(),
+                "body", "抢先评论"));
+        assertThat(postOperation("ADD_COMMENT", commentPayload, TOKEN_B).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
 
         String publishPayload = objectMapper.writeValueAsString(Map.of(
                 "entryId", entryId.toString(),
-                "baseVersion", rowVersion));
-        ResponseEntity<Map> published = postOperation("PUBLISH_ENTRY", publishPayload, TOKEN_A);
-        assertThat(published.getStatusCode()).as("publish: %s", published.getBody())
+                "baseVersion", versionAfterAppend));
+        assertThat(postOperation("PUBLISH_ENTRY", publishPayload, TOKEN_A).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT state FROM entry WHERE id = ?", String.class, entryId)).isEqualTo("PUBLISHED");
 
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT state FROM entry WHERE id = ?", String.class, entryId))
-                .isEqualTo("PUBLISHED");
-        assertThat(jdbcTemplate.queryForObject(
-                "SELECT count(*) FROM sync_change WHERE couple_id = ? AND entity_type = 'ENTRY'"
-                        + " AND operation = 'PUBLISH' AND entity_id = ?",
-                Integer.class, coupleId, entryId))
+        // Publishing a private draft is the one and only row the partner
+        // receives, so it must carry the whole entry, not just an id.
+        assertThat(entryFeedRows(entryId))
                 .as("one publish is one change row")
                 .isEqualTo(1);
+        JsonNode published = objectMapper.readTree(feedPayloadOf(entryId));
+        assertThat(published.path("id").asText()).isEqualTo(entryId.toString());
+        assertThat(published.path("mode").asText()).isEqualTo("PERSONAL");
+        assertThat(published.path("state").asText()).isEqualTo("PUBLISHED");
+        assertThat(published.path("title").asText()).isEqualTo("只有我自己看得见的草稿");
+        assertThat(published.path("occurredAtEpochMillis").asLong()).isPositive();
+        assertThat(published.path("blocks").size()).isEqualTo(2);
+
+        // The partner rebuilds the record from that single row.
+        assertThat(changesAbout(TOKEN_B, entryId)).hasSize(1);
+        ResponseEntity<Map> readByB = getEntry(entryId, TOKEN_B);
+        assertThat(readByB.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(objectMapper.valueToTree(readByB.getBody()).path("blocks").size()).isEqualTo(2);
+
+        // And may now comment on the published record.
+        assertThat(postOperation("ADD_COMMENT", commentPayload, TOKEN_B).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+    }
+
+    private int entryFeedRows(UUID entryId) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM sync_change WHERE couple_id = ? AND entity_type = 'ENTRY'"
+                        + " AND entity_id = ?",
+                Integer.class, coupleId, entryId);
+        return count == null ? 0 : count;
+    }
+
+    private String feedPayloadOf(UUID entryId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT payload::text FROM sync_change WHERE couple_id = ? AND entity_type = 'ENTRY'"
+                        + " AND entity_id = ?",
+                String.class, coupleId, entryId);
+    }
+
+    private java.util.List<JsonNode> changesAbout(String token, UUID entryId) throws Exception {
+        java.util.List<JsonNode> matching = new java.util.ArrayList<>();
+        for (JsonNode change : objectMapper.valueToTree(pullChanges(token).getBody()).path("changes")) {
+            if (entryId.toString().equals(change.path("entityId").asText())) {
+                matching.add(change);
+            }
+        }
+        return matching;
     }
 
     private UUID firstBlockIdOf(UUID entryId) {

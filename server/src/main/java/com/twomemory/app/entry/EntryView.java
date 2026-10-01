@@ -12,4 +12,13 @@ public record EntryView(UUID id, UUID coupleId, EntryMode mode, EntryState state
                         long rowVersion, int currentRevisionNo, String title,
                         long occurredAtEpochMillis, String occurredTimezone,
                         List<BlockView> blocks) {
+
+    /**
+     * A personal draft is visible only to its author. The change feed is ordered
+     * per couple, not per member, so the only way to keep it private is to not
+     * write its rows there in the first place.
+     */
+    public boolean privateDraft() {
+        return mode == EntryMode.PERSONAL && state == EntryState.DRAFT;
+    }
 }

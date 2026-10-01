@@ -20,6 +20,9 @@ import java.util.concurrent.atomic.AtomicLong;
 @RequestMapping("/api/v1/sync")
 public class SyncController {
 
+    /** No feed row was written, so there is nothing to tell the other device. */
+    private static final long NO_CHANGE_ROW = -1L;
+
     private final IdempotencyService idempotencyService;
     private final ChangeFeedService changeFeedService;
     private final SyncOperationDispatcher operationDispatcher;
@@ -50,20 +53,22 @@ public class SyncController {
         if (!SyncPayloadHasher.hash(request).equalsIgnoreCase(request.payloadHash())) {
             throw new SyncValidationException("payload hash does not match canonical operation payload");
         }
-        AtomicLong sequence = new AtomicLong(-1);
+        AtomicLong sequence = new AtomicLong(NO_CHANGE_ROW);
         MutationResult result = idempotencyService.executeOnce(
                 request.operationId(), userId, request.payloadHash(), () -> {
                     SyncOperationDispatcher.DispatchOutcome outcome = operationDispatcher.dispatch(
                             userId, request.coupleId(), request.operationType(), request.payload());
-                    long latest = outcome.mutationOwnsChangeRow()
-                            ? changeFeedService.lastSequence(request.coupleId())
-                            : changeFeedService.appendChange(
-                                    request.coupleId(), outcome.entityType(), outcome.entityId(),
-                                    outcome.operation(), outcome.responseBody());
+                    long latest = switch (outcome.changeRow()) {
+                        case APPENDED_BY_MUTATION -> changeFeedService.lastSequence(request.coupleId());
+                        case APPENDED_BY_CONTROLLER -> changeFeedService.appendChange(
+                                request.coupleId(), outcome.entityType(), outcome.entityId(),
+                                outcome.operation(), outcome.responseBody());
+                        case SUPPRESSED -> NO_CHANGE_ROW;
+                    };
                     sequence.set(latest);
                     return new MutationResult(200, outcome.responseBody(), false);
                 });
-        if (!result.replayed() && sequence.get() >= 0) {
+        if (!result.replayed() && sequence.get() != NO_CHANGE_ROW) {
             notificationPublisher.notifySpaceChanged(request.coupleId(), sequence.get());
         }
         return ResponseEntity.status(result.status()).body(result);

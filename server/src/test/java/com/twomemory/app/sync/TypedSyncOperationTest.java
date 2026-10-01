@@ -93,7 +93,8 @@ class TypedSyncOperationTest {
         int blocksBefore = count("SELECT count(*) FROM entry_block");
         int changesBefore = count("SELECT count(*) FROM sync_change WHERE couple_id = '"
                 + coupleId + "'");
-        SyncOperationRequest request = validRequest(UUID.randomUUID());
+        SyncOperationRequest request = request(UUID.randomUUID(), "CREATE_SHARED_ENTRY",
+                payload("今天很好"));
 
         ResponseEntity<Map> response = post(request);
         assertThat(response.getStatusCode())
@@ -110,6 +111,21 @@ class TypedSyncOperationTest {
                         + "WHERE couple_id = ? ORDER BY change_seq DESC LIMIT 1", coupleId);
         assertThat(change.get("entity_type")).isEqualTo("ENTRY");
         assertThat(change.get("operation")).isEqualTo("CREATE");
+    }
+
+    @Test
+    void personalDraftWritesTheTablesButNeverEntersTheFeed() {
+        int entriesBefore = count("SELECT count(*) FROM entry");
+        int changesBefore = count("SELECT count(*) FROM sync_change WHERE couple_id = '"
+                + coupleId + "'");
+
+        assertThat(post(request(UUID.randomUUID(), "CREATE_PERSONAL_ENTRY", payload("还没想好")))
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(count("SELECT count(*) FROM entry")).isEqualTo(entriesBefore + 1);
+        assertThat(count("SELECT count(*) FROM sync_change WHERE couple_id = '" + coupleId + "'"))
+                .as("a personal draft has no audience but its author, so it gets no change row")
+                .isEqualTo(changesBefore);
     }
 
     @Test
@@ -215,9 +231,12 @@ class TypedSyncOperationTest {
     }
 
     private SyncOperationRequest request(UUID operationId, String payload) {
+        return request(operationId, "CREATE_PERSONAL_ENTRY", payload);
+    }
+
+    private SyncOperationRequest request(UUID operationId, String operationType, String payload) {
         return new SyncOperationRequest(operationId, coupleId,
-                SyncPayloadHasher.hash("CREATE_PERSONAL_ENTRY", payload),
-                "CREATE_PERSONAL_ENTRY", payload);
+                SyncPayloadHasher.hash(operationType, payload), operationType, payload);
     }
 
     private String payload(String text) {

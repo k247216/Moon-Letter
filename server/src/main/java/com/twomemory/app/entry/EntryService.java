@@ -92,9 +92,13 @@ public class EntryService {
         updateEntryVersion(entryId, revisionNo, entry.rowVersion() + 1, EntryState.PUBLISHED);
         insertRevision(entryId, revisionNo, entry.currentRevisionNo(), entry.authorId(),
                 "published draft");
-        changeFeedService.appendChange(entry.coupleId(), "ENTRY", entryId,
-                "PUBLISH", "{\"entryId\":\"" + entryId + "\",\"revisionNo\":" + revisionNo + "}");
-        return new PublishResult(loadEntry(entryId), revisionNo);
+        // For a personal record this row is the other device's first sight of the
+        // entry: private drafts never enter the feed, so the row carries the whole
+        // projection instead of just an id.
+        EntryView published = loadEntry(entryId);
+        changeFeedService.appendChange(entry.coupleId(), "ENTRY", entryId, "PUBLISH",
+                writeJson(published));
+        return new PublishResult(published, revisionNo);
     }
 
     @Transactional
@@ -298,12 +302,7 @@ public class EntryService {
 
     private void insertRevision(UUID entryId, int revisionNo, int baseRevision,
                                 UUID editedBy, String summary) {
-        String snapshot;
-        try {
-            snapshot = objectMapper.writeValueAsString(loadEntry(entryId).blocks());
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("could not serialize entry revision", exception);
-        }
+        String snapshot = writeJson(loadEntry(entryId).blocks());
         jdbcTemplate.update("""
                 INSERT INTO entry_revision(id, entry_id, revision_no, base_revision_no,
                                            edited_by, snapshot, change_summary, created_at)
@@ -368,6 +367,14 @@ public class EntryService {
         return new EntryView(row.id(), row.coupleId(), row.mode(), row.state(), row.authorId(),
                 row.rowVersion(), row.currentRevisionNo(), row.title(),
                 row.occurredAtEpochMillis(), row.occurredTimezone(), List.copyOf(blocks));
+    }
+
+    private String writeJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("could not serialize entry projection", exception);
+        }
     }
 
     private EntryRow mapEntryRow(ResultSet rs, int rowNum) throws SQLException {

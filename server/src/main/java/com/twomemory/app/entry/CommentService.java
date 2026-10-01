@@ -36,10 +36,16 @@ public class CommentService {
     @Transactional
     public CommentView addComment(UUID entryId, UUID authorId, UUID commentId,
                                   String body, UUID replyToId) {
-        UUID coupleId = jdbcTemplate.queryForObject(
-                "SELECT couple_id FROM entry WHERE id = ? AND deleted_at IS NULL",
-                UUID.class, entryId);
+        EntryTarget target = jdbcTemplate.queryForObject("""
+                SELECT couple_id, state::text AS state FROM entry
+                WHERE id = ? AND deleted_at IS NULL
+                """, (rs, rowNum) -> new EntryTarget(rs.getObject("couple_id", UUID.class),
+                EntryState.valueOf(rs.getString("state"))), entryId);
+        UUID coupleId = target.coupleId();
         accessPolicy.requireMember(authorId, coupleId);
+        if (target.state() != EntryState.PUBLISHED) {
+            throw new EntryValidationException("only a published record can be commented on");
+        }
         String normalizedBody = validateBody(body);
         if (replyToId != null) {
             UUID parentEntry = jdbcTemplate.queryForObject(
@@ -90,6 +96,10 @@ public class CommentService {
         String escaped = raw.replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
         return "\"" + escaped + "\"";
+    }
+
+    /** Space and visibility of the entry a comment targets. */
+    private record EntryTarget(UUID coupleId, EntryState state) {
     }
 
     static String validateBody(String raw) {

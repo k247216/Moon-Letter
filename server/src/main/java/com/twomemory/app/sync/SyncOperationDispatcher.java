@@ -45,14 +45,23 @@ public class SyncOperationDispatcher {
         }
     }
 
-    /**
-     * @param mutationOwnsChangeRow true when the service executing this operation already
-     *     appended its own change row, so the sync controller must not append another one.
-     *     Double-appending turns one mutation into two feed rows and makes every replay,
-     *     even under a fresh operation id, grow the feed for a change that did not happen.
-     */
+    /** Who writes the change row for an operation. */
+    enum ChangeRowOwnership {
+        /**
+         * The service executing the operation already appended its own change
+         * row, so the controller must not append another one. Double-appending
+         * turns one mutation into two feed rows and makes every replay, even
+         * under a fresh operation id, grow the feed for a change that did not happen.
+         */
+        APPENDED_BY_MUTATION,
+        /** The controller appends the row from this outcome's payload. */
+        APPENDED_BY_CONTROLLER,
+        /** Nothing in this operation may reach the other device: no row, no wake-up. */
+        SUPPRESSED
+    }
+
     record DispatchOutcome(UUID entityId, String entityType, String operation, String responseBody,
-                           boolean mutationOwnsChangeRow) {
+                           ChangeRowOwnership changeRow) {
     }
 
     private final EntryService entryService;
@@ -81,10 +90,9 @@ public class SyncOperationDispatcher {
      * PUBLISH_ENTRY moves the author's own draft to PUBLISHED. The client sends the
      * rowVersion its local copy was built from, so a stale base is rejected as a
      * conflict instead of silently overwriting a newer revision. EntryService.publish
-     * owns the PUBLISH change row, so this outcome declares no second one.
-     * Constraint for the draft-isolation step: once personal drafts stop entering the
-     * feed, this PUBLISH row must carry the full entry payload or a pulling device
-     * cannot rebuild the record it has never seen.
+     * owns the PUBLISH change row and writes the whole entry into it: for a personal
+     * record this row is the partner device's first sight of the entry, and a payload
+     * with just an id would leave it with nothing to rebuild.
      */
     private DispatchOutcome publishEntry(UUID actorId, String payload) {
         JsonNode root = parsePayload(payload);
@@ -96,7 +104,7 @@ public class SyncOperationDispatcher {
         PublishResult result = entryService.publish(entryId, actorId, baseVersion.asLong());
         try {
             return new DispatchOutcome(entryId, "ENTRY", "PUBLISH",
-                    objectMapper.writeValueAsString(result.entry()), true);
+                    objectMapper.writeValueAsString(result.entry()), ChangeRowOwnership.APPENDED_BY_MUTATION);
         } catch (Exception exception) {
             throw new IllegalStateException("could not serialize published entry", exception);
         }
@@ -192,7 +200,7 @@ public class SyncOperationDispatcher {
         CommentView view = commentService.addComment(entryId, actorId, commentId, body, replyToId);
         try {
             return new DispatchOutcome(entryId, "COMMENT", "ADD",
-                    objectMapper.writeValueAsString(view), true);
+                    objectMapper.writeValueAsString(view), ChangeRowOwnership.APPENDED_BY_MUTATION);
         } catch (Exception exception) {
             throw new IllegalStateException("could not serialize comment view", exception);
         }
@@ -216,10 +224,19 @@ public class SyncOperationDispatcher {
                 objectMapper.valueToTree(blockNode.path("text").asText(""))).toString();
     }
 
+    /**
+     * Entry mutations broadcast the whole projection, so a pulling device can
+     * rebuild the record from the row alone. A personal draft is the exception:
+     * it has no audience but its author, and the couple feed is the channel that
+     * reaches the other device, so no row is written for it at all.
+     */
     private DispatchOutcome entryOutcome(EntryView entry, String operation) {
         try {
             return new DispatchOutcome(entry.id(), "ENTRY", operation,
-                    objectMapper.writeValueAsString(entry), false);
+                    objectMapper.writeValueAsString(entry),
+                    entry.privateDraft()
+                            ? ChangeRowOwnership.SUPPRESSED
+                            : ChangeRowOwnership.APPENDED_BY_CONTROLLER);
         } catch (Exception exception) {
             throw new IllegalStateException("could not serialize entry view", exception);
         }

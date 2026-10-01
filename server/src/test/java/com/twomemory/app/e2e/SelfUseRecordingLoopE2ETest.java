@@ -97,18 +97,25 @@ class SelfUseRecordingLoopE2ETest {
                 .as("publish response: %s", published.getBody())
                 .isEqualTo(HttpStatus.OK);
 
-        // 5. Device B pulls the change feed with pagination and sees both the
-        //    creation and the publish change, then reads the published entry.
+        // 5. Device B pulls the change feed with pagination. The private draft
+        //    never entered the feed, so exactly one row arrives: the publish,
+        //    carrying the whole entry so a device that never saw the draft can
+        //    rebuild it from this row alone.
         ResponseEntity<Map> page1 = get("/api/v1/sync/changes?coupleId=" + coupleId
                 + "&after=0&limit=1", tokenB);
         assertThat(page1.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat((List<?>) page1.getBody().get("changes")).hasSize(1);
-        assertThat(page1.getBody().get("hasMore")).isEqualTo(true);
-        long next = ((Number) page1.getBody().get("nextSequence")).longValue();
-        ResponseEntity<Map> page2 = get("/api/v1/sync/changes?coupleId=" + coupleId
-                + "&after=" + next + "&limit=1", tokenB);
-        assertThat((List<?>) page2.getBody().get("changes")).hasSize(1);
-        assertThat(page2.getBody().get("changes").toString()).contains("PUBLISH");
+        assertThat(page1.getBody().get("hasMore"))
+                .as("a personal draft is private until it is published")
+                .isEqualTo(false);
+        String publishChange = page1.getBody().get("changes").toString();
+        assertThat(publishChange).contains("PUBLISH");
+        Map<?, ?> publishedPayload = objectMapper.readValue(
+            ((Map<?, ?>) ((List<?>) page1.getBody().get("changes")).get(0)).get("payload").toString(),
+            Map.class);
+        assertThat(publishedPayload.get("state")).isEqualTo("PUBLISHED");
+        assertThat((List<?>) publishedPayload.get("blocks")).hasSize(1);
+        assertThat(publishedPayload.get("title")).isEqualTo("周末");
         ResponseEntity<Map> readByB = get("/api/v1/entries/" + entryId, tokenB);
         assertThat(readByB.getStatusCode()).isEqualTo(HttpStatus.OK);
 
