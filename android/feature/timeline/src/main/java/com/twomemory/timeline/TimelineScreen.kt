@@ -1,5 +1,6 @@
 package com.twomemory.timeline
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -7,8 +8,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,19 +24,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,10 +50,7 @@ import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.TwoMemoryIcons
 import com.twomemory.designsystem.TwoMemoryTypography
 
-/**
- * 手帐质感时间轴：按日分组的日期缝线标题、彩色作者圆点、纸面正文。
- * 不呈现条数/天数等任何统计（规格 §3.4）。
- */
+/** Continuous paper timeline. The source of entries remains the Room-backed ViewModel. */
 @Composable
 fun TimelineRoute(
     viewModel: TimelineViewModel,
@@ -67,38 +70,29 @@ fun TimelineScreen(
     onOpen: (String) -> Unit = {},
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        item {
-            TimelineHeader(coverBitmap, onChangeCover)
-            Spacer(Modifier.height(22.dp))
-        }
+        item { TimelineHeader(coverBitmap, onChangeCover) }
         if (entries.isEmpty()) {
             item { EmptyTimeline() }
         }
         entries.groupBy { it.dateLabel }.forEach { (day, dayEntries) ->
             item(key = "header-$day") {
-                DayStitchHeader(day, Modifier.padding(horizontal = 28.dp))
-                Spacer(Modifier.height(10.dp))
+                DayStitchHeader(day, Modifier.padding(horizontal = 26.dp))
             }
             items(dayEntries, key = { it.id }) { entry ->
-                TimelineRow(
-                    entry,
-                    isMine = entry.mine,
-                    onOpen = onOpen,
-                    modifier = Modifier.padding(horizontal = 28.dp),
-                )
-                Spacer(Modifier.height(18.dp))
+                TimelineRow(entry = entry, onOpen = onOpen, modifier = Modifier.padding(horizontal = 24.dp))
+                Spacer(Modifier.height(22.dp))
             }
         }
-        item { Spacer(Modifier.height(36.dp)) }
+        item { Spacer(Modifier.height(32.dp)) }
     }
 }
 
 @Composable
 private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().height(238.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().height(236.dp)) {
         if (coverBitmap != null) {
             Image(
                 bitmap = coverBitmap,
@@ -114,32 +108,35 @@ private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit)
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        Box(Modifier.fillMaxSize().background(Color(0x440F1722)))
+        Box(Modifier.fillMaxSize().background(Color(0x520F1722)))
         Column(
-            modifier = Modifier.align(Alignment.CenterStart).padding(start = 42.dp, end = 120.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 30.dp, end = 82.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Text(
                 "和你一起，\n把平凡的日子\n缝成闪闪发光的线。",
-                style = TwoMemoryTypography.title,
+                style = TwoMemoryTypography.display,
                 color = Color.White,
             )
             Text("中秋，是我们的纪念日", style = TwoMemoryTypography.caption, color = Color(0xFFFFE1A8))
         }
         Row(
-            modifier = Modifier.align(Alignment.BottomEnd).clip(RoundedCornerShape(topStart = 20.dp))
-                .clickable(onClick = onChangeCover).background(Color.Black.copy(alpha = 0.28f))
-                .padding(horizontal = 16.dp, vertical = 11.dp),
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .clip(RoundedCornerShape(topStart = 18.dp))
+                .clickable(onClick = onChangeCover)
+                .background(Color.Black.copy(alpha = 0.28f))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(TwoMemoryIcons.Camera, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(7.dp))
+            Spacer(Modifier.width(6.dp))
             Text("换一张", style = TwoMemoryTypography.caption, color = Color.White)
         }
     }
-    Column(modifier = Modifier.padding(horizontal = 28.dp, vertical = 20.dp)) {
-        Text("今天", style = TwoMemoryTypography.display, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(7.dp))
+    Column(modifier = Modifier.padding(horizontal = 26.dp, vertical = 19.dp)) {
+        Text("我们的时光", style = TwoMemoryTypography.display, fontWeight = FontWeight.Medium)
+        Text("每一个认真生活的瞬间，都值得被记下来", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+        Spacer(Modifier.height(11.dp))
         StitchDivider()
     }
 }
@@ -147,7 +144,7 @@ private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit)
 @Composable
 private fun EmptyTimeline() {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 42.dp, vertical = 48.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 42.dp, vertical = 52.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -161,157 +158,97 @@ private fun EmptyTimeline() {
     }
 }
 
-/** 一条横向虚线缝线。 */
-@Composable
-private fun StitchDivider() {
-    val line = TwoMemoryColors.WarmBeigeLine
-    Canvas(Modifier.fillMaxWidth().height(2.dp)) {
-        drawLine(
-            color = line,
-            start = Offset(0f, size.height / 2),
-            end = Offset(size.width, size.height / 2),
-            strokeWidth = size.height,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
-        )
-    }
-}
-
-/** 日期标题：居中文字 + 两侧缝线，参考稿的分组日样式。 */
 @Composable
 private fun DayStitchHeader(day: String, modifier: Modifier = Modifier) {
     Row(
-        modifier = modifier.fillMaxWidth().padding(vertical = 8.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StitchDivider(modifier = Modifier.weight(1f))
-        Text(
-            day,
-            style = TwoMemoryTypography.caption,
-            color = TwoMemoryColors.WarmBeigeMuted,
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
+        Text(day, style = TwoMemoryTypography.title, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(horizontal = 12.dp))
         StitchDivider(modifier = Modifier.weight(1f))
     }
 }
 
 @Composable
 private fun StitchDivider(modifier: Modifier = Modifier) {
-    val line = TwoMemoryColors.WarmBeigeLine
     Canvas(modifier.fillMaxWidth().height(2.dp)) {
         drawLine(
-            color = line,
-            start = Offset(0f, size.height / 2),
-            end = Offset(size.width, size.height / 2),
+            color = TwoMemoryColors.WarmBeigeLine,
+            start = androidx.compose.ui.geometry.Offset(0f, size.height / 2),
+            end = androidx.compose.ui.geometry.Offset(size.width, size.height / 2),
             strokeWidth = size.height,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(9f, 7f)),
         )
     }
 }
 
 @Composable
-private fun TimelineRow(
-    entry: TimelineEntryUi,
-    isMine: Boolean,
-    onOpen: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
-                Modifier.size(10.dp).clip(CircleShape)
-                    .background(if (isMine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF8A9A7B)),
-            )
-            // 竖向缝线，把日子缝在一起
-            Canvas(Modifier.width(2.dp).height(120.dp)) {
+private fun TimelineRow(entry: TimelineEntryUi, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier = modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.Top) {
+        Box(modifier = Modifier.width(18.dp).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
+            Canvas(Modifier.fillMaxHeight().width(2.dp)) {
                 drawLine(
                     color = TwoMemoryColors.WarmBeigeLine,
-                    start = Offset(size.width / 2, 0f),
-                    end = Offset(size.width / 2, size.height),
+                    start = androidx.compose.ui.geometry.Offset(size.width / 2, 0f),
+                    end = androidx.compose.ui.geometry.Offset(size.width / 2, size.height),
                     strokeWidth = size.width,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f)),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(7f, 7f)),
                 )
             }
+            Box(
+                Modifier.padding(top = 8.dp).size(12.dp).clip(CircleShape)
+                    .background(if (entry.mine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF8A9A7B)),
+            )
         }
-        Spacer(Modifier.size(14.dp))
-        Column(
-            modifier = Modifier.weight(1f).clickable { onOpen(entry.id) },
+        Spacer(Modifier.width(12.dp))
+        Surface(
+            modifier = Modifier.weight(1f).semantics { contentDescription = "打开记录" }.clickable { onOpen(entry.id) },
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, TwoMemoryColors.WarmBeigeLine),
+            shadowElevation = 1.dp,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(26.dp).clip(CircleShape)
-                        .background(
-                            if (isMine) TwoMemoryColors.WarmBeigeAccent.copy(alpha = 0.18f)
-                            else Color(0xFF8A9A7B).copy(alpha = 0.18f),
-                        ),
-                ) {
-                    Text(
-                        entry.author.take(1),
-                        style = TwoMemoryTypography.caption,
-                        color = if (isMine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF8A9A7B),
-                        modifier = Modifier.align(Alignment.Center),
+            Column(modifier = Modifier.padding(horizontal = 17.dp, vertical = 15.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Image(
+                        painter = painterResource(if (entry.mine) R.drawable.moonletter_avatar_xiaoman else R.drawable.moonletter_avatar_ayu),
+                        contentDescription = "${entry.author}的头像",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(34.dp).clip(CircleShape),
+                    )
+                    Spacer(Modifier.width(9.dp))
+                    Text(entry.author, style = TwoMemoryTypography.title, color = if (entry.mine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF6F8268))
+                    Spacer(Modifier.width(9.dp))
+                    Text(entry.timeLabel, style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                    if (entry.shared) {
+                        Spacer(Modifier.width(8.dp))
+                        Text("共同", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (entry.unsent) Text("未同步", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
+                }
+                Spacer(Modifier.height(9.dp))
+                entry.title?.let {
+                    Text(it, style = TwoMemoryTypography.title, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(5.dp))
+                }
+                if (entry.body.isNotBlank()) Text(entry.body, style = TwoMemoryTypography.body, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                entry.photo?.let { photo ->
+                    Spacer(Modifier.height(11.dp))
+                    EntryPhoto(
+                        localPath = photo.localPath,
+                        assetId = photo.assetId,
+                        modifier = Modifier.fillMaxWidth().height(156.dp).clip(RoundedCornerShape(9.dp)).rotate(if (entry.mine) 1.2f else -1.2f),
+                        contentDescription = "记录里的照片",
                     )
                 }
-                Spacer(Modifier.size(8.dp))
-                Text(entry.author, style = TwoMemoryTypography.caption)
-                if (entry.shared) {
-                    Spacer(Modifier.size(7.dp))
-                    Text(
-                        "共同记录",
-                        style = TwoMemoryTypography.caption,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
-                            .padding(horizontal = 7.dp, vertical = 2.dp),
-                    )
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(TwoMemoryIcons.Comment, contentDescription = "评论", tint = TwoMemoryColors.WarmBeigeMuted, modifier = Modifier.size(19.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("打开这段记录", style = TwoMemoryTypography.caption, color = TwoMemoryColors.WarmBeigeMuted)
                 }
-                Spacer(Modifier.size(10.dp))
-                Text(
-                    entry.timeLabel,
-                    style = TwoMemoryTypography.caption,
-                    color = TwoMemoryColors.WarmBeigeMuted,
-                )
-                if (entry.unsent) {
-                    Spacer(Modifier.size(7.dp))
-                    Text(
-                        "未寄出",
-                        style = TwoMemoryTypography.caption,
-                        color = TwoMemoryColors.WarmBeigeMuted,
-                        modifier = Modifier.clip(RoundedCornerShape(12.dp))
-                            .background(TwoMemoryColors.WarmBeigeLine.copy(alpha = .55f))
-                            .padding(horizontal = 7.dp, vertical = 2.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-            if (entry.title != null) {
-                Text(entry.title, style = TwoMemoryTypography.title)
-                Spacer(Modifier.height(4.dp))
-            }
-            if (entry.body.isNotBlank()) {
-                Text(
-                    entry.body,
-                    style = TwoMemoryTypography.body,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            entry.photo?.let { photo ->
-                Spacer(Modifier.height(8.dp))
-                EntryPhoto(
-                    localPath = photo.localPath,
-                    assetId = photo.assetId,
-                    modifier = Modifier.height(150.dp),
-                    contentDescription = "记录里的照片",
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    TwoMemoryIcons.Comment,
-                    contentDescription = "看这条记录",
-                    tint = TwoMemoryColors.WarmBeigeMuted,
-                    modifier = Modifier.size(21.dp).clickable { onOpen(entry.id) },
-                )
             }
         }
     }
