@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -137,17 +138,22 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
         else -> "DRAFT"
     }
 
-    /** Comment payloads come from the server's CommentView JSON. */
+    /**
+     * Comment payloads come from the server's CommentView JSON. The change's
+     * entityId is the *entry*, so the comment's own id and moment have to come
+     * from the payload: falling back to the entry id would fold every comment
+     * under one record onto the same row.
+     */
     private suspend fun applyCommentChange(change: RemoteChange) {
         val payload = JSONObject(change.payload)
         val createdAt = when (val raw = payload.opt("createdAt")) {
             is Number -> (raw.toDouble() * 1000).toLong()
-            is String -> runCatching { java.time.Instant.parse(raw).toEpochMilli() }.getOrDefault(0L)
-            else -> 0L
+            is String -> Instant.parse(raw).toEpochMilli()
+            else -> throw JSONException("comment change carries no createdAt")
         }
         database.commentDao().insert(
             CommentEntity(
-                id = payload.optString("id", change.entityId.toString()),
+                id = payload.getString("id"),
                 entryId = payload.optString("entryId", change.entityId.toString()),
                 authorId = payload.optString("authorId"),
                 body = payload.optString("body"),

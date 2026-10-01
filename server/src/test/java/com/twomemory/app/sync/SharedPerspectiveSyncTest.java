@@ -289,6 +289,69 @@ class SharedPerspectiveSyncTest {
                 .isEqualTo(HttpStatus.OK);
     }
 
+    /**
+     * The couple feed is the only channel that delivers a comment to the other
+     * phone, and that phone keys comments by their own id and orders them by
+     * their own moment. A payload that names the entry where the comment id
+     * belongs folds every reply under one record into a single row dated 1970.
+     */
+    @Test
+    void commentsArriveAsSeparateRowsEachWithItsOwnIdentity() throws Exception {
+        UUID entryId = UUID.randomUUID();
+        String createPayload = objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "authorId", userA.toString(),
+                "title", "海边那天",
+                "occurredAt", "2026-10-01T12:00:00Z",
+                "occurredTimezone", "Asia/Shanghai",
+                "blocks", java.util.List.of(Map.of(
+                        "blockId", UUID.randomUUID().toString(),
+                        "type", "TEXT",
+                        "orderKey", 0,
+                        "text", "A 的正文。"))));
+        ResponseEntity<Map> created = postOperation("CREATE_PERSONAL_ENTRY", createPayload, TOKEN_A);
+        assertThat(created.getStatusCode()).as("create: %s", created.getBody()).isEqualTo(HttpStatus.OK);
+        long version = objectMapper.readTree(extractBody(created)).path("rowVersion").asLong(-1);
+        assertThat(version).as("the create response carries the version to publish against").isNotEqualTo(-1L);
+        assertThat(postOperation("PUBLISH_ENTRY", objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "baseVersion", version)), TOKEN_A).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        UUID firstId = UUID.randomUUID();
+        assertThat(postOperation("ADD_COMMENT", objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "commentId", firstId.toString(),
+                "body", "下次我们也一起来。")), TOKEN_B).getStatusCode()).isEqualTo(HttpStatus.OK);
+        UUID secondId = UUID.randomUUID();
+        assertThat(postOperation("ADD_COMMENT", objectMapper.writeValueAsString(Map.of(
+                "entryId", entryId.toString(),
+                "commentId", secondId.toString(),
+                "body", "好，我把照片洗出来。",
+                "replyToId", firstId.toString())), TOKEN_B).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        java.util.List<String> payloads = commentFeedPayloads(entryId);
+        assertThat(payloads).as("two comments are two change rows").hasSize(2);
+        JsonNode first = objectMapper.readTree(payloads.get(0));
+        JsonNode second = objectMapper.readTree(payloads.get(1));
+
+        assertThat(first.path("id").asText()).isEqualTo(firstId.toString());
+        assertThat(second.path("id").asText()).isEqualTo(secondId.toString());
+        assertThat(first.path("entryId").asText()).isEqualTo(entryId.toString());
+        assertThat(first.path("replyToId").isNull()).isTrue();
+        assertThat(second.path("replyToId").asText()).isEqualTo(firstId.toString());
+        assertThat(second.path("body").asText()).isEqualTo("好，我把照片洗出来。");
+        assertThat(java.time.Instant.parse(first.path("createdAt").asText())).isNotNull();
+        assertThat(java.time.Instant.parse(second.path("createdAt").asText()))
+                .isAfterOrEqualTo(java.time.Instant.parse(first.path("createdAt").asText()));
+    }
+
+    private java.util.List<String> commentFeedPayloads(UUID entryId) {
+        return jdbcTemplate.queryForList(
+                "SELECT payload::text FROM sync_change WHERE couple_id = ? AND entity_type = 'COMMENT'"
+                        + " AND entity_id = ? ORDER BY space_sequence",
+                String.class, coupleId, entryId);
+    }
+
     private int entryFeedRows(UUID entryId) {
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM sync_change WHERE couple_id = ? AND entity_type = 'ENTRY'"

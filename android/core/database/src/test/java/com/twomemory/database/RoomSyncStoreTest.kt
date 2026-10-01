@@ -129,6 +129,66 @@ class RoomSyncStoreTest {
     }
 
     /**
+     * Comments are keyed by their own id, and a change's entityId is the
+     * ENTRY: two replies under one record that share an id overwrite
+     * each other, so the partner only ever sees the newest one.
+     */
+    @Test
+    fun pulledCommentsKeepTheirOwnIdentityAndMoment() = runBlocking {
+        val store = RoomSyncStore(databaseB)
+        val entryId = "00000000-0000-0000-0000-000000000401"
+        val firstId = "00000000-0000-0000-0000-0000000004a1"
+        val secondId = "00000000-0000-0000-0000-0000000004b1"
+        store.applyChangesAtomically(
+            coupleId,
+            listOf(
+                RemoteChange(
+                    3, "COMMENT", UUID.fromString(entryId), "ADD",
+                    commentPayload(entryId, secondId, "好，我把照片洗出来。", "2026-10-01T13:05:00Z"),
+                ),
+                RemoteChange(
+                    4, "COMMENT", UUID.fromString(entryId), "ADD",
+                    commentPayload(entryId, firstId, "下次我们也一起来。", "2026-10-01T13:00:00Z"),
+                ),
+            ),
+            nextSequence = 4,
+        )
+
+        val comments = databaseB.commentDao().commentsForEntry(entryId)
+        assertEquals(2, comments.size)
+        assertEquals("oldest first", listOf(firstId, secondId), comments.map { it.id })
+        assertEquals(
+            Instant.parse("2026-10-01T13:00:00Z").toEpochMilli(),
+            comments.first { it.id == firstId }.createdAtEpochMillis,
+        )
+    }
+
+    @Test
+    fun commentChangeWithoutItsOwnIdFailsThePage() = runBlocking {
+        val store = RoomSyncStore(databaseB)
+        val entryId = "00000000-0000-0000-0000-000000000401"
+        val legacy = """{"entryId":"$entryId","commentId":"00000000-0000-0000-0000-0000000004c1",
+            "authorId":"00000000-0000-0000-0000-0000000000b2","body":"旧形状","replyToId":null,
+            "createdAt":"2026-10-01T13:00:00Z"}"""
+
+        try {
+            store.applyChangesAtomically(
+                coupleId,
+                listOf(RemoteChange(5, "COMMENT", UUID.fromString(entryId), "ADD", legacy)),
+                nextSequence = 5,
+            )
+            throw AssertionError("expected a comment with no id of its own to fail the page")
+        } catch (expected: Exception) {
+            // the page rolls back, so the cursor never walks past it
+        }
+        assertEquals(
+            0,
+            databaseB.commentDao().commentsForEntry(entryId).size,
+        )
+        assertNull(databaseB.syncCursorDao().nextSequence(coupleId.toString()))
+    }
+
+    /**
      * A personal draft never reaches the change feed, so the push response is
      * the only way the author's own device learns the server-side version.
      */
@@ -180,6 +240,13 @@ class RoomSyncStoreTest {
         assertNotNull(databaseB.entryDao().findEntry(entryId))
         assertEquals(6L, databaseB.syncCursorDao().nextSequence(coupleId.toString()))
         assertTrue(fileB.length() > 0)
+    }
+
+    /** Mirrors the server CommentView JSON the change feed delivers for a comment. */
+    private fun commentPayload(entryId: String, commentId: String, body: String, createdAt: String): String {
+        val authorId = "00000000-0000-0000-0000-0000000000b2"
+        return """{"id":"$commentId","entryId":"$entryId","authorId":"$authorId","body":"$body",
+            "replyToId":null,"createdAt":"$createdAt"}"""
     }
 
     /** Mirrors the server EntryView JSON shape the change feed delivers. */

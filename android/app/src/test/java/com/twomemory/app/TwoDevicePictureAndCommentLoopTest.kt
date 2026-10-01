@@ -218,6 +218,7 @@ class TwoDevicePictureAndCommentLoopTest {
             assertEquals(sha256(pngBytes), sha256(downloaded))
 
             // 5. A replies under the record; B's copy of the record shows the reply.
+            val momentBefore = System.currentTimeMillis()
             val commentId = UUID.randomUUID()
             LocalEntryWriter(databaseA).addComment(coupleId, entryId, commentId, userIdA, "明天再去一次好不好")
             assertEquals(1, SyncEngine(api(boundA.token), storeA, coupleId).pushPending().applied)
@@ -226,7 +227,20 @@ class TwoDevicePictureAndCommentLoopTest {
             assertEquals(1, commentsOnB.size)
             assertEquals("明天再去一次好不好", commentsOnB.single().body)
             assertEquals(userIdA.toString(), commentsOnB.single().authorId)
+            // A change's entityId is the record, so the reply has to arrive keyed by
+            // its own id and dated by its own moment: keyed by the record it would
+            // overwrite the next reply and read as 1970.
+            assertEquals(commentId.toString(), commentsOnB.single().id)
+            assertTrue(commentsOnB.single().createdAtEpochMillis >= momentBefore - 60_000L)
             assertEquals(1, databaseA.commentDao().commentsForEntry(entryId.toString()).size)
+
+            // 5b. A's phone pulls its own reply back: one row, still the comment's own
+            //     id and moment, not the record's.
+            SyncEngine(api(boundA.token), storeA, coupleId).pullAll()
+            val echoedOnA = databaseA.commentDao().commentsForEntry(entryId.toString())
+            assertEquals(1, echoedOnA.size)
+            assertEquals(commentId.toString(), echoedOnA.single().id)
+            assertTrue(echoedOnA.single().createdAtEpochMillis >= momentBefore - 60_000L)
 
             // 6. App-process recreation keeps both the record and the reply.
             databaseA.close()

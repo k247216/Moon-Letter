@@ -1,5 +1,7 @@
 package com.twomemory.app.entry;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twomemory.app.auth.SpaceAccessPolicy;
 import com.twomemory.app.sync.ChangeFeedService;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -12,12 +14,15 @@ import java.util.UUID;
 public class CommentService {
 
     private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
     private final SpaceAccessPolicy accessPolicy;
     private final ChangeFeedService changeFeedService;
 
-    public CommentService(JdbcTemplate jdbcTemplate, SpaceAccessPolicy accessPolicy,
+    public CommentService(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper,
+                          SpaceAccessPolicy accessPolicy,
                           ChangeFeedService changeFeedService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.objectMapper = objectMapper;
         this.accessPolicy = accessPolicy;
         this.changeFeedService = changeFeedService;
     }
@@ -68,7 +73,7 @@ public class CommentService {
                 VALUES (?, ?, ?, ?, ?, now(), now())
                 """, id, entryId, authorId, normalizedBody, replyToId);
         CommentView view = readComment(id);
-        changeFeedService.appendChange(coupleId, "COMMENT", entryId, "ADD", toJson(view));
+        changeFeedService.appendChange(coupleId, "COMMENT", entryId, "ADD", writeJson(view));
         return view;
     }
 
@@ -85,17 +90,12 @@ public class CommentService {
                 rs.getTimestamp("created_at").toInstant()), commentId);
     }
 
-    private String toJson(CommentView view) {
-        return "{\"entryId\":\"%s\",\"commentId\":\"%s\",\"authorId\":\"%s\",\"body\":%s,\"replyToId\":%s}"
-                .formatted(view.entryId(), view.id(), view.authorId(),
-                        quote(view.body()),
-                        view.replyToId() == null ? "null" : "\"" + view.replyToId() + "\"");
-    }
-
-    private static String quote(String raw) {
-        String escaped = raw.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-        return "\"" + escaped + "\"";
+    private String writeJson(CommentView view) {
+        try {
+            return objectMapper.writeValueAsString(view);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("could not serialize comment projection", exception);
+        }
     }
 
     /** Space and visibility of the entry a comment targets. */
