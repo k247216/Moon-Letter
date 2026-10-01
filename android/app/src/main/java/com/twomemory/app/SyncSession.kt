@@ -10,17 +10,18 @@ import com.twomemory.sync.SyncWorker
 import java.util.UUID
 
 /**
- * Session state persisted in SharedPreferences: the device token, couple id
- * and server base URL. Populated by bootstrap/pairing (Task 11), read here
- * to build the real sync pipeline.
- */
-/**
  * Default points at the development machine's LAN address so a real phone on
  * the same network reaches the server without typing an URL. Emulator builds
  * override this to 10.0.2.2 when needed.
  */
 const val DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"
 
+/**
+ * Session state persisted in SharedPreferences: the device token, couple id
+ * and server base URL. Populated by the setup screen, read here to build the
+ * real sync pipeline. The token is sealed with an AndroidKeyStore key on
+ * devices that provide one (see [TokenCipher]).
+ */
 object SyncSession {
 
     const val DEFAULT_BASE_URL = DEFAULT_DEV_BASE_URL
@@ -29,7 +30,7 @@ object SyncSession {
 
     fun save(context: Context, token: String, coupleId: UUID, userId: UUID, baseUrl: String = DEFAULT_BASE_URL) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("token", token)
+            .putString("token", TokenCipher.seal(token))
             .putString("coupleId", coupleId.toString())
             .putString("userId", userId.toString())
             .putString("baseUrl", baseUrl)
@@ -38,17 +39,28 @@ object SyncSession {
 
     data class Session(val token: String, val coupleId: UUID, val userId: UUID, val baseUrl: String)
 
+    /**
+     * Returns null (and clears the damaged record) when anything is missing
+     * or corrupt, so the app falls back to the binding screen instead of
+     * crashing on startup.
+     */
     fun load(context: Context): Session? {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val token = prefs.getString("token", null) ?: return null
-        val coupleId = prefs.getString("coupleId", null) ?: return null
-        val userId = prefs.getString("userId", null) ?: return null
-        return Session(
-            token = token,
-            coupleId = UUID.fromString(coupleId),
-            userId = UUID.fromString(userId),
-            baseUrl = prefs.getString("baseUrl", null) ?: DEFAULT_BASE_URL,
-        )
+        val stored = prefs.getString("token", null)
+        val coupleId = prefs.getString("coupleId", null)
+        val userId = prefs.getString("userId", null)
+        if (stored.isNullOrBlank() || coupleId.isNullOrBlank() || userId.isNullOrBlank()) return null
+        return runCatching {
+            Session(
+                token = TokenCipher.unseal(stored),
+                coupleId = UUID.fromString(coupleId),
+                userId = UUID.fromString(userId),
+                baseUrl = prefs.getString("baseUrl", null) ?: DEFAULT_BASE_URL,
+            )
+        }.getOrElse {
+            prefs.edit().clear().apply()
+            null
+        }
     }
 
     /** Builds the real pipeline: RoomSyncStore -> Retrofit -> SyncEngine. */

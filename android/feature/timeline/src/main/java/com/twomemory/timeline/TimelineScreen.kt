@@ -159,7 +159,7 @@ private fun EmptyTimeline() {
 /** 一条横向虚线缝线。 */
 @Composable
 private fun StitchDivider() {
-    val line = Color(TwoMemoryColors.WarmBeigeLine)
+    val line = TwoMemoryColors.WarmBeigeLine
     Canvas(Modifier.fillMaxWidth().height(2.dp)) {
         drawLine(
             color = line,
@@ -182,7 +182,7 @@ private fun DayStitchHeader(day: String, modifier: Modifier = Modifier) {
         Text(
             day,
             style = TwoMemoryTypography.caption,
-            color = Color(TwoMemoryColors.WarmBeigeMuted),
+            color = TwoMemoryColors.WarmBeigeMuted,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
         StitchDivider(modifier = Modifier.weight(1f))
@@ -191,7 +191,7 @@ private fun DayStitchHeader(day: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun StitchDivider(modifier: Modifier = Modifier) {
-    val line = Color(TwoMemoryColors.WarmBeigeLine)
+    val line = TwoMemoryColors.WarmBeigeLine
     Canvas(modifier.fillMaxWidth().height(2.dp)) {
         drawLine(
             color = line,
@@ -209,12 +209,12 @@ private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modif
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Box(
                 Modifier.size(10.dp).clip(CircleShape)
-                    .background(if (isMine) Color(TwoMemoryColors.WarmBeigeAccent) else Color(0xFF8A9A7B)),
+                    .background(if (isMine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF8A9A7B)),
             )
             // 竖向缝线，把日子缝在一起
             Canvas(Modifier.width(2.dp).height(120.dp)) {
                 drawLine(
-                    color = Color(TwoMemoryColors.WarmBeigeLine),
+                    color = TwoMemoryColors.WarmBeigeLine,
                     start = Offset(size.width / 2, 0f),
                     end = Offset(size.width / 2, size.height),
                     strokeWidth = size.width,
@@ -228,14 +228,14 @@ private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modif
                 Box(
                     Modifier.size(26.dp).clip(CircleShape)
                         .background(
-                            if (isMine) Color(TwoMemoryColors.WarmBeigeAccent).copy(alpha = 0.18f)
+                            if (isMine) TwoMemoryColors.WarmBeigeAccent.copy(alpha = 0.18f)
                             else Color(0xFF8A9A7B).copy(alpha = 0.18f),
                         ),
                 ) {
                     Text(
                         entry.author.take(1),
                         style = TwoMemoryTypography.caption,
-                        color = if (isMine) Color(TwoMemoryColors.WarmBeigeAccent) else Color(0xFF8A9A7B),
+                        color = if (isMine) TwoMemoryColors.WarmBeigeAccent else Color(0xFF8A9A7B),
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
@@ -256,7 +256,7 @@ private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modif
                 Text(
                     entry.timeLabel,
                     style = TwoMemoryTypography.caption,
-                    color = Color(TwoMemoryColors.WarmBeigeMuted),
+                    color = TwoMemoryColors.WarmBeigeMuted,
                 )
             }
             Spacer(Modifier.height(6.dp))
@@ -269,10 +269,10 @@ private fun TimelineRow(entry: TimelineEntryUi, isMine: Boolean, modifier: Modif
             }
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(TwoMemoryIcons.Like, contentDescription = "喜欢", tint = Color(TwoMemoryColors.WarmBeigeAccent),
+                Icon(TwoMemoryIcons.Like, contentDescription = "喜欢", tint = TwoMemoryColors.WarmBeigeAccent,
                     modifier = Modifier.size(21.dp))
                 Spacer(Modifier.width(16.dp))
-                Icon(TwoMemoryIcons.Comment, contentDescription = "评论", tint = Color(TwoMemoryColors.WarmBeigeMuted),
+                Icon(TwoMemoryIcons.Comment, contentDescription = "评论", tint = TwoMemoryColors.WarmBeigeMuted,
                     modifier = Modifier.size(21.dp))
             }
         }

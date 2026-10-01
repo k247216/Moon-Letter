@@ -51,9 +51,12 @@ fun PersonalEditorRoute(
     onPublish: suspend (EditorUiState) -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
-    PersonalEditorScreen(state, viewModel::updateTitle, viewModel::updateBody) {
-        viewModel.publish(onPublish)
-    }
+    PersonalEditorScreen(
+        state = state,
+        onTitleChange = viewModel::updateTitle,
+        onBodyChange = viewModel::updateBody,
+        onPublish = { viewModel.publish(onPublish) },
+    )
 }
 
 @Composable
