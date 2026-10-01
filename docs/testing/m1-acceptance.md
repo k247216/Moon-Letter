@@ -210,3 +210,20 @@
 - **顺带发现的测试缺陷**：`sharedEntryAppendAndCommentsReachPartnerThroughChangeFeed` 原先按下标断言变更流的前三条记录，而该库在同一上下文内被多个测试共享、变更流会累积——加入新测试后 `changes.get(1)` 断言即失效。已改为按本条 entryId 过滤后再断言顺序与实体类型，测试不再依赖执行顺序。
 - **绿灯**：`JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn test` → `Tests run: 54, Failures: 0, Errors: 0, Skipped: 0`，`BUILD SUCCESS`，EXIT=0。一次发布在 `sync_change` 中恰好一行 `ENTRY/PUBLISH`。
 - **仍未完成（客户端与服务端语义各半）**：Android 侧「发布」仍只做本地 `saveDraft`，没有 `PUBLISH_ENTRY` 出箱操作，因此**真机上发布至今没有发生过一次**；且 `EntryService.publish` 追加的 PUBLISH 载荷只有 `{entryId, revisionNo}`，下一步个人草稿不再进入变更流时必须改为携带完整条目载荷，否则对端无法重建从未见过的记录。Gate E1/H1/H2 继续 NOT VERIFIED。
+
+### 记录 16：私密草稿不再进变更流 + 客户端真发布打通（2026-10-01）
+
+- **Commits**：`287fad7`（变更行单一归属，见记录 14）、`aee0ca6` + `8bc29c4`（服务端）、`0136171` + `4fcc168`（客户端）。均未推送，本地领先 origin **30 个提交**。
+- **推导链（本轮所有改动由此决定）**：变更流是 per-couple 单通道、没有 per-member 尾巴，因此「个人草稿不给伴侣看」**只有一种正确实现——根本不写变更行**；不写行 ⇒ 对端第一次见到这条记录就是 PUBLISH 行 ⇒ PUBLISH 载荷必须携带**完整条目投影**而非裸 id；同理，作者设备也永远拉不到自己草稿的行 ⇒ 它的 `row_version` 只能来自 push 响应，否则草稿追加一次后再发布必然 409 并进入**终态 CONFLICT**（`markConflict` 把 `nextAttemptAt` 置为 `Long.MAX_VALUE`），这条记录将永远发不出去。
+- **服务端实现**：`DispatchOutcome.mutationOwnsChangeRow`（布尔）替换为三态 `ChangeRowOwnership{APPENDED_BY_MUTATION, APPENDED_BY_CONTROLLER, SUPPRESSED}`；`EntryView.privateDraft()` 判 PERSONAL+DRAFT；`entryOutcome` 对私密草稿返回 SUPPRESSED，`SyncController` 对该情形既不追加行也不发唤醒（`NO_CHANGE_ROW = -1`）；`EntryService.publish` 改为把 `loadEntry(entryId)` 全量投影写入 PUBLISH 行；`CommentService.addComment` 增加状态门禁——**只有已发布记录有读者**，否则评论会成为第二条泄漏通道（400）。
+- **客户端实现**：`SyncStore.markApplied(operationId, serverEntrySnapshot = null)`；`RoomSyncStore` 在**同一 Room 事务**里删除 outbox 行并合并快照（`upsertEntry` 与 feed 应用共用一份实现；非条目载荷——评论视图、畸形 JSON——只消费操作不合并，**不能让一次服务端已接受的操作因合并失败而重投**）；feed 侧仍保持「坏 JSON 整页回滚含 cursor」的强语义，两条路径的容错差异是刻意的；`LocalEntryWriter.save(command, publish = true)` 在同事务追加 `PUBLISH_ENTRY(baseVersion=0)`（服务端 `createDraft` 固定写入 `row_version=0`，新建即发布时该版本必然正确）；`SyncSession.saveDraft` 更名 `publish` 并接线 `AppNavigation` 两处 `onPublish`。
+- **可观测性**：时间线为仍是 DRAFT 的条目加「未寄出」chip（`TimelineEntryUi.unsent`）。离线时用户以为已经共享、实际只在本地——原来与正常页完全同形，属于静默失败；现在状态可见。不引入任何统计口径。
+- **TDD 红灯（保留为证据）**：`SelfUseRecordingLoopE2ETest:110 expected: false but was: true`、`SharedPerspectiveSyncTest:247 expected: 0 but was: 2`——多出的两行正是个人草稿的 CREATE 与 UPDATE 泄漏。实现后 `SharedPerspectiveSyncTest:176 expected: 1 but was: 2` 暴露**同类第二个测试统计了整个 couple 的 COMMENT 行**，与记录 15 修过的 ENTRY 计数是同一缺陷，改法一致：按 `entity_id` 限定。
+- **绿灯**：服务端 `JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn test` → `Tests run: 57, Failures: 0, Errors: 0, Skipped: 0`，EXIT=0。Android `./gradlew testDebugUnitTest`（JDK 21 + `TEMP/TMP=E:/tmp`）→ 19/19 通过：`SyncEngineTest` 11、`RoomSyncStoreTest` 7、`TwoDeviceRecordingLoopTest` 1（真 Room×2 + 真 HTTP + 真 Spring Boot 进程 + 真 PostgreSQL）。
+- **竖切按新语义重写后的断言**：A 写「完成即发布」→ outbox 依次为 `CREATE_ENTRY`、`PUBLISH_ENTRY`、本地仍 DRAFT；B 拉 0 条；A 推 2 个操作；B 再拉**恰好 1 条**变更行；重放已消费的 CREATE 得 `replayed=true` 且 B 再拉 0 条（重放不再增长变更流）；A 自己的副本经快照合并变为 PUBLISHED 且 `rowVersion=1`；B 由这一行重建出 title/state=PUBLISHED/1 个含正文的块；B 写不发布 → A 拉 0 条且查不到该条目；反向 B 发布 → A 可见。注意此处的「A 拉 0 条」前提是 A 先做一次追赶式拉取——共享变更流也包含自己写的行，这是夹具必须先归零游标的原因。
+- **诚实记录 / 未完成**：
+  1. E1/H1/H2 的**真机**证据仍未取得，JVM 夹具不等同于真机；feature 模块只有仪器测试（本机不可运行），且 `TimelineScreenTest` 断言的文本「共同记录 · 我们」在当前实现中并不存在——该夹具**从未通过**，属已知失效件，新增的「未寄出」chip 同样只有编译级保证。
+  2. `baseVersion` 的 0 只在「新建即发布」路径成立；出现「发布一条已有草稿」的入口时，必须改用本地已合并的 `rowVersion`，否则该路径会撞终态冲突。
+  3. 与规格 §6.4 的偏差仍在：`EntryMode` 仍为 PERSONAL/COLLABORATIVE（要求 SHARED）、`EntryState` 仍含 `CAPSULE_LOCKED/ARCHIVED`（要求移除，`RoomSyncStore.mapState` 仍在映射）。
+  4. 毛刺清单未动：时间线仍非 Room Flow 响应式、Scaffold padding 未透传、`SyncSession.DEFAULT_DEV_BASE_URL` 硬编码局域网 IP、备份脚本未调度/未演练、无 Room 迁移测试、bootstrap 密钥无消费标记。
+  5. dev 库 `moon_letter` 仍有 5 条历史 DRAFT 测试数据，待「开档」时清掉或导出封存；真实内容一旦出现，迁移纪律（先备份副本演练）立即生效。
