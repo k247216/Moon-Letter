@@ -246,3 +246,25 @@
   2. `CoupleScreenTest` 旧版断言的「我的名字」「中秋节 · 农历八月十五」「米色」在实现里都不存在（编辑区默认折叠、chip 文案是「暖米色」、纪念日文本从未渲染），属于**从未通过的假绿灯**；已重写为断言真实存在的文本，但本机无设备，仍只有编译级保证。
   3. 同一屏仍硬编码「已相伴 1097 天」「中秋节 · 还有 360 天」与两张固定头像——同一类假身份的另一半，归 #6 处理。
   4. 主题（暖米/纯白）仍只存本机，不跨设备同步；服务器已有 theme 列，但没有客户端写入路径。
+
+### 记录 18：图片与回应走到对端（2026-10-01）
+
+- **Commits**：`562e402`（服务端）、`94a08d7`（Android 全链 + 夹具）。均未推送，本地领先 origin **34 个提交**。门槛清单第 2 项「记录呈现完整：图片真显示、共同记录有发布语义、评论可见」。
+- **断链核查（三处独立，任一存在都让「发出去的记录不像样」）**：
+  1. **发布静默死循环**：图片块未上传就进 outbox，服务端 `EntryService.publish` 的 `mediaService.requireReady` 让发布 4xx，操作只会被无限重试；同时 `OutboxDao` 旧查询把**块 payload 当成操作 payload 覆盖**、且 WHERE 漏 `CREATE_ENTRY`，一旦触发就把要发给服务端的载荷改成它不认的形状——把同步改坏而不报错。
+  2. **协议层拒绝个人记录带图**：`SyncOperationDispatcher.createEntry` 仍写着 `personal entry sync accepts TEXT blocks only`，而个人记录正是这个 App 的主要形态。Android 接上照片后第一次真链路 push 就 `applied=0`（e2e 红灯保留为证据）。
+  3. **呈现面缺席**：时间线用「[图片]」假文案、没有记录详情页、评论数据链已通却无处显示、行尾爱心点了没有任何反应（装饰性假控件）。
+- **客户端门控实现**：outbox 新状态 `MEDIA_PENDING`——`SyncEngine` 只取 `state='PENDING'`，因此门控无需改动引擎；同一批 `CREATE_ENTRY` + `PUBLISH_ENTRY` **一起**门控（发布不得跑到缺图的创建前面），`APPEND_BLOCK` 同样门控；上传成功后 `attachAsset(blockId, assetId)` 在同一事务里写块列并按 `blockId` **在操作 payload 内原地补 `assetId`**，条目内所有图片齐了才整体放行；未放行时本地仍是 DRAFT、时间线显示「未寄出」，失败可见而非静默。删除了覆盖 payload 的危险查询。
+- **服务端实现**：去掉个人 IMAGE 限制；`validateBlock` 要求 IMAGE 块必须带 assetId（没有 asset 的图块任何设备都渲染不出来）；`createDraft` 在写块后即 `requireReady`，把「引用别的空间/未就绪的资源」挡在写入时而不是等到发布。
+- **呈现面实现**：`EntryPhotos` 在**选取时**把字节复制进 `filesDir/photos/<blockId>.<ext>`（photo picker 的 uri 只在本进程存活），块 payload 存 `{localPath, mime}`、assetId 存列；渲染规则=本机文件优先、否则按 assetId 下载，作者不必重下自己拍的照片；编辑器可选最多 6 张、缩略图可移除、含图草稿可跨进程恢复；记录详情页=正文 + 真图 + 已有回应 + 写一句回应并触发同步；时间线行点击进入详情并显示首图；删除假「[图片]」与装饰性爱心。
+- **可靠性顺带修复**：`AppDatabase.build` 原先**每次调用都新建一个连接池**，编辑器、同步引擎、上传器、导航四处同时打开同一文件在互相抢写锁，改为进程内单例；`MediaUploadManager.uploadPendingImages` 拆出 `(session, database)` 重载，使真链路可被测试驱动；编辑器里显式移除的照片会删掉本机副本，不留孤儿文件。
+- **评论门禁**：服务端只有**已发布**记录接受评论（记录 16 的规则），但详情页此前在草稿上也给输入框——写下去的操作必然 400 并无限重试。现在未寄出的记录底部写明「寄出之后，TA 的回应才会落到这一页」。
+- **夹具**：新 `RealServerHarness`（真 Spring Boot jar + 独立真库 + 独立端口 + 独立本地存储目录），原竖切改用同一套 harness，两个竖切互不污染。新 `MediaGatedOutboxTest`（5）钉门控与放行语义；新 `TwoDevicePictureAndCommentLoopTest` 走真链路：真 PNG 落盘 → 写记录含图并发布 → 两操作皆 MEDIA_PENDING、引擎 push `applied=0`、伴侣拉 0 条且查不到该条目 → 上传放行后操作 payload 里的 assetId 与块列一致 → push 两个操作、作者副本合并为 PUBLISHED → 伴侣拉到 2 块、IMAGE 块带同一 assetId、`GET /api/v1/media/{id}/data` 下载字节的 sha256 与 A 挑的文件一致 → A 写评论 → 伴侣拉到该评论且 authorId 为 A → 关闭并重建 Room 后记录与评论仍在。
+- **绿灯**：服务端 `JAVA_HOME=E:/jdk21-extract/jdk-21.0.2 mvn -o test` → **Tests run: 55, Failures: 0, Errors: 0, Skipped: 0**（注意：必须显式指定 JDK 21，系统默认 java 25 会让 surefire 的 Mockito/Byte Buddy agent 初始化失败，整套 @SpringBootTest 会以 initializationError 全红，容易被误读成代码回归）。Android `TEMP/TMP=E:/tmp JAVA_HOME=… ./gradlew --offline testDebugUnitTest :core:model:test :app:assembleDebug` → BUILD SUCCESSFUL，**33/33**：core:sync 11、core:database 12（RoomSyncStore 7 + MediaGated 5）、app 4（两个真链路竖切 + SetupViewModel 2）、feature:couple 5、core:model 1。
+- **诚实记录 / 未完成**：
+  1. 以上**全是 JVM/Robolectric 证据**，本机无设备。图片在 Compose 里是否真渲染出来、详情页排版、键盘遮挡都只有编译级保证；feature 模块的仪器测试从未成功运行过。E1/H1/H2 的真机验收仍待补。
+  2. 图片只有内存 LruCache（8 张），无磁盘缓存——伴侣每次滚动都会重新下载同一张图，真机上会先见占位再见图。
+  3. IMAGE 块 payload 仍把作者本机绝对路径共享到对端（对端读不到该路径、按 assetId 渲染，功能正确但这条数据在对方设备上无意义）。
+  4. 未发布草稿被整页丢弃或被新草稿覆盖时，其图片文件仍会成为孤儿（本轮只处理了编辑器内显式「移除」）。
+  5. 共同记录的「追加自己视角的图」入口在 UI 上仍未开放（附件工具栏只有「图片」可用，且走创建路径）；语音/音乐/位置仍是占位。
+  6. 规格要求的记录成本实测（≤10 秒 / ≤4 次交互）仍无真机数据，加图后交互数会变，需实测秒数。
