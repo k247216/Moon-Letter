@@ -113,6 +113,7 @@ cd /e/MoonLetter/Moon-Letter/android && TEMP=/e/tmp TMP=/e/tmp \
 2. 记录成本 **≤10 秒 / ≤4 次交互**必须真机实测并写下**真实秒数与交互数**；估算不算。
 3. **真实内容一旦出现，迁移纪律立刻生效**：任何 schema 改动先在含真实数据的副本上演练。
 4. 密钥只进未提交的 `.env` / CI，绝不进源码、迁移、APK、**日志**或截图；私密内容不得提交进 git。
+   - **本轮实测的现状（接手前要知道的）**：开发库口令已作为常量提交进仓库 5 处——`android/app/src/test/java/com/twomemory/app/RealServerHarness.kt:21`、`infra/compose.yaml:7` 与 `:25`（MinIO 同口令）、`server/src/main/resources/application-dev.yml:7`、`server/src/test/java/com/twomemory/app/CoupleDiaryApplicationTest.java:29`。这些值名带 `dev_only`、只指向本机 docker 里的库，**在当前两人自用、服务不对外暴露的前提下不构成泄漏面**；初始化密钥 `bootstrap.secret` 则**没有**进仓库（`application.yml` 写的是 `${BOOTSTRAP_SECRET:}`，值只在仓库外那个文件里）。**任何公开部署之前，这 5 处必须先换成环境变量**，且不能指望「删掉提交」——它们已在 git 历史与 GitHub 上。
 5. **未经用户批准不 push**。
 6. 界面复刻与指导图对齐**另有负责人**；本轮之后我不再动代码，包括不再动界面。
 
