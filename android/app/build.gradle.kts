@@ -3,6 +3,26 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+/**
+ * versionName carries the commit this build came from: two phones can otherwise be
+ * running different debug builds with no way to tell them apart on the device.
+ * "-dirty" means uncommitted code is in the APK, so a green device run is not
+ * automatically evidence for the pushed commit.
+ */
+fun gitDescriptor(workingDir: File): String {
+    fun run(vararg args: String): String? = runCatching {
+        val process = ProcessBuilder(*args)
+            .directory(workingDir)
+            .redirectErrorStream(true)
+            .start()
+        val text = process.inputStream.bufferedReader().readText().trim()
+        if (process.waitFor() == 0 && text.isNotEmpty()) text else null
+    }.getOrNull()
+    val sha = run("git", "rev-parse", "--short", "HEAD") ?: return "unknown"
+    val dirty = run("git", "status", "--porcelain") != null
+    return if (dirty) "$sha-dirty" else sha
+}
+
 android {
     namespace = "com.twomemory.app"
     compileSdk = 37
@@ -12,7 +32,7 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.1.0+" + gitDescriptor(rootDir)
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
