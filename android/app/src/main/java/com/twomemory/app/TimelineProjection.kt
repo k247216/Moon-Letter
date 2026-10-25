@@ -8,6 +8,6 @@ internal fun projectTimelineRows(entries: List<EntryEntity>,blocks: List<EntryBl
     val byEntry=blocks.groupBy {it.entryId}
     return entries.map {entity ->
         val own=byEntry[entity.id].orEmpty()
-        entity.toTimelineItem(previewOf(own),photoOf(own),attachmentsOf(own))
+        entity.toTimelineItem(previewOf(own),photoOf(own),attachmentsOf(own),notePaperOf(own))
     }
 }

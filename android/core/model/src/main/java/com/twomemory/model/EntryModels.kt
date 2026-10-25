@@ -48,6 +48,7 @@ data class TimelineItem(
     /** Non-photo blocks that deserve their own timeline treatment. */
     val attachments: List<TimelineAttachment> = emptyList(),
     val visibility: EntryVisibility = EntryVisibility.SHARED,
+    val notePaper: NotePaperAppearance = NotePaperAppearance(),
 ) {
     /** Backward-readable presentation: no new wire enum, schema or hidden text markers. */
     val isLittleNote: Boolean get() = mode == EntryMode.PERSONAL && title == "小便签" &&

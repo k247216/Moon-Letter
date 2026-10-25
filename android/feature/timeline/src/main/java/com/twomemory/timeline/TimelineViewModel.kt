@@ -36,6 +36,7 @@ data class TimelineEntryUi(
     val unread: Boolean = false,
     val privateRecord: Boolean = false,
     val littleNote: Boolean = false,
+    val notePaper: com.twomemory.model.NotePaperAppearance = com.twomemory.model.NotePaperAppearance(),
 )
 
 data class TimelineAttachmentUi(
@@ -119,6 +120,7 @@ internal fun TimelineItem.toEntryUi(
         rejected = rejected,
         privateRecord = visibility == com.twomemory.model.EntryVisibility.PRIVATE,
         littleNote = isLittleNote,
+        notePaper = notePaper,
         attachments = attachments.map { TimelineAttachmentUi(it.type, it.title, it.detail, it.url, it.localPath, it.assetId) },
     )
 }

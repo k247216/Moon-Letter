@@ -179,7 +179,8 @@ fun JournalEntryCard(entry: TimelineEntryUi, onOpen: (String) -> Unit,
                 .background(if (entry.mine) TwoMemoryColors.WarmBeigeAccent else TwoMemoryColors.WarmBeigeSage))
             StickyNotePaper(Modifier.padding(start = if (alternate) 49.dp else 42.dp,
                 end = if (alternate) 16.dp else 23.dp, bottom = 18.dp).fillMaxWidth()
-                .semantics { contentDescription = "打开小便签" }.clickable { onOpen(entry.id) }, mine = entry.mine) {
+                .semantics { contentDescription = "打开小便签" }.clickable { onOpen(entry.id) },
+                appearance = entry.notePaper, compact = true) {
                 Text(entry.body, style = TwoMemoryTypography.body, color = TwoMemoryColors.WarmBeigeInk,
                     maxLines = 7, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {

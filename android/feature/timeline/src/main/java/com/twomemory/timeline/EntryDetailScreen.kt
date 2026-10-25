@@ -171,7 +171,7 @@ fun EntryDetailScreen(
                 currentState.blocks, ownAvatar, partnerAvatar)
             PaperRule()
             if (currentState.header.littleNote) {
-                com.twomemory.designsystem.StickyNotePaper(mine = currentState.header.mine) {
+                com.twomemory.designsystem.StickyNotePaper(appearance = currentState.header.notePaper) {
                     currentState.blocks.filter { it.type == BlockType.TEXT }.forEach { block ->
                         Text(block.text.orEmpty(), style = TwoMemoryTypography.body, color = TwoMemoryColors.WarmBeigeInk)
                     }

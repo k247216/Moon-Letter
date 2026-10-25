@@ -1,6 +1,8 @@
 package com.twomemory.app
 
 import androidx.compose.runtime.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -18,6 +20,18 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class LittleNoteScreenTest {
+    @Test fun paperChoicesUpdateLiveWithoutReplacingWriting() {
+        var paper by mutableStateOf(com.twomemory.model.NotePaperAppearance())
+        compose.setContent { TwoMemoryTheme { LittleNoteComposer("今天的小心情", {}, EntryVisibility.SHARED,
+            {}, false, false, null, {}, {}, {}, paper = paper, onPaperChange = { paper = it }) } }
+        compose.onNodeWithText("换张纸 · 贴贴 / 奶油").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("纸样：信笺").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithContentDescription("纸色：浅紫").performScrollTo().performClick().assertIsSelected()
+        assertEquals(com.twomemory.model.NotePaperStyle.LETTER, paper.style)
+        assertEquals(com.twomemory.model.NotePaperColor.LILAC, paper.color)
+        compose.onNodeWithContentDescription("便签正文").assertTextContains("今天的小心情")
+        compose.onNodeWithContentDescription("贴好便签").assertIsDisplayed()
+    }
     @get:Rule val compose = createComposeRule()
     @Test fun oneSentenceCanBePostedWithoutTitleOrMediaControls() {
         var text by mutableStateOf(""); var posted = ""
@@ -55,11 +69,40 @@ class LittleNoteScreenTest {
         compose.onNodeWithContentDescription("贴好便签").assertIsDisplayed()
         compose.onNodeWithText("先收好").assertIsDisplayed()
     }
+    @Test fun capturesStationeryChoices() {
+        var paper by mutableStateOf(com.twomemory.model.NotePaperAppearance())
+        compose.setContent { TwoMemoryTheme { LittleNoteComposer("下班路上看到一只小狗。\n突然就很想你。", {}, EntryVisibility.SHARED,
+            {}, false, false, null, {}, {}, {}, paper = paper, onPaperChange = { paper = it }) } }
+        compose.onNodeWithText("换张纸 · 贴贴 / 奶油").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("纸样：信笺").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("纸色：浅紫").performScrollTo().performClick()
+        saveCapture("little-note-choices.png")
+    }
+    @Test fun capturesTimelinePaperFamily() {
+        compose.setContent { TwoMemoryTheme {
+            androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxSize()
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)) {
+                com.twomemory.model.NotePaperStyle.entries.forEachIndexed { index, style ->
+                    com.twomemory.timeline.JournalEntryCard(com.twomemory.timeline.TimelineEntryUi(
+                        "sample-$index", "2026年10月26日", "20:16", if (index == 1) "你" else "我", "小便签",
+                        body = listOf("风有点凉，想把手放进你的口袋。", "今天忙忙碌碌。\n还好，回家有你。", "等下次见面，一起去看看秋天吧 ♡")[index],
+                        mine = index != 1, littleNote = true,
+                        notePaper = com.twomemory.model.NotePaperAppearance(style,
+                            listOf(com.twomemory.model.NotePaperColor.CREAM, com.twomemory.model.NotePaperColor.ROSE,
+                                com.twomemory.model.NotePaperColor.MIST)[index])), {}, alternate = index == 1)
+                }
+            }
+        } }
+        saveCapture("little-note-timeline.png")
+    }
     private fun capture(name: String) {
         compose.setContent { TwoMemoryTheme { LittleNoteComposer("下班路上看到一只小狗，\n跑得摇摇晃晃。\n\n突然就很想你。", {}, EntryVisibility.SHARED,
             {}, false, false, null, {}, {}, {}) } }
         compose.onNodeWithContentDescription("贴好便签").assertIsDisplayed()
-        val file = java.io.File("../../releases/v43/$name").also { it.parentFile.mkdirs() }
+        saveCapture(name)
+    }
+    private fun saveCapture(name: String) {
+        val file = java.io.File("../../releases/v44/$name").also { it.parentFile.mkdirs() }
         val bitmap = compose.onRoot().captureToImage().let { it.asAndroidBitmap() }
         file.outputStream().use { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
     }

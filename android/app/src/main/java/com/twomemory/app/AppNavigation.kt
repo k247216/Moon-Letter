@@ -81,6 +81,7 @@ internal fun com.twomemory.database.EntryEntity.toTimelineItem(
     preview: String?,
     photo: com.twomemory.model.TimelinePhoto?,
     attachments: List<TimelineAttachment> = emptyList(),
+    notePaper: com.twomemory.model.NotePaperAppearance = com.twomemory.model.NotePaperAppearance(),
 ) = TimelineItem(
     id = java.util.UUID.fromString(id),
     coupleId = java.util.UUID.fromString(coupleId),
@@ -93,6 +94,7 @@ internal fun com.twomemory.database.EntryEntity.toTimelineItem(
     preview = preview,
     photo = photo,
     attachments = attachments,
+    notePaper = notePaper,
     visibility = com.twomemory.model.EntryVisibility.valueOf(visibility),
 )
 
@@ -962,7 +964,7 @@ fun AppNavigation(
                     ) { entries, blocks, comments ->
                         entries.firstOrNull()?.takeUnless { it.deleted }?.let { entity ->
                             com.twomemory.model.EntryDetail(
-                                entry = entity.toTimelineItem(previewOf(blocks), photoOf(blocks), attachmentsOf(blocks)),
+                                entry = entity.toTimelineItem(previewOf(blocks), photoOf(blocks), attachmentsOf(blocks), notePaperOf(blocks)),
                                 blocks = blocks.map { it.toEntryBlock() },
                                 comments = comments.map { it.toEntryComment() },
                             )

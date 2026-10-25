@@ -31,4 +31,19 @@ class LittleNoteDeviceTest {
         compose.onNodeWithContentDescription("贴好便签").assertIsDisplayed().performClick()
         assertEquals("今天也想你。", posted)
     }
+    @Test fun stationerySelectionKeepsPublishingReachableWithKeyboard() {
+        var paper by mutableStateOf(com.twomemory.model.NotePaperAppearance())
+        compose.activity.runOnUiThread { compose.activity.setContent { TwoMemoryTheme {
+            LittleNoteComposer("今天也想你。", {}, EntryVisibility.SHARED, {}, false, false, null,
+                {}, {}, {}, paper = paper, onPaperChange = { paper = it })
+        } } }
+        compose.onNodeWithContentDescription("便签正文").performClick()
+        compose.waitUntil(8_000) { ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true }
+        compose.onNodeWithText("换张纸 · 贴贴 / 奶油").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("纸样：横线").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithContentDescription("纸色：雾蓝").performScrollTo().performClick().assertIsSelected()
+        compose.onNodeWithContentDescription("贴好便签").assertIsDisplayed()
+        compose.onNodeWithContentDescription("便签正文").assertTextContains("今天也想你。")
+    }
 }

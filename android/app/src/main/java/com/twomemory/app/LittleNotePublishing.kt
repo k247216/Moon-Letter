@@ -22,7 +22,8 @@ internal suspend fun restoreLittleNote(context: Context, binding: SyncSession.Bi
         val identical = !entry.deleted && entry.coupleId == binding.session.coupleId.toString() &&
             entry.authorId == binding.session.userId.toString() && entry.title == "小便签" &&
             entry.visibility == pending.visibility.name && db.entryDao().blocks(entry.id).singleOrNull()?.let {
-                it.type == "TEXT" && runCatching { JSONObject(it.payload).optString("text") }.getOrNull() == pending.text
+                it.type == "TEXT" && runCatching { JSONObject(it.payload).optString("text") }.getOrNull() == pending.text &&
+                    notePaperFromPayload(it.payload) == pending.paper
             } == true
         check(SyncSession.isCurrentBinding(context, binding)) { "空间已切换，请重新打开便签" }
         store.retireCommitted(pending.id, pending.takeIf { identical })
@@ -48,13 +49,15 @@ internal suspend fun publishLittleNote(context: Context, binding: SyncSession.Bi
                 existing.coupleId == session.coupleId.toString() && existing.title == "小便签" &&
                 existing.visibility == note.visibility.name &&
                 db.entryDao().blocks(existing.id).singleOrNull()?.let {
-                    it.type == "TEXT" && JSONObject(it.payload).optString("text") == note.text
+                    it.type == "TEXT" && JSONObject(it.payload).optString("text") == note.text &&
+                        notePaperFromPayload(it.payload) == note.paper
                 } == true) { "这张便签已经收好，请重新打开新的一张" }
         } else {
             LocalEntryWriter(db).save(LocalEntryCommand(session.coupleId, session.userId, EntryMode.PERSONAL,
                 Instant.now(), ZoneId.systemDefault().id, title = "小便签", entryId = note.id,
                 visibility = note.visibility, blocks = listOf(LocalBlockCommand(type = BlockType.TEXT,
-                    orderKey = 0, authorId = session.userId, payload = JSONObject().put("text", note.text).toString()))), publish = true)
+                    orderKey = 0, authorId = session.userId, payload = JSONObject().put("text", note.text)
+                        .put("notePaper", notePaperJson(note.paper)).toString()))), publish = true)
         }
     }
     note.id

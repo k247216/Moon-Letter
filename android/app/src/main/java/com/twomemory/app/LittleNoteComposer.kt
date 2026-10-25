@@ -48,9 +48,10 @@ internal fun LittleNoteRoute(onClose: () -> Unit) {
         catch (failure: Exception) { error = failure.message ?: "小纸条还没翻开，请再试一次" }
         finally { restoring = false }
     }
-    fun keep(text: String, visibility: EntryVisibility) {
-        pending = pending.copy(text = text, visibility = visibility)
-        try { store.keep(text, visibility); error = null }
+    fun keep(text: String, visibility: EntryVisibility,
+        paper: com.twomemory.model.NotePaperAppearance = pending.paper) {
+        pending = pending.copy(text = text, visibility = visibility, paper = paper)
+        try { store.keep(text, visibility, paper); error = null }
         catch (_: Exception) { error = "小纸条暂时没存好，请不要退出，再试一次" }
     }
     BackHandler { if (!busy && !saved && !restoring) onClose() }
@@ -61,7 +62,7 @@ internal fun LittleNoteRoute(onClose: () -> Unit) {
                 val submitted = pending
                 scope.launch {
                     try {
-                        store.keep(submitted.text, submitted.visibility)
+                        store.keep(submitted.text, submitted.visibility, submitted.paper)
                         val restored = restoreLittleNote(context, binding)
                         if (restored != submitted) { pending = restored; return@launch }
                         publishLittleNote(context, binding, submitted)
@@ -74,13 +75,15 @@ internal fun LittleNoteRoute(onClose: () -> Unit) {
                     } finally { busy = false }
                 }
             }
-        }, onClose)
+        }, onClose, paper = pending.paper, onPaperChange = { keep(pending.text, pending.visibility, it) })
 }
 
 @Composable
 internal fun LittleNoteComposer(text: String, onTextChange: (String) -> Unit,
     visibility: EntryVisibility, onVisibility: (EntryVisibility) -> Unit, busy: Boolean,
-    saved: Boolean, error: String?, onClose: () -> Unit, onPublish: () -> Unit, onPosted: () -> Unit) {
+    saved: Boolean, error: String?, onClose: () -> Unit, onPublish: () -> Unit, onPosted: () -> Unit,
+    paper: com.twomemory.model.NotePaperAppearance = com.twomemory.model.NotePaperAppearance(),
+    onPaperChange: (com.twomemory.model.NotePaperAppearance) -> Unit = {}) {
     var unfolded by remember { mutableStateOf(false) }
     val focus = LocalFocusManager.current
     val inputFocus = remember { FocusRequester() }
@@ -110,7 +113,7 @@ internal fun LittleNoteComposer(text: String, onTextChange: (String) -> Unit,
                 rotationZ = (1f - opening) * -1.6f + closing * -1f
                 translationY = closing * -12.dp.toPx()
                 alpha = 1f - closing * .25f
-            }, mine = true) {
+            }, appearance = paper) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("随手，留一句", style = TwoMemoryTypography.caption, color = muted)
                     Spacer(Modifier.weight(1f))
@@ -119,7 +122,7 @@ internal fun LittleNoteComposer(text: String, onTextChange: (String) -> Unit,
                 BasicTextField(value = text, onValueChange = { if (it.codePointCount(0, it.length) <= 500) onTextChange(it) },
                     enabled = !busy && !saved, textStyle = TwoMemoryTypography.body.copy(color = ink, fontSize = 20.sp, lineHeight = 32.sp),
                     cursorBrush = SolidColor(TwoMemoryColors.WarmBeigeAccent),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp).focusRequester(inputFocus)
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 128.dp).focusRequester(inputFocus)
                         .semantics { contentDescription = "便签正文" },
                     decorationBox = { field -> Box {
                         if (text.isEmpty()) Text("今天想留给你的一小句…", style = TwoMemoryTypography.body.copy(fontSize = 20.sp,
@@ -133,6 +136,7 @@ internal fun LittleNoteComposer(text: String, onTextChange: (String) -> Unit,
             if (saved) Text("贴好啦 ♡", style = TwoMemoryTypography.title, color = TwoMemoryColors.WarmBeigeSage)
             else Text("不必写完整，想到哪里就写到哪里。", style = TwoMemoryTypography.caption, color = muted,
                 textAlign = TextAlign.Center)
+            if (!saved) NoteStationeryPicker(paper, onPaperChange, enabled = !busy)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = TwoMemoryTypography.caption,
                 modifier = Modifier.padding(top = 12.dp)) }
         }

@@ -251,6 +251,16 @@ class LocalEntryWriter(private val database: AppDatabase) {
             put("type", block.type.name)
             put("orderKey", block.orderKey)
             if (text != null) put("text", text) else put("payload", wirePayload(block))
+            if (text != null) {
+                val paper = runCatching { org.json.JSONObject(block.payload).optJSONObject("notePaper") }.getOrNull()
+                if (paper?.optInt("version") == 1) {
+                    val style = paper.optString("style")
+                    val color = paper.optString("color")
+                    if (style in setOf("TAPE", "RULED", "LETTER") && color in setOf("CREAM", "ROSE", "SAGE", "MIST", "LILAC")) {
+                        put("notePaper", org.json.JSONObject().put("version", 1).put("style", style).put("color", color))
+                    }
+                }
+            }
             if (block.assetId != null) put("assetId", block.assetId.toString())
         }
     }

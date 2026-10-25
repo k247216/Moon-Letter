@@ -18,10 +18,47 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class LittleNoteTest {
+    @Test fun appearanceRestoresAndLateAcknowledgementCannotClearANewerChoice() = runBlocking {
+        val bound = binding(); val store = LittleNoteStore(context, bound.session)
+        val paper = com.twomemory.model.NotePaperAppearance(com.twomemory.model.NotePaperStyle.LETTER,
+            com.twomemory.model.NotePaperColor.LILAC)
+        store.keep("留一句", paper = paper)
+        val submitted = store.load()
+        assertEquals(paper, LittleNoteStore(context, bound.session).load().paper)
+        publishLittleNote(context, bound, submitted)
+        val newer = paper.copy(color = com.twomemory.model.NotePaperColor.MIST)
+        store.keep("留一句", paper = newer)
+        store.clearIfSame(submitted)
+        val recovered = restoreLittleNote(context, bound)
+        assertNotEquals(submitted.id, recovered.id)
+        assertEquals(newer, recovered.paper)
+        val id = publishLittleNote(context, bound, recovered)
+        val db = AppDatabase.build(context, bound.session.databaseName)
+        assertEquals(newer, projectTimelineRows(listOf(db.entryDao().findEntry(id.toString())!!),
+            db.entryDao().blocks(id.toString())).single().notePaper)
+    }
+    @Test fun oldUnknownAndMalformedPaperMetadataRemainReadable() {
+        val fallback = com.twomemory.model.NotePaperAppearance()
+        for (payload in listOf(null, "bad json", "{\"text\":\"old\"}",
+            "{\"notePaper\":{\"version\":99,\"color\":\"LILAC\"}}",
+            "{\"notePaper\":{\"version\":1,\"style\":\"future\",\"color\":\"future\"}}")) {
+            assertEquals(fallback, notePaperFromPayload(payload))
+        }
+    }
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun binding(): SyncSession.BindingSnapshot {
         SyncSession.save(context, "synthetic-note", UUID.randomUUID(), UUID.randomUUID(), "http://127.0.0.1:9")
         return requireNotNull(SyncSession.captureBinding(context))
+    }
+    @Test fun postedPaperHasVersionedAppearanceWithoutChangingItsText() = runBlocking {
+        val bound = binding(); val store = LittleNoteStore(context, bound.session)
+        store.keep("\n今天也想你 ♡\n")
+        val id = publishLittleNote(context, bound, store.load())
+        val block = AppDatabase.build(context, bound.session.databaseName).entryDao().blocks(id.toString()).single()
+        val payload = org.json.JSONObject(block.payload)
+        assertEquals("\n今天也想你 ♡\n", payload.getString("text"))
+        assertTrue("Appearance must travel with the TEXT block", payload.has("notePaper"))
+        assertEquals(1, payload.getJSONObject("notePaper").getInt("version"))
     }
     @Test fun pendingTextRestoresOnlyInItsOwnSpace() {
         val a = binding(); val store = LittleNoteStore(context, a.session)

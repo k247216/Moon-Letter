@@ -4,3 +4,5 @@ MOONLETTER_PUBLIC_ORIGIN=https://api.example.invalid
 MOONLETTER_DEV_ORIGIN=http://10.0.2.2:8080
 MOONLETTER_FIRST_WELCOME=记录彼此想念的每一天
 MOONLETTER_OSS_HOST=bucket.example.invalid
+# Optional absolute path to the existing debug keystore used by installed test versions.
+MOONLETTER_DEBUG_KEYSTORE=

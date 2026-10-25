@@ -293,7 +293,9 @@ class TwoDeviceRecordingLoopTest {
             SyncSession.save(context, tokenA, coupleId, userIdA, baseUrl)
             val noteBinding = requireNotNull(SyncSession.captureBinding(context))
             val noteStore = LittleNoteStore(context, noteBinding.session)
-            noteStore.keep("今天累了，也想给你留一句。")
+            val chosenPaper = com.twomemory.model.NotePaperAppearance(com.twomemory.model.NotePaperStyle.RULED,
+                com.twomemory.model.NotePaperColor.ROSE)
+            noteStore.keep("今天累了，也想给你留一句。", paper = chosenPaper)
             val notePending = noteStore.load()
             val noteId = publishLittleNote(context, noteBinding, notePending)
             val noteDb = AppDatabase.build(context, noteBinding.session.databaseName)
@@ -303,6 +305,7 @@ class TwoDeviceRecordingLoopTest {
             val noteBlocksB = databaseB.entryDao().blocks(noteId.toString())
             val noteProjection = projectTimelineRows(listOf(noteB), noteBlocksB).single()
             assertTrue(noteProjection.isLittleNote)
+            assertEquals(chosenPaper, noteProjection.notePaper)
             assertEquals("今天累了，也想给你留一句。", noteProjection.preview)
             assertEquals(noteId, publishLittleNote(context, noteBinding, notePending))
             assertEquals(0, SyncEngine(api(tokenA), RoomSyncStore(noteDb), coupleId).pushPending().applied)

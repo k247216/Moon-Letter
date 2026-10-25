@@ -222,8 +222,21 @@ public class SyncOperationDispatcher {
             return blockNode.path("payload").isTextual() ? blockNode.path("payload").asText()
                     : blockNode.path("payload").toString();
         }
-        return objectMapper.createObjectNode().set("text",
-                objectMapper.valueToTree(blockNode.path("text").asText(""))).toString();
+        var result = objectMapper.createObjectNode();
+        result.put("text", blockNode.path("text").asText(""));
+        // Optional presentation only: never echo arbitrary client metadata or local paths.
+        var paper = blockNode.path("notePaper");
+        String style = paper.path("style").asText("");
+        String color = paper.path("color").asText("");
+        if (paper.path("version").asInt(0) == 1
+                && List.of("TAPE", "RULED", "LETTER").contains(style)
+                && List.of("CREAM", "ROSE", "SAGE", "MIST", "LILAC").contains(color)) {
+            var normalized = result.putObject("notePaper");
+            normalized.put("version", 1);
+            normalized.put("style", style);
+            normalized.put("color", color);
+        }
+        return result.toString();
     }
 
     private boolean supportedBlockType(String rawType) {

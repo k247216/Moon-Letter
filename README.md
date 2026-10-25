@@ -1,8 +1,8 @@
 # 月笺 (Moon Letter)
 
-## 当前源码检查点：V43（2026-10-25）
+## 当前源码检查点：V44（2026-10-26）
 
-当前功能、测试证据及隐私配置方式见 [V43交接](docs/handoff/2026-10-25-v43-source-checkpoint.md) 和 [V43验收说明](releases/v43/README.md)。后文保留早期M1设计和历史操作背景，不应将其中旧的阶段状态当作当前进度。
+V44 新增可选择纸样和颜色的小便签，减轻时间轴纸张装饰；纸样随记录同步。更新顺序与测试证据见 [V44验收说明](releases/v44/README.md)，隐私配置与此前源码整理见 [V43交接](docs/handoff/2026-10-25-v43-source-checkpoint.md)。后文保留早期M1设计和历史操作背景，不应将其中旧的阶段状态当作当前进度。
 
 正式部署地址与个人化文案通过未提交的 `android/private.properties` 提供；示例见 `android/private.properties.example`。运行密钥、用户数据、日志、APK和签名私钥不放入Git。公共文档中的部署标识已匿名化。
 

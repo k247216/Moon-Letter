@@ -221,6 +221,23 @@ class TypedSyncOperationTest {
         assertThat(post(request).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    @Test
+    void stationerySurvivesSyncWithoutAcceptingUnrelatedTextMetadata() throws Exception {
+        var input = (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(payload("留给你的一句"));
+        var block = (com.fasterxml.jackson.databind.node.ObjectNode) input.path("blocks").get(0);
+        block.set("notePaper", objectMapper.readTree("{\"version\":1,\"style\":\"LETTER\",\"color\":\"LILAC\",\"extra\":\"discard\"}"));
+        block.put("localPath", "device-only");
+        assertThat(post(request(UUID.randomUUID(), input.toString())).getStatusCode()).isEqualTo(HttpStatus.OK);
+        String stored = jdbcTemplate.queryForObject("SELECT payload::text FROM entry_block WHERE id = ?",
+                String.class, UUID.fromString(block.path("blockId").asText()));
+        var result = objectMapper.readTree(stored);
+        assertThat(result.path("text").asText()).isEqualTo("留给你的一句");
+        assertThat(result.path("notePaper").path("style").asText()).isEqualTo("LETTER");
+        assertThat(result.path("notePaper").path("color").asText()).isEqualTo("LILAC");
+        assertThat(result.path("notePaper").has("extra")).isFalse();
+        assertThat(result.has("localPath")).isFalse();
+    }
+
     private int count(String sql) {
         Integer value = jdbcTemplate.queryForObject(sql, Integer.class);
         return value == null ? 0 : value;
