@@ -11,12 +11,15 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 fun interface SyncEngineFactory {
     fun create(coupleId: UUID): SyncEngine
 }
 
 object SyncEngineRegistry {
+    val cycleMutex = Mutex()
     lateinit var factory: SyncEngineFactory
 
     /**
@@ -34,13 +37,16 @@ enum class SyncOutcome { SUCCESS, RETRY, FAILURE }
  * One push+pull cycle, independent of WorkManager so the retry policy is
  * unit-testable: a retryable push must not be reported as success.
  */
-suspend fun runSyncCycle(engine: SyncEngine): SyncOutcome {
+suspend fun runSyncCycle(engine: SyncEngine): SyncOutcome = runSyncCycle { engine }
+
+/** Resolve transport only after waiting for an endpoint transition's cycle lock. */
+suspend fun runSyncCycle(create: () -> SyncEngine): SyncOutcome = SyncEngineRegistry.cycleMutex.withLock {
+    val engine = create()
     val push = engine.pushPending()
-    if (push.needsRePair) return SyncOutcome.FAILURE
-    if (push.retried > 0) return SyncOutcome.RETRY
+    if (push.needsRePair) return@withLock SyncOutcome.FAILURE
     val pull = engine.pullAll()
-    if (pull.needsRePair) return SyncOutcome.FAILURE
-    return if (pull.failed != null) SyncOutcome.RETRY else SyncOutcome.SUCCESS
+    if (pull.needsRePair) return@withLock SyncOutcome.FAILURE
+    if (pull.failed != null || push.retried > 0) SyncOutcome.RETRY else SyncOutcome.SUCCESS
 }
 
 class SyncWorker(
@@ -49,8 +55,7 @@ class SyncWorker(
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         val coupleId = inputData.getString(KEY_COUPLE_ID)?.let(UUID::fromString) ?: return Result.failure()
-        val engine = SyncEngineRegistry.factory.create(coupleId)
-        val outcome = runSyncCycle(engine)
+        val outcome = runSyncCycle { SyncEngineRegistry.factory.create(coupleId) }
         if (outcome != SyncOutcome.FAILURE) {
             // Runs after every cycle that could have applied changes, not just the
             // one that pulled them: a worker cancelled or retried mid-pull would

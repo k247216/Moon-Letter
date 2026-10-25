@@ -4,10 +4,9 @@ import android.content.Context
 import java.time.DayOfWeek
 
 /**
- * The two switches, when the weekly re-encounter is due, and the one watermark the
- * new-entry notice needs. Nothing else is kept: no counts, no unread state, no
- * history of what was shown. Switching a feature off deletes what only that
- * feature remembered.
+ * User switches and weekly schedule. Switching arrival notices off advances the
+ * receipt generation so enabling them again quietly baselines existing records.
+ * Account-specific identity receipts live separately in NewEntryNotice.
  */
 class NotificationPreferences(context: Context) {
 
@@ -24,9 +23,11 @@ class NotificationPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_NEW_ENTRY_ENABLED, true)
         set(value) {
             val editor = prefs.edit().putBoolean(KEY_NEW_ENTRY_ENABLED, value)
-            if (!value) editor.remove(KEY_LAST_NOTIFIED_ENTRY)
+            if (!value) editor.remove(KEY_LAST_NOTIFIED_ENTRY).putLong("noticeGeneration", noticeGeneration + 1)
             editor.apply()
         }
+
+    internal val noticeGeneration: Long get() = prefs.getLong("noticeGeneration", 0)
 
     /** The last record this device already announced; a single id, never a tally. */
     var lastNotifiedEntryId: String?

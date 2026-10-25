@@ -1,3 +1,4 @@
+<!-- Deployment/person/device identifiers in this public document are anonymized. -->
 # 逐项功能验证清单（真机）
 
 这份文件是**给两台手机用的**：每条都能单独验证、单独判过没过。
@@ -18,8 +19,8 @@
 
 ## 0. 现场（2026-10-01 21:47 实测，供你核对起点）
 
-- 服务端已在跑：`http://10.138.79.194:8080`（本机与局域网地址都返回 `{"status":"UP"}`）。手机必须和这台电脑在**同一个局域网**；先用手机浏览器打开上面这个地址确认能通，再装 APK。
-- APK：`android/app/build/outputs/apk/debug/app-debug.apk`（2026-10-01 21:11 构建，与当前代码一致）。debug 构建会把服务器地址**预填**成 `http://10.138.79.194:8080`，所以正常情况下你不用手输。
+- 服务端已在跑：`http://192.0.2.10:8080`（本机与局域网地址都返回 `{"status":"UP"}`）。手机必须和这台电脑在**同一个局域网**；先用手机浏览器打开上面这个地址确认能通，再装 APK。
+- APK：`android/app/build/outputs/apk/debug/app-debug.apk`（2026-10-01 21:11 构建，与当前代码一致）。debug 构建会把服务器地址**预填**成 `http://192.0.2.10:8080`，所以正常情况下你不用手输。
 - 库里现状：内容全 0，两个成员两个会话仍然有效，称呼是调试期留下的 `k` 和 `未命名`。
 - 初始化密钥不在仓库里，在 `E:\MoonLetter\.workbuddy\tmp\port8080-cmd.txt` 的 `--moon-letter.bootstrap.secret=` 后面。**只有走「我是第一位」时需要它。**
 - 本机 `adb devices` 当前为空。插上手机并打开 USB 调试后告诉我，我可以直接替你安装；不插就手动拷 APK 安装。

@@ -10,6 +10,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -22,12 +24,19 @@ import com.twomemory.designsystem.TwoMemoryTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import androidx.lifecycle.repeatOnLifecycle
 
 @Composable
 fun TwoMemoryApp(
     initialEntryId: String? = null,
     initialEditorMode: String? = null,
     initialEditorRequest: Int = 0,
+    onInitialContentReady: () -> Unit = {},
+    initialReminder: String? = null,
+    initialNoticeScope: String? = null,
+    initialNoticeRequest: Int = 0,
 ) {
     val context = LocalContext.current
     val profilePrefs = remember {
@@ -45,18 +54,14 @@ fun TwoMemoryApp(
 
     // Sync on app start and every foreground return (best effort; the
     // WorkManager path stays the background fallback).
-    LaunchedEffect(Unit) { SyncSession.triggerSync(context) }
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                CoroutineScope(Dispatchers.Default).launch {
-                    SyncSession.triggerSync(context)
-                }
-            }
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            foregroundSyncLoop(
+                sync = { SyncSession.triggerSync(context, includeSideEffects = false) },
+                refresh = { SyncSession.runCycleSideEffects(context) },
+            )
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Both hooks are on by default, so the system permission is asked for once the
@@ -77,11 +82,36 @@ fun TwoMemoryApp(
     }
 
     TwoMemoryTheme(theme = theme) {
-        AppNavigation(
+        SessionScopedContent { AppNavigation(
             onThemeChange = { theme = it },
             initialEntryId = initialEntryId,
             initialEditorMode = initialEditorMode,
             initialEditorRequest = initialEditorRequest,
-        )
+            onInitialContentReady = onInitialContentReady,
+            initialReminder = initialReminder,
+            initialNoticeScope = initialNoticeScope,
+            initialNoticeRequest = initialNoticeRequest,
+        ) }
     }
+}
+
+/** Dispose every remembered screen/DAO/detail on identity changes, not token refresh. */
+@Composable
+internal fun SessionScopedContent(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    fun accountScope(): String? = SyncSession.load(context)?.let {
+        "${it.storageOrigin}|${it.coupleId}|${it.userId}|${it.databaseName}"
+    }
+    var account by remember(context) { mutableStateOf(accountScope()) }
+    val scope = rememberCoroutineScope()
+    DisposableEffect(context) {
+        val prefs = SyncSession.sessionPrefs(context)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+            scope.launch { account = accountScope() }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        account = accountScope()
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    key(account) { content() }
 }

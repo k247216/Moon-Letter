@@ -4,6 +4,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.twomemory.designsystem.TwoMemoryTheme
 import org.junit.Rule
@@ -31,11 +35,15 @@ class RelationshipToolsScreenTest {
     fun capsuleRouteDoesNotExposePlaintextBeforeUnlock() {
         composeRule.setContent {
             TwoMemoryTheme {
-                RelationshipToolsScreen(CoupleToolRoute.CAPSULE, onBack = {})
+                Box(Modifier.fillMaxSize()) {
+                    RelationshipToolsScreen(CoupleToolRoute.CAPSULE, onBack = {},
+                        initialCapsuleTitle = "信", initialCapsuleBody = "未开启的正文",
+                        initialCapsuleUnlockDate = "2099-01-01T12:30", initialCapsuleLocked = true)
+                }
             }
         }
-        composeRule.onNodeWithText("开启日期前，这台手机不显示正文，导出不包含它；对面那台也读不到这封信。").assertIsDisplayed()
-        composeRule.onNodeWithText("保存并锁定").assertIsDisplayed()
+        composeRule.onNodeWithText("时间胶囊已锁定").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("未开启的正文").assertDoesNotExist()
     }
 
     @Test

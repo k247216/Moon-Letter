@@ -37,9 +37,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class SelfUseRecordingLoopE2ETest {
 
-    private static final String ADMIN_URL = "jdbc:postgresql://localhost:5432/postgres";
-    private static final String ADMIN_USER = "moon_letter";
-    private static final String ADMIN_PASSWORD = "moon_letter_dev_only";
+    private static final String ADMIN_URL = com.twomemory.app.TestDatabaseConfig.adminUrl();
+    private static final String ADMIN_USER = com.twomemory.app.TestDatabaseConfig.user();
+    private static final String ADMIN_PASSWORD = com.twomemory.app.TestDatabaseConfig.password();
     private static final String TEST_DB = "moon_letter_e2e_test";
     private static final String BOOTSTRAP_SECRET = "task7-local-bootstrap-secret";
 

@@ -8,6 +8,7 @@ import com.twomemory.network.CoupleDiaryApi
 import com.twomemory.network.HttpUnauthorizedException
 import com.twomemory.network.PushResult
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.async
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,6 +20,23 @@ import java.util.UUID
 
 class SyncEngineTest {
     private val coupleId = UUID.fromString("00000000-0000-0000-0000-000000000010")
+
+    @Test fun queuedCycleConstructsEngineOnlyAfterTransitionReleasesLock() = runTest {
+        var created = false
+        var current = FakeApi(PushResult.Status.APPLIED)
+        val old = current
+        val store = FakeStore(listOf(operation(UUID.randomUUID())))
+        SyncEngineRegistry.cycleMutex.lock()
+        val waiting = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            runSyncCycle { created = true; SyncEngine(current, store, coupleId) }
+        }
+        assertFalse(created)
+        current = FakeApi(PushResult.Status.APPLIED)
+        SyncEngineRegistry.cycleMutex.unlock()
+        assertEquals(SyncOutcome.SUCCESS, waiting.await())
+        assertTrue(old.pushedIds.isEmpty())
+        assertEquals(1, current.pushedIds.size)
+    }
 
     @Test
     fun fifoSuccessRemovesOperationAndDuplicateIsAppliedOnce() = runTest {
@@ -148,7 +166,9 @@ class SyncEngineTest {
         val operationId = UUID.randomUUID()
         val store = FakeStore(listOf(operation(operationId)))
         val api = FakeApi(PushResult.Status.RETRYABLE_FAILURE)
+        api.pages.add(ChangePage(listOf(change(1)), 1, false))
         assertEquals(SyncOutcome.RETRY, runSyncCycle(SyncEngine(api, store, coupleId)))
+        assertEquals(1, store.appliedChanges.size, "A pending outgoing retry must not stop incoming records")
     }
 
     @Test

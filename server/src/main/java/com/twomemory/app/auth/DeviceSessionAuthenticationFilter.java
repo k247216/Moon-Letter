@@ -55,11 +55,15 @@ public class DeviceSessionAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
+        if (header == null || header.length()>519 || !header.startsWith("Bearer ")) {
             reject(response, "missing bearer token");
             return;
         }
         String rawToken = header.substring("Bearer ".length()).trim();
+        if (rawToken.isEmpty() || rawToken.length()>512) {
+            reject(response, "invalid bearer token input");
+            return;
+        }
         String tokenHash = sha256Hex(rawToken);
 
         List<AuthenticatedUser> matches = jdbcTemplate.query("""

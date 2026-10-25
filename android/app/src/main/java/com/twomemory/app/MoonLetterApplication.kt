@@ -10,5 +10,7 @@ class MoonLetterApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         SyncSession.installProcessHooks(this)
+        com.twomemory.app.notifications.LocalRelationshipReminderScheduler.schedule(this)
+        com.twomemory.app.notifications.CloudKeepsakeReminders.schedule(this)
     }
 }

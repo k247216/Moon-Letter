@@ -2,10 +2,12 @@ package com.twomemory.app
 
 import com.twomemory.network.BootstrapResultDto
 import com.twomemory.network.CoupleViewDto
+import com.twomemory.network.AnniversaryViewDto
 import com.twomemory.network.MemberViewDto
 import com.twomemory.network.PairResultDto
 import com.twomemory.network.PairingTokenResultDto
 import com.twomemory.network.ProfileViewDto
+import com.twomemory.network.SaveAnniversaryRequestDto
 import com.twomemory.network.SessionApi
 import com.twomemory.network.SpaceViewDto
 import kotlinx.coroutines.Dispatchers
@@ -73,6 +75,19 @@ class SetupViewModelTest {
             renamedTo = displayName
             return ProfileViewDto(displayName)
         }
+
+        override suspend fun readAnniversary(
+            baseUrl: String,
+            bearer: String,
+            coupleId: UUID,
+        ): AnniversaryViewDto? = null
+
+        override suspend fun saveAnniversary(
+            baseUrl: String,
+            bearer: String,
+            coupleId: UUID,
+            request: SaveAnniversaryRequestDto,
+        ): AnniversaryViewDto = throw AssertionError("setup never saves an anniversary")
     }
 
     @Before
@@ -112,9 +127,23 @@ class SetupViewModelTest {
     }
 
     @Test
+    fun firstInstallCanJoinThePublicSpaceWithoutTypingAServerAddress() = runTest {
+        val api = FakeSessionApi()
+        val viewModel = SetupViewModel(api)
+        assertEquals(SetupViewModel.Mode.PARTNER_DEVICE, viewModel.state.value.mode)
+        assertEquals(ServerEndpointMigration.PUBLIC_ORIGIN, viewModel.state.value.serverUrl)
+        viewModel.updateDisplayName("阿屿")
+        viewModel.updatePairingToken("a".repeat(43))
+        assertTrue(viewModel.state.value.canSubmit)
+        viewModel.pair()
+        assertEquals(ServerEndpointMigration.PUBLIC_ORIGIN, assertNotNull(viewModel.state.value.boundSession).baseUrl)
+    }
+
+    @Test
     fun theWaitingPanelCarriesWhatTheServerSaidTheCodeIsFor() = runTest {
         val api = FakeSessionApi().apply { pairingTokenKind = "REJOIN" }
         val viewModel = SetupViewModel(api)
+        viewModel.updateMode(SetupViewModel.Mode.FIRST_DEVICE)
         viewModel.updateDisplayName("小满")
         viewModel.updateBootstrapSecret("s3cret")
 

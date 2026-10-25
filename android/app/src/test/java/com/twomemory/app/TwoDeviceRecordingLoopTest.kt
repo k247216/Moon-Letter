@@ -155,6 +155,7 @@ class TwoDeviceRecordingLoopTest {
             // 1. Device A bootstraps the installation through the REAL setup
             //    flow the app ships (SetupViewModel + RetrofitSessionApi).
             val setupA = SetupViewModel(RetrofitSessionApi.create())
+            setupA.updateMode(SetupViewModel.Mode.FIRST_DEVICE)
             setupA.updateServerUrl(baseUrl)
             setupA.updateBootstrapSecret(bootstrapSecret)
             setupA.updateDisplayName("小满")
@@ -287,6 +288,24 @@ class TwoDeviceRecordingLoopTest {
                     .filter { it.state == "PUBLISHED" }.map { it.id }.toSet(),
             )
             assertEquals("DRAFT", databaseB.entryDao().findEntry(privateIdB.toString())!!.state)
+
+            // The new quick note uses the same real server and is readable as a note on B.
+            SyncSession.save(context, tokenA, coupleId, userIdA, baseUrl)
+            val noteBinding = requireNotNull(SyncSession.captureBinding(context))
+            val noteStore = LittleNoteStore(context, noteBinding.session)
+            noteStore.keep("今天累了，也想给你留一句。")
+            val notePending = noteStore.load()
+            val noteId = publishLittleNote(context, noteBinding, notePending)
+            val noteDb = AppDatabase.build(context, noteBinding.session.databaseName)
+            assertEquals(2, SyncEngine(api(tokenA), RoomSyncStore(noteDb), coupleId).pushPending().applied)
+            SyncEngine(api(tokenB), RoomSyncStore(databaseB), coupleId).pullAll()
+            val noteB = requireNotNull(databaseB.entryDao().findEntry(noteId.toString()))
+            val noteBlocksB = databaseB.entryDao().blocks(noteId.toString())
+            val noteProjection = projectTimelineRows(listOf(noteB), noteBlocksB).single()
+            assertTrue(noteProjection.isLittleNote)
+            assertEquals("今天累了，也想给你留一句。", noteProjection.preview)
+            assertEquals(noteId, publishLittleNote(context, noteBinding, notePending))
+            assertEquals(0, SyncEngine(api(tokenA), RoomSyncStore(noteDb), coupleId).pushPending().applied)
 
             // 11. App-process recreation: closing and reopening Room keeps everything.
             databaseA.close()

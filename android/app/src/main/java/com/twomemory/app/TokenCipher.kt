@@ -10,9 +10,9 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Bearer tokens never sit in prefs as plaintext on a real device: they are
- * sealed with an AES-GCM key that lives in AndroidKeyStore. Environments
- * without the AndroidKeyStore provider (JVM test harnesses) fall back to a
- * clearly marked plaintext prefix so the same code path stays testable.
+ * sealed with an AES-GCM key that lives in AndroidKeyStore. Missing or
+ * unavailable key storage is a failure, never permission to persist plaintext.
+ * JVM tests provide their own JCA store in test sources only.
  */
 object TokenCipher {
 
@@ -23,7 +23,7 @@ object TokenCipher {
     private const val PLAIN_PREFIX = "plain:"
 
     fun seal(plain: String): String {
-        val key = obtainKey() ?: return PLAIN_PREFIX + plain
+        val key = obtainKey(create = true)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key)
         val sealed = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
@@ -37,8 +37,9 @@ object TokenCipher {
     fun unseal(stored: String): String {
         if (stored.startsWith(PLAIN_PREFIX)) return stored.removePrefix(PLAIN_PREFIX)
         if (!stored.startsWith("enc:")) return stored // legacy plaintext value
-        val key = obtainKey() ?: error("keystore key missing for encrypted token")
+        val key = obtainKey(create = false)
         val payload = android.util.Base64.decode(stored.removePrefix("enc:"), android.util.Base64.NO_WRAP)
+        require(payload.size >= 28) { "encrypted token is incomplete" }
         val iv = payload.copyOfRange(0, 12)
         val sealed = payload.copyOfRange(12, payload.size)
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -46,10 +47,11 @@ object TokenCipher {
         return String(cipher.doFinal(sealed), Charsets.UTF_8)
     }
 
-    private fun obtainKey(): SecretKey? = runCatching {
+    private fun obtainKey(create: Boolean): SecretKey {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         val existing = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-        if (existing != null) return@runCatching existing
+        if (existing != null) return existing
+        check(create) { "keystore key missing for encrypted token" }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
         generator.init(
             KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
@@ -57,6 +59,6 @@ object TokenCipher {
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .build(),
         )
-        generator.generateKey()
-    }.getOrNull()
+        return generator.generateKey()
+    }
 }

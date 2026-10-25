@@ -32,7 +32,9 @@ public class SecurityConfig {
                                 "/error")
                         .permitAll()
                         .anyRequest().authenticated())
-                .addFilterBefore(deviceSessionFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(deviceSessionFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new SensitiveEndpointRateLimitFilter(java.time.Clock.systemUTC()),
+                        DeviceSessionAuthenticationFilter.class);
         return http.build();
     }
 }

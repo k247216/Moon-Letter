@@ -1,0 +1,15 @@
+[Unit]
+Description=MoonLetter private PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/moonletter
+UMask=0077
+Environment=MOONLETTER_VERIFY_BACKUP=yes
+ExecStart=/bin/sh /opt/moonletter/backup-private.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

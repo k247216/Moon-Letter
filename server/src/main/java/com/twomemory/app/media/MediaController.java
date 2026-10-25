@@ -2,6 +2,7 @@ package com.twomemory.app.media;
 
 import com.twomemory.app.auth.AuthenticatedUser;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -20,6 +22,11 @@ public class MediaController {
 
     private final MediaService mediaService;
     private final ObjectStorage objectStorage;
+    // Small bounded previews only, never original bytes. Authorization runs before every cache hit.
+    private record ThumbnailKey(UUID assetId, int maxEdge) {}
+    private final java.util.Map<ThumbnailKey, byte[]> thumbnails = new java.util.LinkedHashMap<>(32, .75f, true);
+    private final java.util.concurrent.Semaphore thumbnailGeneration = new java.util.concurrent.Semaphore(1);
+    private int thumbnailBytes;
 
     public MediaController(MediaService mediaService, ObjectStorage objectStorage) {
         this.mediaService = mediaService;
@@ -61,29 +68,71 @@ public class MediaController {
     public MediaAssetView uploadData(
             @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID assetId,
-            @RequestBody byte[] bytes) {
+            jakarta.servlet.http.HttpServletRequest request) throws java.io.IOException {
         MediaAssetView asset = mediaService.readAsset(actor.userId(), assetId);
-        if (!(objectStorage instanceof LocalObjectStorage local)) {
-            throw new MediaValidationException("raw upload is only available in local storage mode");
+        if (!actor.userId().equals(asset.ownerId())) throw new MediaAccessDeniedException("only the uploader may write this asset");
+        if(request.getContentLengthLong()>asset.byteSize()) throw new MediaValidationException("body exceeds upload ticket");
+        if(asset.status()==MediaStatus.READY) {
+            // Lost ACK retries are valid, but a completed original is immutable.
+            try(var input=request.getInputStream()) { objectStorage.verifyInput(input,asset.byteSize(),asset.sha256()); }
+            return asset;
         }
-        local.put(asset.objectKey(), bytes);
-        return mediaService.completeUpload(actor.userId(), assetId, local.sha256(bytes));
+        try(var input=request.getInputStream()) { objectStorage.putVerified(asset.objectKey(),input,asset.byteSize(),asset.sha256(),asset.mimeType()); }
+        return mediaService.completeUpload(actor.userId(), assetId, asset.sha256());
     }
 
-    /** Serves stored bytes to any member of the owning space. */
+    /** Serves stored bytes to any authorized member of the owning space. */
     @GetMapping("/{assetId}/data")
-    public ResponseEntity<byte[]> downloadData(
+    public ResponseEntity<org.springframework.core.io.Resource> downloadData(
             @AuthenticationPrincipal AuthenticatedUser actor,
             @PathVariable UUID assetId) {
         MediaAssetView asset = mediaService.readAsset(actor.userId(), assetId);
-        if (!(objectStorage instanceof LocalObjectStorage local)) {
-            throw new MediaValidationException("raw download is only available in local storage mode");
-        }
-        byte[] bytes = local.read(asset.objectKey());
+        var resource=new org.springframework.core.io.InputStreamResource(() -> objectStorage.open(asset.objectKey()),"private media original");
         return ResponseEntity.ok()
-                .header("Content-Type", asset.mimeType())
-                .header("Content-Length", String.valueOf(bytes.length))
-                .body(bytes);
+                .header("Cache-Control", "private, no-store")
+                .contentType(MediaType.parseMediaType(asset.mimeType()))
+                .contentLength(asset.byteSize())
+                .body(resource);
+    }
+
+    @GetMapping("/{assetId}/thumbnail")
+    public ResponseEntity<byte[]> thumbnail(@AuthenticationPrincipal AuthenticatedUser actor, @PathVariable UUID assetId,
+            @RequestParam(name = "maxEdge", defaultValue = "600") int maxEdge) {
+        MediaAssetView asset = mediaService.readAsset(actor.userId(), assetId);
+        if (maxEdge != 600 && maxEdge != 1200) return ResponseEntity.badRequest().build();
+        if (asset.kind() != MediaKind.IMAGE || asset.status() != MediaStatus.READY)
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        byte[] bytes;
+        ThumbnailKey key = new ThumbnailKey(assetId, maxEdge);
+        // Cache hits never wait for storage I/O or decoding on a different cold preview.
+        synchronized (thumbnails) {
+            bytes = thumbnails.get(key);
+        }
+        if (bytes == null) {
+            // Only one original read/decode at a time on the 2GiB server, outside the cache monitor.
+            try { thumbnailGeneration.acquire(); }
+            catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+            }
+            try {
+                synchronized (thumbnails) { bytes = thumbnails.get(key); }
+                if (bytes == null) {
+                    try { bytes = ImageThumbnail.render(objectStorage.read(asset.objectKey()), maxEdge); }
+                    catch (UnsupportedOperationException exception) { return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).build(); }
+                    catch (java.io.IOException exception) { return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).build(); }
+                    synchronized (thumbnails) {
+                        thumbnails.put(key, bytes); thumbnailBytes += bytes.length;
+                        while (thumbnailBytes > 8 * 1024 * 1024 || thumbnails.size() > 128) {
+                            var first = thumbnails.entrySet().iterator(); var removed = first.next();
+                            thumbnailBytes -= removed.getValue().length; first.remove();
+                        }
+                    }
+                }
+            } finally { thumbnailGeneration.release(); }
+        }
+        return ResponseEntity.ok().header("Cache-Control", "private, no-store")
+                .contentType(MediaType.IMAGE_JPEG).contentLength(bytes.length).body(bytes);
     }
 
     @ExceptionHandler(MediaValidationException.class)

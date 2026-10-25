@@ -1,14 +1,25 @@
 package com.twomemory.app
 
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -16,19 +27,33 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.twomemory.designsystem.PaperSurface
+import com.twomemory.designsystem.TwoMemoryTypography
+import com.twomemory.designsystem.paperTexture
+import com.twomemory.couple.storeProfileAvatar
 import com.twomemory.network.RetrofitSessionApi
 import com.twomemory.network.SessionApi
 import com.twomemory.network.SetupHttpException
@@ -36,6 +61,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
@@ -58,9 +85,9 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
     )
 
     data class UiState(
-        val mode: Mode = Mode.FIRST_DEVICE,
+        val mode: Mode = Mode.PARTNER_DEVICE,
         val phase: Phase = Phase.FORM,
-        val serverUrl: String = SyncSession.DEFAULT_BASE_URL,
+        val serverUrl: String = ServerEndpointMigration.PUBLIC_ORIGIN,
         val bootstrapSecret: String = "",
         val displayName: String = "",
         val pairingTokenInput: String = "",
@@ -156,14 +183,57 @@ class SetupViewModel(private val api: SessionApi = RetrofitSessionApi.create()) 
 
 @Composable
 fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBound: () -> Unit) {
+    if (!bindingStorageAvailable()) return
     val context = LocalContext.current
+    var storageError by remember { mutableStateOf<String?>(null) }
+    var storageRetry by remember { mutableStateOf(0) }
+    var expectedBinding by remember { mutableStateOf(SyncSession.load(context)) }
     val state by viewModel.state.collectAsState()
+    val profilePrefs = remember(context) { context.getSharedPreferences("moon_letter_profile", Context.MODE_PRIVATE) }
+    var ownAvatar by remember { mutableStateOf(profilePrefs.getString("ownAvatar", null)) }
+    var avatarError by remember { mutableStateOf<String?>(null) }
+    var savingAvatar by remember { mutableStateOf(false) }
+    var connectionDetails by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                savingAvatar = true
+                avatarError = null
+                try {
+                    ownAvatar = withContext(Dispatchers.IO) { storeProfileAvatar(context, uri) }
+                } catch (error: Exception) {
+                    avatarError = error.message ?: "头像没有保存，请重试"
+                } finally {
+                    savingAvatar = false
+                }
+            }
+        }
+    }
+    val avatarBitmap = remember(ownAvatar) {
+        ownAvatar?.let { value ->
+            runCatching {
+                context.contentResolver.openInputStream(Uri.parse(value)).use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+            }.getOrNull()
+        }
+    }
 
     // Persist the issued session exactly once, then proceed when bound.
-    LaunchedEffect(state.boundSession, state.sessionSaved) {
+    LaunchedEffect(state.boundSession, state.sessionSaved, storageRetry) {
         val session = state.boundSession
         if (session != null && !state.sessionSaved) {
-            SyncSession.save(context, session.token, session.coupleId, session.userId, session.baseUrl)
+            try {
+                if (!SyncSession.saveIfCurrent(context, expectedBinding, session.token, session.coupleId, session.userId, session.baseUrl)) return@LaunchedEffect
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                storageError="连接已签发，但安全存储暂不可用。请解锁后重试保存，不要重复初始化或配对。"
+                return@LaunchedEffect
+            }
+            storageError=null
+            expectedBinding = SyncSession.load(context)
+            // The server just accepted this identity; do not wait for a second
+            // network request before showing the chosen name on the first page.
+            SyncSession.sessionPrefs(context).edit().putString("ownName", state.displayName).apply()
             viewModel.markSessionSaved()
         }
     }
@@ -176,34 +246,85 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .paperTexture(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(24.dp))
-        Text("月笺", style = MaterialTheme.typography.headlineMedium)
-        Text(
-            text = "先把这台设备绑到你们的空间",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Box(Modifier.fillMaxWidth().height(132.dp).clip(RoundedCornerShape(24.dp)), contentAlignment = Alignment.CenterStart) {
+            Image(painterResource(com.twomemory.designsystem.R.drawable.moonletter_cover_puppy),
+                contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Column(Modifier.padding(start = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("月笺", style = TwoMemoryTypography.display, color = com.twomemory.designsystem.TwoMemoryColors.WarmBeigeInk)
+                Text(if (state.mode == SetupViewModel.Mode.FIRST_DEVICE) BuildConfig.FIRST_MEMBER_WELCOME else "记录彼此想念的每一天",
+                    style = TwoMemoryTypography.caption, color = com.twomemory.designsystem.TwoMemoryColors.WarmBeigeInk)
+            }
+        }
+        storageError?.let { message ->
+            Text(message, color=MaterialTheme.colorScheme.error)
+            if (state.boundSession!=null) TextButton(onClick={ storageRetry++ }) { Text("重试保存原连接") }
+        }
 
+        if (state.phase == SetupViewModel.Phase.FORM) {
+            PaperSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("我的资料", style = TwoMemoryTypography.title)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Box(
+                            Modifier.size(64.dp).clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = .12f))
+                                .clickable(enabled = !savingAvatar && !state.busy) { avatarPicker.launch(arrayOf("image/*")) }
+                                .semantics { contentDescription = "选择头像" },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (avatarBitmap != null) {
+                                Image(avatarBitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Text(state.displayName.trim().let { if (it.isEmpty()) "我" else String(Character.toChars(it.codePointAt(0))) },
+                                    style = TwoMemoryTypography.title, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        Column {
+                            TextButton(onClick = { avatarPicker.launch(arrayOf("image/*")) }, enabled = !savingAvatar && !state.busy) {
+                                Text(if (savingAvatar) "保存头像中…" else "选择照片")
+                            }
+                            TextButton(onClick = {
+                                profilePrefs.edit().remove("ownAvatar").apply()
+                                ownAvatar = null
+                                avatarError = null
+                            }, enabled = !savingAvatar && !state.busy) { Text("使用默认头像") }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = state.displayName,
+                        onValueChange = viewModel::updateDisplayName,
+                        label = { Text("你的称呼") },
+                        singleLine = true,
+                        enabled = !state.busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("选一个喜欢的头像，也可以以后再换。",
+                        style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    avatarError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = TwoMemoryTypography.caption) }
+                }
+            }
+        }
         PaperSurface(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (state.phase == SetupViewModel.Phase.WAITING_PARTNER) {
-                    Text("空间已准备好", style = MaterialTheme.typography.titleMedium)
+                    Text("给你的小邀请", style = TwoMemoryTypography.title)
                     Text(
-                        "把下面这段配对码发到另一台手机，在它的「我是伴侣」里粘贴就能进来。",
+                        "把配对码发给对方，一起打开这本手账。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (state.shownPairingTokenKind == "REJOIN") {
                         Text(
-                            "这个空间两位都齐了，所以这个码认的是另一位成员自己的位置：只有丢了手机的那一位能用它回来，陌生人的手机进不来。",
+                            "这是你自己的换机码，15 分钟内一次有效。在新设备使用后，旧设备会退出；不要把它当作给对方的邀请。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -215,40 +336,28 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
                             color = MaterialTheme.colorScheme.primary,
                         )
                     }
-                    Button(onClick = onBound, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = onBound, enabled=state.sessionSaved, modifier = Modifier.fillMaxWidth()) {
                         Text("进入月笺")
                     }
                 } else {
+                    Text("两个人，一本手账", style = TwoMemoryTypography.title)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = state.mode == SetupViewModel.Mode.FIRST_DEVICE,
                             onClick = { viewModel.updateMode(SetupViewModel.Mode.FIRST_DEVICE) },
-                            label = { Text("我是第一位") },
+                            label = { Text("创建手账") },
                         )
                         FilterChip(
                             selected = state.mode == SetupViewModel.Mode.PARTNER_DEVICE,
                             onClick = { viewModel.updateMode(SetupViewModel.Mode.PARTNER_DEVICE) },
-                            label = { Text("我是伴侣") },
+                            label = { Text("接受邀请") },
                         )
                     }
 
-                    OutlinedTextField(
+                    if (connectionDetails) OutlinedTextField(
                         value = state.serverUrl,
                         onValueChange = viewModel::updateServerUrl,
                         label = { Text("服务器地址") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-
-                    OutlinedTextField(
-                        value = state.displayName,
-                        onValueChange = viewModel::updateDisplayName,
-                        label = {
-                            Text(
-                                if (state.mode == SetupViewModel.Mode.FIRST_DEVICE) "你的称呼"
-                                else "你的称呼（伴侣手机上会看到）"
-                            )
-                        },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -258,7 +367,8 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
                             OutlinedTextField(
                                 value = state.bootstrapSecret,
                                 onValueChange = viewModel::updateBootstrapSecret,
-                                label = { Text("初始化密钥（BOOTSTRAP_SECRET）") },
+                                label = { Text("空间钥匙") },
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
                             )
@@ -280,19 +390,24 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
 
                     Button(
                         onClick = {
+                            if (runCatching { TokenCipher.seal("storage-readiness-check") }.isFailure) {
+                                storageError="请先解锁设备并恢复安全存储；尚未向服务器提交初始化或配对。"
+                                return@Button
+                            }
+                            storageError=null
                             when (state.mode) {
                                 SetupViewModel.Mode.FIRST_DEVICE -> viewModel.bootstrap()
                                 SetupViewModel.Mode.PARTNER_DEVICE -> viewModel.pair()
                             }
                         },
-                        enabled = state.canSubmit,
+                        enabled = state.canSubmit && !savingAvatar,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
                             when {
                                 state.busy -> "请稍候…"
-                                state.mode == SetupViewModel.Mode.FIRST_DEVICE -> "初始化空间"
-                                else -> "配对加入"
+                                state.mode == SetupViewModel.Mode.FIRST_DEVICE -> "创建我们的手账"
+                                else -> "打开我们的手账"
                             }
                         )
                     }
@@ -300,11 +415,9 @@ fun SetupScreen(viewModel: SetupViewModel = remember { SetupViewModel() }, onBou
             }
         }
 
-        Text(
-            text = "绑定只需要一次。换手机后在这里重新登录即可。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
+        if (state.phase == SetupViewModel.Phase.FORM) TextButton(onClick = { connectionDetails = !connectionDetails }, enabled = !state.busy) {
+            Text(if (connectionDetails) "收起设置" else "连接设置", style = TwoMemoryTypography.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

@@ -1,0 +1,18 @@
+{
+  "china-cities.geojson": {
+    "bytes": 3293667,
+    "features": 363,
+    "vertices": 140494
+  },
+  "china-provinces.geojson": {
+    "bytes": 582522,
+    "features": 35,
+    "vertices": 25240
+  },
+  "contrast": {
+    "accent_on_paper": 2.78,
+    "white_on_accent": 3.06,
+    "muted_on_paper": 3.94
+  },
+  "apk_bytes": 37800300
+}

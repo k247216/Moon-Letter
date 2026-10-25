@@ -11,6 +11,10 @@ enum ThemeKind {
     WARM_BEIGE, PURE_WHITE
 }
 
+enum CalendarType {
+    GREGORIAN, LUNAR
+}
+
 record PairRequest(String token, String displayName) {
 }
 
@@ -30,4 +34,26 @@ record CreateSpaceResult(CoupleView couple, String pairingToken, String pairingT
 }
 
 record PairResult(CoupleView couple, String deviceToken, UUID userId) {
+}
+
+record SaveAnniversaryRequest(
+        String title,
+        String calendarType,
+        int month,
+        int day,
+        Boolean lunarLeapMonth,
+        Integer startYear,
+        Boolean repeatsYearly) {
+}
+
+record AnniversaryView(
+        UUID id,
+        UUID coupleId,
+        String title,
+        CalendarType calendarType,
+        int month,
+        int day,
+        boolean lunarLeapMonth,
+        Integer startYear,
+        boolean repeatsYearly) {
 }

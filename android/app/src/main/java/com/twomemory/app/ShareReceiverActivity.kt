@@ -1,12 +1,16 @@
 package com.twomemory.app
 
 import android.content.Intent
+import android.app.AlertDialog
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.twomemory.designsystem.EntryPhotos
 import com.twomemory.editor.EditorPhoto
+import com.twomemory.editor.EditorAttachment
 import com.twomemory.model.EntryMode
+import com.twomemory.model.BlockType
+import org.json.JSONObject
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,11 +23,12 @@ data class IncomingShare(
     val title: String,
     val body: String,
     val imageUris: List<Uri>,
+    val music: IncomingMusicShare? = null,
 )
 
 /**
  * Keeps the Sharesheet contract small and testable. The editor decides how to
- * present the draft; this parser never guesses a media type from a URL.
+ * present the draft; only explicitly supported provider song links are classified.
  */
 object ShareIntentParser {
     fun parse(intent: Intent): IncomingShare? {
@@ -55,7 +60,7 @@ object ShareIntentParser {
         return if (title.isBlank() && body.isBlank() && imageUris.isEmpty()) {
             null
         } else {
-            IncomingShare(title, body, imageUris)
+            IncomingShare(title, body, imageUris, IncomingMusicParser.parse(listOf(title, body).joinToString("\n")))
         }
     }
 }
@@ -67,6 +72,8 @@ object ShareIntentParser {
  */
 class ShareReceiverActivity : ComponentActivity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var confirmation: AlertDialog? = null
+    private var savedShare = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -82,14 +89,42 @@ class ShareReceiverActivity : ComponentActivity() {
                     EditorPhoto(id = id, localPath = stored.localPath, mimeType = stored.mimeType)
                 }
             }
-            DraftStore.mergeIncomingShare(
-                context = this@ShareReceiverActivity,
-                title = incoming.title,
-                body = incoming.body,
-                photos = photos,
-            )
-            openEditor()
+            val music = incoming.music
+            if (music == null) saveShare(incoming, photos)
+            else confirmation = AlertDialog.Builder(this@ShareReceiverActivity)
+                .setTitle("加入音乐分享？")
+                .setMessage(listOf(music.title.ifBlank { "歌曲分享" }, music.artist, music.url)
+                    .filter { it.isNotBlank() }.joinToString("\n"))
+                .setPositiveButton("加入歌曲") { _, _ ->
+                    val attachment = EditorAttachment(
+                        id = UUID.randomUUID(), type = BlockType.MUSIC,
+                        payload = JSONObject().put("title", music.title).put("artist", music.artist)
+                            .put("url", music.url).put("source", music.source)
+                            .put("originalText", incoming.body).toString(),
+                    )
+                    saveShare(incoming, photos, listOf(attachment))
+                }
+                .setNegativeButton("仅保留文字") { _, _ -> saveShare(incoming, photos) }
+                .setOnCancelListener { saveShare(incoming, photos) }
+                .show()
         }
+    }
+
+    private fun saveShare(
+        incoming: IncomingShare,
+        photos: List<EditorPhoto>,
+        attachments: List<EditorAttachment> = emptyList(),
+    ) {
+        if (savedShare || isFinishing || isDestroyed) return
+        savedShare = true
+        DraftStore.mergeIncomingShare(
+            context = incomingShareDraftContext(this),
+            title = incoming.title,
+            body = incoming.body,
+            photos = photos,
+            attachments = attachments,
+        )
+        openEditor()
     }
 
     private fun openEditor() {
@@ -103,6 +138,9 @@ class ShareReceiverActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        confirmation?.setOnCancelListener(null)
+        confirmation?.dismiss()
+        confirmation = null
         scope.cancel()
         super.onDestroy()
     }

@@ -1,0 +1,26 @@
+# Overlay on compose.private.yaml after domain/filing readiness.
+# Keeps the same database volume, credentials and localhost API binding.
+services:
+  caddy:
+    image: caddy:2-alpine
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 128m
+    pids_limit: 128
+    depends_on:
+      - app
+    environment:
+      MOON_LETTER_DOMAIN: "${MOON_LETTER_DOMAIN:?Set your real API domain first}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.https:/etc/caddy/Caddyfile:ro
+      - moon-letter-caddy-data:/data
+      - moon-letter-caddy-config:/config
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+volumes:
+  moon-letter-caddy-data:
+  moon-letter-caddy-config:

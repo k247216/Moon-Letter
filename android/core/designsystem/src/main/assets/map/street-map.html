@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="leaflet.css"><style>
+html,body,#map{height:100%;margin:0;background:#d6e4e1;font-family:serif}
+#map{position:absolute;inset:0;height:100vh;width:100vw}
+.leaflet-tile{filter:sepia(.24) saturate(.45) brightness(1.03)}
+.city-pin{background:transparent;border:0}
+.city-pin button{position:relative;border:0;border-radius:8px;background:transparent;color:#82796b;padding:6px 8px 6px 34px;white-space:normal;word-break:break-all;max-width:138px;font-size:12px;min-height:48px;min-width:48px;text-shadow:0 1px #fff}
+.city-pin button:before{content:' ';position:absolute;left:22px;top:22px;display:block;width:5px;height:5px;border-radius:50%;background:#b9b2a4}
+.city-pin.story button{color:#c47058}.city-pin.story button:before{left:20px;top:20px;width:9px;height:9px;background:#c47058;box-shadow:0 0 0 4px #c470581f}
+.city-pin.selected button{color:#463b32;font-size:13px}.city-pin.selected button:after{content:' ';position:absolute;left:14px;top:14px;width:18px;height:18px;border:1px solid #463b32b0;border-radius:50%}
+.city-pin.dot button{font-size:0;padding:0;background:transparent;box-shadow:none}
+#status{display:none;position:absolute;bottom:24px;left:8px;z-index:800;color:#756f63;background:#fffaf099;padding:2px 4px;font-size:9px}
+.leaflet-control-attribution{font-size:9px!important;background:#fffaf0e8!important;margin-bottom:14px!important}
+.leaflet-control-zoom{border:0!important;box-shadow:0 1px 4px #43332220!important;margin-top:80px!important}
+.leaflet-control-zoom a{background:#fffaf0ef!important;color:#655d50!important}
+</style></head><body><div id="map"></div><div id="status" aria-live="polite"></div><script src="leaflet.js"></script><script>
+'use strict';
+let map,markers=[],cities=[],selected='',counts={},lastFocusRequest=0,lastFitRequest=0,pinFrame=0;
+function resizeMoonMap(){
+  const container=document.getElementById('map');
+  if(innerHeight>0){container.style.height=innerHeight+'px';container.style.width=innerWidth+'px'}
+  if(map)map.invalidateSize({pan:true,animate:false});
+}
+addEventListener('resize',resizeMoonMap);
+function initMoonMap(data){
+  resizeMoonMap();
+  cities=data.cities;selected=data.selected||'';counts=data.counts||{};
+  lastFocusRequest=data.focusRequest||0;
+  lastFitRequest=data.fitStoriesRequest||0;
+  const city=cities.find(c=>c.name===selected);
+  map=L.map('map',{zoomControl:true,minZoom:3,maxZoom:13,worldCopyJump:false}).setView(city?[city.latitude+.15,city.longitude]:[35,104],city?8:4);
+  map.createPane('fallback');map.getPane('fallback').style.zIndex='190';
+  new ResizeObserver(()=>map.invalidateSize({pan:true,animate:false})).observe(document.getElementById('map'));
+  requestAnimationFrame(resizeMoonMap);
+  let loaded=false;
+  fetch('china-provinces.geojson').then(r=>r.json()).then(g=>L.geoJSON(g,{pane:'fallback',
+    style:{color:'#a6b3a0',weight:.8,fillColor:'#f3f0e5',fillOpacity:1}}).addTo(map));
+  fetch('china-cities.geojson').then(r=>{if(!r.ok)throw Error('No city geometry');return r.json()})
+    .then(g=>L.geoJSON(g,{pane:'fallback',style:f=>({color:'#b3bea9',weight:.6,
+      fillColor:['#f4f1e6','#e9eddd','#eef0e3'][Number(f.properties.adcode||0)%3],fillOpacity:1})}).addTo(map)).catch(()=>{});
+  map.attributionControl.addAttribution('地理数据 DataV / 阿里云');
+  const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:13,
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    keepBuffer:0,updateWhenIdle:true}).addTo(map);
+  function updateTileStatus(){
+    const status=document.getElementById('status');
+    if(document.querySelector('.leaflet-tile[data-moon-failed]')){
+      status.style.display='block';status.textContent='街道暂不可用 · 已保留地理底图';
+    }else if(loaded){status.style.display='none'}
+  }
+  tiles.on('tileload',e=>{loaded=true;delete e.tile.dataset.moonFailed;updateTileStatus()});
+  tiles.on('tileerror',e=>{e.tile.dataset.moonFailed='1';updateTileStatus()});
+  tiles.on('tileunload',()=>requestAnimationFrame(updateTileStatus));
+  setTimeout(()=>{if(!loaded){const status=document.getElementById('status');
+    status.style.display='block';status.textContent='街道暂不可用 · 已保留地理底图'}},8000);
+  map.on('click',e=>{
+    const city=nearestCity(e.latlng.lat,e.latlng.lng);
+    if(city)selectCity(city);
+  });
+  map.on('zoomend moveend',schedulePins);
+  renderPins();
+  if(lastFitRequest>0&&!selected)fitStoryCities();
+}
+function nearestCity(latitude,longitude){
+  const rad=x=>x*Math.PI/180;
+  let nearest=null,best=120;
+  cities.forEach(c=>{
+    const a=Math.sin(rad(c.latitude-latitude)/2)**2+
+      Math.cos(rad(latitude))*Math.cos(rad(c.latitude))*Math.sin(rad(c.longitude-longitude)/2)**2;
+    const distance=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(Math.max(0,1-a)));
+    if(distance<=best){best=distance;nearest=c}
+  });
+  return nearest;
+}
+function selectCity(city){
+  selected=city.name;renderPins();
+  if(window.MoonCity)window.MoonCity.selectCity(city.name);
+}
+function renderPins(){
+  if(markers.length){refreshPins();return}
+  cities.forEach(c=>{
+    const root=document.createElement('div'),button=document.createElement('button');
+    const count=counts[c.name]||0;button.textContent=c.name+(count?' · '+count:'');
+    button.setAttribute('aria-label','选择'+c.name);button.setAttribute('aria-pressed',String(c.name===selected));root.appendChild(button);
+    const icon=L.divIcon({html:root,className:'city-pin'+(c.name===selected?' selected':'')+(count?' story':''),
+      iconSize:null,iconAnchor:[24.5,24.5]});
+    const marker=L.marker([c.latitude,c.longitude],{icon,zIndexOffset:c.name===selected?1000:count?500:0}).addTo(map);
+    marker.on('click',()=>selectCity(c));markers.push(marker);
+  });
+  arrangePins();
+}
+function refreshPins(){
+  cities.forEach((c,i)=>{
+    const element=markers[i].getElement();if(!element)return;
+    const count=counts[c.name]||0;
+    element.classList.toggle('selected',c.name===selected);
+    element.classList.toggle('story',count>0);
+    element.querySelector('button').textContent=c.name+(count?' · '+count:'');
+    element.querySelector('button').setAttribute('aria-pressed',String(c.name===selected));
+    markers[i].setZIndexOffset(c.name===selected?1000:count?500:0);
+  });
+  schedulePins();
+}
+function schedulePins(){
+  if(pinFrame)return;
+  pinFrame=requestAnimationFrame(()=>{pinFrame=0;arrangePins()});
+}
+function fitStoryCities(){
+  const points=cities.filter(c=>(counts[c.name]||0)>0).map(c=>[c.latitude,c.longitude]);
+  if(!points.length){map.setView([35,104],4);return}
+  map.fitBounds(L.latLngBounds(points),{paddingTopLeft:[48,112],paddingBottomRight:[62,48],maxZoom:8});
+}
+function arrangePins(){
+  if(!map)return;
+  const occupied=[],bounds=map.getBounds(),size=map.getSize();
+  const frame=document.getElementById('map').getBoundingClientRect();
+  const obstacles=[...document.querySelectorAll('.leaflet-control-zoom,.leaflet-control-attribution')].map(e=>e.getBoundingClientRect());
+  const overlaps=(a,b)=>a.left<b.right+4&&a.right>b.left-4&&a.top<b.bottom+4&&a.bottom>b.top-4;
+  cities.map((c,i)=>({c,i,priority:c.name===selected?2:(counts[c.name]||0)>0?1:0}))
+    .sort((a,b)=>b.priority-a.priority).forEach(({c,i,priority})=>{
+      const point=map.latLngToContainerPoint([c.latitude,c.longitude]);
+      const element=markers[i].getElement();
+      if(!element)return;
+      const level=map.getZoom()<5?0:map.getZoom()<6.5?1:2;
+      if(!priority&&(c.level||0)>level){element.style.display='none';return}
+      element.classList.remove('dot');
+      element.style.display='';
+      const rect=element.querySelector('button').getBoundingClientRect();
+      const visible=bounds.contains([c.latitude,c.longitude])&&rect.top>=frame.top+104&&
+        rect.bottom<=frame.bottom-28&&rect.left>=frame.left&&rect.right<=frame.right&&
+        occupied.every(other=>!overlaps(rect,other))&&obstacles.every(other=>!overlaps(rect,other));
+      // Collision avoidance applies to labels, never to real memory coordinates.
+      const inFrame=point.x>=8&&point.x<=size.x-8&&point.y>=112&&point.y<=size.y-38;
+      if(!visible&&priority&&inFrame){
+        element.classList.add('dot');element.style.display='';return;
+      }
+      element.style.display=visible?'':'none';
+      if(visible)occupied.push(rect);
+    });
+}
+function updateMoonMap(data){
+  if(!map)return;
+    const before=selected;
+    const storyNames=()=>cities.filter(c=>(counts[c.name]||0)>0).map(c=>c.name).sort().join('|');
+    const previousStories=storyNames();
+    selected=data.selected||'';counts=data.counts||{};
+    const storiesChanged=previousStories!==storyNames();
+  const focusChanged=lastFocusRequest!==(data.focusRequest||0);
+  lastFocusRequest=data.focusRequest||0;
+  const fitChanged=lastFitRequest!==(data.fitStoriesRequest||0);
+  lastFitRequest=data.fitStoriesRequest||0;
+  const city=cities.find(c=>c.name===selected);
+    if((fitChanged||storiesChanged)&&lastFitRequest>0&&!selected)fitStoryCities();
+  else if(!city&&before!==selected)map.setView([35,104],4);
+  else if(city&&(focusChanged||(before!==selected&&!map.getBounds().pad(-.15).contains([city.latitude,city.longitude])))){
+    map.setView([city.latitude+.15,city.longitude],8);
+  }
+  refreshPins();
+}
+</script></body></html>

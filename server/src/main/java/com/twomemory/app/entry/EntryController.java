@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,6 +40,14 @@ public class EntryController {
             @PathVariable UUID entryId) {
         return entryService.readEntry(entryId, actor.userId());
     }
+
+    @PutMapping("/{entryId}/visibility")
+    public EntryView visibility(@AuthenticationPrincipal AuthenticatedUser actor,
+                                @PathVariable UUID entryId, @RequestBody VisibilityRequest request) {
+        return entryService.setVisibility(entryId, actor.userId(), request.visibility(), request.baseVersion());
+    }
+
+    record VisibilityRequest(EntryVisibility visibility, Long baseVersion) { }
 
     @PostMapping("/{entryId}/publish")
     public PublishResult publish(

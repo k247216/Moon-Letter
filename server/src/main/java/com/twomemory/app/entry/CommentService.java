@@ -42,12 +42,14 @@ public class CommentService {
     public CommentView addComment(UUID entryId, UUID authorId, UUID commentId,
                                   String body, UUID replyToId) {
         EntryTarget target = jdbcTemplate.queryForObject("""
-                SELECT couple_id, state::text AS state FROM entry
-                WHERE id = ? AND deleted_at IS NULL
+                SELECT couple_id, state::text AS state, author_id, visibility FROM entry
+                WHERE id = ? AND deleted_at IS NULL FOR UPDATE
                 """, (rs, rowNum) -> new EntryTarget(rs.getObject("couple_id", UUID.class),
-                EntryState.valueOf(rs.getString("state"))), entryId);
+                EntryState.valueOf(rs.getString("state")), rs.getObject("author_id", UUID.class), rs.getString("visibility")), entryId);
         UUID coupleId = target.coupleId();
         accessPolicy.requireMember(authorId, coupleId);
+        if ("PRIVATE".equals(target.visibility()) && !authorId.equals(target.authorId()))
+            throw new EntryAccessDeniedException("entry is private");
         if (target.state() != EntryState.PUBLISHED) {
             throw new EntryValidationException("only a published record can be commented on");
         }
@@ -65,7 +67,10 @@ public class CommentService {
             Integer exists = jdbcTemplate.queryForObject(
                     "SELECT count(*) FROM comment WHERE id = ?", Integer.class, commentId);
             if (exists != null && exists > 0) {
-                return readComment(commentId);
+                CommentView stored = readComment(commentId);
+                if (!stored.entryId().equals(entryId) || !stored.authorId().equals(authorId))
+                    throw new EntryAccessDeniedException("comment identity belongs to another record or author");
+                return stored;
             }
         }
         jdbcTemplate.update("""
@@ -99,7 +104,7 @@ public class CommentService {
     }
 
     /** Space and visibility of the entry a comment targets. */
-    private record EntryTarget(UUID coupleId, EntryState state) {
+    private record EntryTarget(UUID coupleId, EntryState state, UUID authorId, String visibility) {
     }
 
     static String validateBody(String raw) {

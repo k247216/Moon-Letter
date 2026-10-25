@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily MoonLetter database backup
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=moonletter-backup.service
+
+[Install]
+WantedBy=timers.target

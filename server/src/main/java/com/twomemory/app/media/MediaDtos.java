@@ -9,17 +9,26 @@ enum MediaStatus { LOCAL_PENDING, UPLOADING, PROCESSING, READY, FAILED, DELETED 
 
 record CreateMediaCommand(UUID ownerId, UUID coupleId, MediaKind kind, String mimeType,
                           long byteSize, Integer width, Integer height, Long durationMs,
-                          String sha256, UUID operationId) {
+                          String sha256, UUID operationId, String purpose) {
+    CreateMediaCommand {
+        purpose = purpose == null ? "RECORD" : purpose;
+    }
+
+    CreateMediaCommand(UUID ownerId, UUID coupleId, MediaKind kind, String mimeType,
+                       long byteSize, Integer width, Integer height, Long durationMs,
+                       String sha256, UUID operationId) {
+        this(ownerId, coupleId, kind, mimeType, byteSize, width, height, durationMs, sha256, operationId, "RECORD");
+    }
     CreateMediaCommand withMimeType(String value) {
-        return new CreateMediaCommand(ownerId, coupleId, kind, value, byteSize, width, height, durationMs, sha256, operationId);
+        return new CreateMediaCommand(ownerId, coupleId, kind, value, byteSize, width, height, durationMs, sha256, operationId, purpose);
     }
 
     CreateMediaCommand withByteSize(long value) {
-        return new CreateMediaCommand(ownerId, coupleId, kind, mimeType, value, width, height, durationMs, sha256, operationId);
+        return new CreateMediaCommand(ownerId, coupleId, kind, mimeType, value, width, height, durationMs, sha256, operationId, purpose);
     }
 
     CreateMediaCommand withWidth(Integer value) {
-        return new CreateMediaCommand(ownerId, coupleId, kind, mimeType, byteSize, value, height, durationMs, sha256, operationId);
+        return new CreateMediaCommand(ownerId, coupleId, kind, mimeType, byteSize, value, height, durationMs, sha256, operationId, purpose);
     }
 }
 

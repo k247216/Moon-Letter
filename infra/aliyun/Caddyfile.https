@@ -1,0 +1,10 @@
+{$MOON_LETTER_DOMAIN} {
+    encode gzip
+    @management path /actuator /actuator/*
+    handle @management {
+        respond "Not Found" 404
+    }
+    handle {
+        reverse_proxy app:8080
+    }
+}

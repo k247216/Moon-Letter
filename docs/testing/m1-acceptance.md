@@ -1,3 +1,4 @@
+<!-- Deployment/person/device identifiers in this public document are anonymized. -->
 # 月笺 M1 验收记录
 
 状态：**NOT VERIFIED / 未通过验收**
@@ -178,7 +179,7 @@
 ### 记录 12：设备绑定入口（Task 11a 前置，2026-10-01）
 
 - **背景**：Task 11 竖切绿了但真机装上 APK 无法绑定——`SyncSession` 只能被测试注入，App 没有任何 bootstrap/配对 UI；manifest 也没开 cleartext（真机 HTTP 到局域网服务器必被拦）。没有这个入口，Task 11a「当天开始真实使用」无从谈起。
-- **实现**：`core:network` 新增 `SessionApi`/`RetrofitSessionApi`（POST /api/v1/bootstrap、/api/v1/couple/{id}/pairing-token、/api/v1/couple/pair；UUID Gson 适配器；按 baseUrl 每次构建 client，支持换机换地址）；app 新增 `SetupScreen`/`SetupViewModel`（「我是第一位」：地址+称呼+BOOTSTRAP_SECRET → 建空间 → 展示一次性配对令牌；「我是伴侣」：地址+令牌 → 配对入空间；会话经 LaunchedEffect 落盘 SharedPreferences）；`AppNavigation` 无会话时整屏进 Setup；manifest 开 `usesCleartextTraffic`（自签名 HTTP 开发期决策，M2 换 HTTPS 时收回）；默认服务器地址改为开发机局域网 IP `http://10.138.79.194:8080`。
+- **实现**：`core:network` 新增 `SessionApi`/`RetrofitSessionApi`（POST /api/v1/bootstrap、/api/v1/couple/{id}/pairing-token、/api/v1/couple/pair；UUID Gson 适配器；按 baseUrl 每次构建 client，支持换机换地址）；app 新增 `SetupScreen`/`SetupViewModel`（「我是第一位」：地址+称呼+BOOTSTRAP_SECRET → 建空间 → 展示一次性配对令牌；「我是伴侣」：地址+令牌 → 配对入空间；会话经 LaunchedEffect 落盘 SharedPreferences）；`AppNavigation` 无会话时整屏进 Setup；manifest 开 `usesCleartextTraffic`（自签名 HTTP 开发期决策，M2 换 HTTPS 时收回）；默认服务器地址改为开发机局域网 IP `http://192.0.2.10:8080`。
 - **测试**：竖切测试的第 1、2 步改为走真实 `SetupViewModel`+`RetrofitSessionApi` 代码路径（同一真服务端），并新增会话落盘回读断言——手机上将要执行的绑定路径首次被真 HTTP 覆盖。
 - **红灯两轮**：① RetrofitSessionApi 初版用裸 Gson，UUID 反序列化崩（PairResultDto.userId），补 UUID 适配器后过；② 测试侧 setupB 忘切 PARTNER_DEVICE 模式，canSubmit 按首设备校验静默拦下（顺带确认 UI 按钮禁用态同样依赖 canSubmit，行为正确）。
 - **结果**：`./gradlew :app:testDebugUnitTest` → `BUILD SUCCESSFUL`（EXIT=0）；`./gradlew :app:assembleDebug` → `BUILD SUCCESSFUL`（EXIT=0）。
@@ -368,7 +369,7 @@
 - **表名进了测试**：runbook 要求用 `entry / entry_block / comment / sync_change / media_asset / couple_space / couple_member / device_session` 计数来证明「一条真实记录产生一行 entry」。写这段时发现 `sync_change`、`media_asset` 都改过名，文档里的表名一旦写错，前后对比会永远等于 0 且看起来一切正常。新增 `SchemaTableNamesTest`（Flyway + Testcontainers 或 `TEST_DB_URL`，与 `SchemaConstraintTest` 同一套取库方式）钉住这八个名字，并显式断言三个旧名字不存在。
 - **文档修正清单**（都按代码现状改，未凭印象）：README 删掉不存在的 `RECOVERY_SECRET` 前置条件、改为记录本地 CLI 恢复与 `BOOTSTRAP_SECRET` 可重复找回自己槽位的语义与其代价（该密钥现在是长期凭据，泄露＝第一位成员整槽被接管，服务端端口不得公网可达）；README 服务端启动改成 jar + 环境变量注入并写明 `mvn spring-boot:run --moon-letter.…` 传不进应用这条真机 403 根因；复核报告追加 §6 后续状态表（P0 与四条 P1 的技术部分逐条给提交号，同时写明「仍然成立的部分」是所有需要设备的证据）；交接快照 §3 五条问题标为已闭合、§4 顺序标出第 4 项才是当前第一优先级、§2 表里「服务器 8080 运行中」和「时间线仍非持续响应式」两处过时表述已改；计划 Task 2 第 82/83 项勾选并附证据与边界（真机失联演练仍归 H4），Task 11c 六项勾选并记录文件划分偏差（`core/sync/WeeklyReview.kt` + `app/notifications/WeeklyReviewWorker.kt`，非计划里的单个 `core/sync/WeeklyReviewWorker.kt`）。
 - **一处故意不勾**：Task 2「bootstrap 密钥已消费」保持未勾选，并写明它被使用者的决定取代——重装后必须仍能用同一密钥找回自己的位置，与一次性密钥互斥。把代价和约束写在同一行，避免下一个人把它当漏项补掉。
-- **本轮未做**：真机一切（E1 互见、E2 断网、H1 计时、H3 到点、H4 双端演练、D1 异机还原、U1/U2 视觉）；legacy 偏差清单（`CAPSULE_LOCKED/ARCHIVED`、`RoomSyncStore.mapState`、发布草稿时 `baseVersion` 固定 0、硬编码 `DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"`、cleartext、图片无磁盘缓存、IMAGE payload 带本机绝对路径、主题不跨端同步、无 Room migration 测试）——这些是下一件事，开档前只挑会影响真实数据的那部分先修。
+- **本轮未做**：真机一切（E1 互见、E2 断网、H1 计时、H3 到点、H4 双端演练、D1 异机还原、U1/U2 视觉）；legacy 偏差清单（`CAPSULE_LOCKED/ARCHIVED`、`RoomSyncStore.mapState`、发布草稿时 `baseVersion` 固定 0、硬编码 `DEFAULT_DEV_BASE_URL = "http://192.0.2.10:8080"`、cleartext、图片无磁盘缓存、IMAGE payload 带本机绝对路径、主题不跨端同步、无 Room migration 测试）——这些是下一件事，开档前只挑会影响真实数据的那部分先修。
 
 ### 记录 24：开档前的两处链路风险——本机路径外泄与发布版里的开发机地址（2026-10-01）
 
@@ -379,7 +380,7 @@
   - 红灯：把 `aPictureOnlyEntryCarriesBothItsLocalFileAndItsAsset` 改写成 `aReleasedPictureCarriesItsAssetButNeverItsLocalPath`——它原先**断言的就是泄露行为**（`JSONObject(block.getString("payload")).getString("localPath")` 等于本机路径），这正是"测试绿着但契约是错的"。新断言：线上不含 `localPath`、mime 仍在、**Room 里仍然保留**（上传 worker 要从那里读文件）。首跑 `assertFalse` 参数顺序写反导致编译红，改 `assertFalse(String, boolean)` 后是行为红。
   - 绿灯：`wirePayload` 只发 `{"mime": …}`；payload 不是 JSON 时（裸路径）也不再回显，落到固定 mime。**契约形状未变**：服务端 `blockTextPayload` 本来就接受字符串或对象，仍按字符串发送，服务端零改动。
   - 顺带核对：`ServerAddress` 之后确认对端渲染不依赖 `localPath`（`AppNavigation.entryPath` 对空串返回 null → `EntryPhoto.load(localPath=null, assetId)` 走下载），`TwoDevicePictureAndCommentLoopTest` 全绿即双 Room 环路与主题渲染未受影响。
-- **二、发布版 APK 里硬编码着开发机的局域网 IP**。`const val DEFAULT_DEV_BASE_URL = "http://10.138.79.194:8080"` 同时是绑定页的预填值和 `SyncSession.load()` 在**没有已存地址时**的回退值。她的 IP 每天变；预填值错了她改一下就行，真正的问题是回退值：release 版一旦 prefs 里没有 baseUrl，就会安静地去连一台不存在的机器，表现成"同步转圈、记录像丢了"，而这正是这个产品最不能出现的观感。
+- **二、发布版 APK 里硬编码着开发机的局域网 IP**。`const val DEFAULT_DEV_BASE_URL = "http://192.0.2.10:8080"` 同时是绑定页的预填值和 `SyncSession.load()` 在**没有已存地址时**的回退值。她的 IP 每天变；预填值错了她改一下就行，真正的问题是回退值：release 版一旦 prefs 里没有 baseUrl，就会安静地去连一台不存在的机器，表现成"同步转圈、记录像丢了"，而这正是这个产品最不能出现的观感。
   - 新增 `ServerAddress.resolve(stored, isDebugBuild)`：存过的地址优先；**只有 debug 构建**才回退到开发机；release 没有地址就返回 null。`SyncSession.load` 收到 null 时 `return null` → 落回绑定页问一次，而不是拿猜测的地址去连（**故意不清 prefs**：那条会话记录没坏，缺的只是配置，清掉等于把她的令牌扔了）。
   - `app/build.gradle.kts` 开 `buildConfig = true` 以取 `BuildConfig.DEBUG`。测试 3 例（存过的优先 / debug 回退 / release 无地址）；绑定页 `canSubmit` 已要求 `serverUrl.isNotBlank()`，所以 release 预填空串只会让她输入一次。
 - **修正记录 23 的一处误判**：那份清单把 cleartext 列为遗留偏差，实际 `app/src/debug/AndroidManifest.xml` 里才有 `usesCleartextTraffic`，`src/main` 已无该标志（`3a50c8f` 就修好了）。记录 23 是当轮证据，不回头改；正确表述写在这里。
@@ -544,7 +545,7 @@
 - **`-dirty` 这一半才是关键**：它把「真机跑绿」和「绿的是推上去的那个提交」分开——脏包上的验证不能算已提交代码的证据。
 - **顺带查出一条口径错误，之前所有记录的 APK 字节数都不能当指纹**：同一份**已提交**源码，重建成 **20,824,170** 字节，而 02:45 那个产物是 **20,998,177**——大 174 KB。用 `git show HEAD:android/app/build.gradle.kts` 临时换回旧脚本再重建一次，得到 20,824,170 且 `versionName='0.1.0'`，说明这 174 KB **与本轮改动无关**（我的改动只让文件正好 +24 字节 = 版本字符串变长的部分），来源是增量打包遗留状态，没有进一步归因。记录 37–42 里报的字节数都是这类增量产物，今后以可复现重建为准。
 - **怎么证明「这个包里有这两轮修复」而不靠界面**：`aapt dump badging` 读 `versionName`；`unzip classes*.dex` 后 grep 两条只由本轮提交引入的字符串——`changes yet`（`RoomSyncStore` 的 else 守卫）与 `comment change carries no createdAt`（严格评论 apply），`git log -S` 证明它们分别唯一来自 `4a906f4` 与 `35e70a7`，重建产物里两者都在 `classes7.dex`。
-- **重启取证（本轮的另一半）**：:8080 已用记录 41 修好后的 fat jar 重启（旧 PID 24632 → 新 PID 30340），`/actuator/health` 200 UP，局域网地址 `http://10.138.79.194:8080` 实测可达（调试包默认地址）。从 jar 抽出 `CommentService.class` 反编译确认运行的是新载荷：构造签名 `(JdbcTemplate, ObjectMapper, SpaceAccessPolicy, ChangeFeedService)`，`appendChange` 之前调 `writeJson` → `ObjectMapper.writeValueAsString`，手写的 `toJson` 已不存在。真库 `moon_letter` 里 `sync_change` = 0 行、`comment` = 0、`media_asset` = 0 → 记录 41 定的升级顺序（先重启服务端再装新包）在这台机器上**没有旧形状载荷会卡住游标**。日志零 error/exception，且不含数据库密码与 bootstrap secret（grep 计数 0）。
+- **重启取证（本轮的另一半）**：:8080 已用记录 41 修好后的 fat jar 重启（旧 PID 24632 → 新 PID 30340），`/actuator/health` 200 UP，局域网地址 `http://192.0.2.10:8080` 实测可达（调试包默认地址）。从 jar 抽出 `CommentService.class` 反编译确认运行的是新载荷：构造签名 `(JdbcTemplate, ObjectMapper, SpaceAccessPolicy, ChangeFeedService)`，`appendChange` 之前调 `writeJson` → `ObjectMapper.writeValueAsString`，手写的 `toJson` 已不存在。真库 `moon_letter` 里 `sync_change` = 0 行、`comment` = 0、`media_asset` = 0 → 记录 41 定的升级顺序（先重启服务端再装新包）在这台机器上**没有旧形状载荷会卡住游标**。日志零 error/exception，且不含数据库密码与 bootstrap secret（grep 计数 0）。
 - **一个自己差点犯的错**：`storage.local-dir` 并不在存好的启动命令里，我一度以为新进程换了媒体目录；实际代码默认值是 `./storage`（`LocalObjectStorage.java:26`），而新进程工作目录是 `server/`，落的还是 `server/storage`。已用 `application.yml` + 源码默认值 + 目录实存（0 文件，与 `media_asset` 为 0 一致）三处对齐确认。
 - **§6 边界**：只动 `android/app/build.gradle.kts`（新增构建期 git 读取 + `versionName` 拼接）和本文档。没动 `core/*`、`feature/*`、服务端、表结构、迁移，也没动任何界面代码。
 - **绿灯口径**：`:app:assembleDebug` 通过，交付产物 **20,824,178** 字节（11:32），`aapt dump badging` 实测 `versionName='0.1.0+0eb895d'`（提交后重建，干净 sha，无 `-dirty`）；该包内 `classes7.dex` 仍含 `changes yet` 与 `comment change carries no createdAt` 两条本轮字符串，`classes9.dex` 含昨天 UI 的 `MemoryReviewScreens`/`ReviewMemoryCard`，`PaperTexture` 在多个 dex 中可见——即昨天 `4ccf719` 的 UI 与今晚两轮修复**同时在包里**。**上一轮报的 20,998,177 是增量产物，不能当包的身份**（见上条）。本轮没有新增 JVM 可测逻辑（构建脚本，非运行代码），Android JVM 沿用 **113 例 / 0 失败 / 0 跳过**（app 28、core:database 22、core:sync 19、feature:timeline 13、feature/couple 11、feature/editor 8、core:model 6、core:designsystem 3、core:network 3，实测 XML 汇总），服务端未改沿用 **64 例**。

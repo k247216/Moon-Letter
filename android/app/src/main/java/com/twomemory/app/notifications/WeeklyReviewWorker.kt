@@ -6,11 +6,14 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.twomemory.app.SyncSession
 import com.twomemory.database.AppDatabase
 import com.twomemory.database.EntryDao
 import com.twomemory.sync.ReviewCandidate
 import com.twomemory.sync.WeeklyReview
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * The weekly re-encounter. It reads the local archive, picks one clearly earlier
@@ -24,7 +27,7 @@ class WeeklyReviewWorker(
 
     override suspend fun doWork(): Result {
         val context = applicationContext
-        pickReviewEntryId(context)?.let { MoonLetterNotifier.showWeeklyReview(context, it) }
+        deliverWeeklyReview(context)
         return Result.success()
     }
 
@@ -68,6 +71,24 @@ class WeeklyReviewWorker(
         /** Off means off: the queued run goes with it. */
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(UNIQUE)
+        }
+    }
+}
+
+/** Select from the captured archive; keep binding validation and posting atomic. */
+internal suspend fun deliverWeeklyReview(context: Context, entriesOverride: EntryDao? = null): Boolean {
+    val binding = SyncSession.captureBinding(context) ?: return false
+    val preferences = NotificationPreferences(context)
+    if (!preferences.weeklyReviewEnabled) return false
+    val entries = entriesOverride ?: AppDatabase.build(context, binding.session.databaseName).entryDao()
+    val entryId = pickReviewEntryId(context, entries) ?: return false
+    val job = currentCoroutineContext()
+    return synchronized(SyncSession.bindingLock) {
+        job.ensureActive()
+        if (!SyncSession.isCurrentBinding(context, binding) || !preferences.weeklyReviewEnabled) {
+            false
+        } else {
+            MoonLetterNotifier.showWeeklyReview(context, entryId)
         }
     }
 }

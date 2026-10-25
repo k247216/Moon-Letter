@@ -1,7 +1,7 @@
-# Local development profile. Credentials match infra/compose.yaml and are
-# development-only; production must provide JDBC_DATABASE_* instead.
+# Local development profile. Set JDBC_DATABASE_PASSWORD in the environment or
+# an uncommitted local .env file; production must provide JDBC_DATABASE_* too.
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/moon_letter
-    username: moon_letter
-    password: moon_letter_dev_only
+    url: ${JDBC_DATABASE_URL:jdbc:postgresql://localhost:5432/moon_letter}
+    username: ${JDBC_DATABASE_USERNAME:moon_letter}
+    password: ${JDBC_DATABASE_PASSWORD:}

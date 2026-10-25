@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.MicNone
+import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Palette
@@ -23,6 +24,8 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Redeem
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -31,6 +34,7 @@ object TwoMemoryIcons {
     val Image = Icons.Outlined.Image
     val Video = Icons.Outlined.VideoLibrary
     val Voice = Icons.Outlined.MicNone
+    val Letter = Icons.Outlined.MailOutline
     val Music = Icons.Outlined.MusicNote
     val Location = Icons.Outlined.LocationOn
     val More = Icons.Outlined.MoreHoriz
@@ -47,6 +51,8 @@ object TwoMemoryIcons {
     val Palette = Icons.Outlined.Palette
     val Export = Icons.Outlined.Description
     val Settings = Icons.Outlined.Settings
+    val Search = Icons.Outlined.Search
+    val Layers = Icons.Outlined.Layers
     val Comment = Icons.Outlined.ChatBubbleOutline
     val Like = Icons.Outlined.FavoriteBorder
     val Chevron = Icons.Outlined.ChevronRight

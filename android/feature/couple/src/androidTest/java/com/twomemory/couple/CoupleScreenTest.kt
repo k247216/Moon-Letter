@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.twomemory.designsystem.MoonLetterTheme
 import org.junit.Rule
@@ -28,9 +29,10 @@ class CoupleScreenTest {
         }
         composeRule.onNodeWithText("小满").assertIsDisplayed()
         composeRule.onNodeWithText("阿屿").assertIsDisplayed()
-        composeRule.onNodeWithText("暖米色").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("设置").performClick()
+        composeRule.onNodeWithText("暖米色").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("纯白").assertIsDisplayed()
-        composeRule.onNodeWithText("月笺 · M1 · 0.1.0").assertIsDisplayed()
+        composeRule.onNodeWithText("月笺 · M1 · 0.1.0").performScrollTo().assertIsDisplayed()
     }
 
     @Test

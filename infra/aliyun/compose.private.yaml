@@ -1,0 +1,60 @@
+# Pre-domain staging: no public API, no published database port.
+name: moonletter
+services:
+  postgres:
+    image: postgres:18-alpine
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 384m
+    pids_limit: 128
+    environment:
+      POSTGRES_DB: moon_letter
+      POSTGRES_USER: moon_letter
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Configure .env first}"
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30", "-c", "work_mem=2MB"]
+    volumes:
+      - moon-letter-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moon_letter -d moon_letter"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  app:
+    image: eclipse-temurin:21-jre
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 768m
+    pids_limit: 256
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./moon-letter-server.jar:/app/moon-letter-server.jar:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      JDBC_DATABASE_URL: jdbc:postgresql://postgres:5432/moon_letter
+      JDBC_DATABASE_USERNAME: moon_letter
+      JDBC_DATABASE_PASSWORD: "${POSTGRES_PASSWORD:?Configure .env first}"
+      BOOTSTRAP_SECRET: "${BOOTSTRAP_SECRET:?Configure .env first}"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "5"
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "1"
+      SERVER_TOMCAT_THREADS_MAX: "24"
+      SERVER_TOMCAT_THREADS_MIN_SPARE: "4"
+      MOON_LETTER_STORAGE_MODE: s3
+      S3_ENDPOINT: "${S3_ENDPOINT:?Configure .env first}"
+      S3_REGION: "${S3_REGION:?Configure .env first}"
+      S3_BUCKET: "${S3_BUCKET:?Configure .env first}"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:?Set dedicated RAM credentials}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:?Set dedicated RAM credentials}"
+      S3_PATH_STYLE_ACCESS: "false"
+    command: ["java", "-Xms128m", "-Xmx384m", "-XX:MaxDirectMemorySize=64m", "-XX:MaxMetaspaceSize=192m", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/moon-letter-server.jar", "--server.address=0.0.0.0", "--server.port=8080"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+volumes:
+  moon-letter-postgres:

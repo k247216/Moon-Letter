@@ -10,5 +10,10 @@ import java.util.UUID;
  */
 public record CreateEntryCommand(UUID authorId, UUID coupleId, EntryMode mode, String title,
                                  Instant occurredAt, String occurredTimezone,
-                                 List<BlockMutation> blocks, UUID entryId) {
+                                 List<BlockMutation> blocks, UUID entryId, EntryVisibility visibility) {
+    public CreateEntryCommand(UUID authorId, UUID coupleId, EntryMode mode, String title,
+                              Instant occurredAt, String occurredTimezone,
+                              List<BlockMutation> blocks, UUID entryId) {
+        this(authorId, coupleId, mode, title, occurredAt, occurredTimezone, blocks, entryId, EntryVisibility.SHARED);
+    }
 }

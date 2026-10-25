@@ -115,6 +115,7 @@ class TwoDevicePictureAndCommentLoopTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         try {
             val setupA = SetupViewModel(RetrofitSessionApi.create())
+            setupA.updateMode(SetupViewModel.Mode.FIRST_DEVICE)
             setupA.updateServerUrl(BASE_URL)
             setupA.updateBootstrapSecret(BOOTSTRAP_SECRET)
             setupA.updateDisplayName("小满")
@@ -216,6 +217,12 @@ class TwoDevicePictureAndCommentLoopTest {
             assertEquals(assetId, UUID.fromString(seenImage.assetId!!))
             val downloaded = RetrofitMediaApi.create().download(BASE_URL, boundB.token, assetId)
             assertEquals(sha256(pngBytes), sha256(downloaded))
+
+            // Uploaded profile pictures must be visible in the other member's authenticated profile read.
+            RetrofitSessionApi.create().updateOwnAvatar(BASE_URL, boundA.token, coupleId, userIdA, assetId)
+            val partnerSpace = RetrofitSessionApi.create().readSpace(BASE_URL, boundB.token, coupleId)
+            assertEquals(assetId, partnerSpace.members.first { it.userId == userIdA }.profile.avatarAssetId)
+            assertEquals(png.absolutePath, JSONObject(databaseA.entryDao().findBlock(imageBlockId.toString())!!.payload).getString("localPath"))
 
             // 5. A replies under the record; B's copy of the record shows the reply.
             val momentBefore = System.currentTimeMillis()

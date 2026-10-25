@@ -8,13 +8,15 @@ import com.twomemory.network.MediaCreateCommand
 import com.twomemory.network.RetrofitMediaApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
 
 /**
- * Uploads every local IMAGE block that still lacks an asset (Task 13), before
- * the sync engine gets a turn. A block whose upload failed keeps its whole entry
+ * Uploads local media independently of text synchronization. A failed block keeps its whole entry
  * out of the outbox queue, so the record stays an unsent draft here instead of
  * becoming a published entry with a missing picture on both phones.
  */
@@ -24,43 +26,52 @@ object MediaUploadManager {
 
     suspend fun uploadPendingImages(context: Context) {
         val session = SyncSession.load(context) ?: return
-        uploadPendingImages(session, AppDatabase.build(context))
+        uploadPendingImages(session, AppDatabase.build(context, session.databaseName))
     }
 
-    suspend fun uploadPendingImages(session: SyncSession.Session, database: AppDatabase) {
+    internal suspend fun uploadPendingImages(
+        session: SyncSession.Session,
+        database: AppDatabase,
+        api: com.twomemory.network.MediaApi = mediaApi,
+    ) {
         val writer = LocalEntryWriter(database)
-        for (entity in database.entryDao().imageBlocksWithoutAsset()) {
+        for (entity in database.entryDao().mediaBlocksWithoutAsset()) {
+            currentCoroutineContext().ensureActive()
+            if (entity.authorId != session.userId.toString()) continue
+            val entry = database.entryDao().findEntry(entity.entryId) ?: continue
+            if (entry.deleted || entry.coupleId != session.coupleId.toString()) continue
             try {
                 val payload = org.json.JSONObject(entity.payload)
                 val file = File(payload.optString("localPath"))
                 if (!file.isFile) continue
-                val bytes = withContext(Dispatchers.IO) { file.readBytes() }
-
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-                val ticket = mediaApi.createUpload(
+                if (entity.type == "IMAGE") BitmapFactory.decodeFile(file.absolutePath, bounds)
+                val checksum = fileSha256(file)
+                val ticket = api.createUpload(
                     session.baseUrl,
                     session.token,
                     MediaCreateCommand(
                         ownerId = session.userId,
                         coupleId = session.coupleId,
                         operationId = UUID.fromString(entity.id),
-                        kind = "IMAGE",
+                        kind = entity.type,
                         mimeType = payload.optString("mime", "image/jpeg"),
-                        byteSize = bytes.size.toLong(),
-                        width = bounds.outWidth.coerceAtLeast(1),
-                        height = bounds.outHeight.coerceAtLeast(1),
-                        sha256 = sha256(bytes),
+                        byteSize = file.length(),
+                        width = if (entity.type == "IMAGE") bounds.outWidth.coerceAtLeast(1) else 1,
+                        height = if (entity.type == "IMAGE") bounds.outHeight.coerceAtLeast(1) else 1,
+                        sha256 = checksum,
                     ),
                 )
-                mediaApi.uploadData(
-                    session.baseUrl,
-                    session.token,
-                    ticket.assetId,
-                    bytes,
-                    payload.optString("mime", "image/jpeg"),
-                )
+                val mimeType = payload.optString("mime", "image/jpeg")
+                if (ticket.url.startsWith("local://")) {
+                    api.uploadFileData(session.baseUrl, session.token, ticket.assetId, file, mimeType)
+                } else {
+                    api.uploadFileToUrl(ticket.url, file, mimeType)
+                    api.completeUpload(session.baseUrl, session.token, ticket.assetId, checksum)
+                }
                 writer.attachAsset(UUID.fromString(entity.id), ticket.assetId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (expected: Exception) {
                 // The entry stays gated and this block is retried on the next cycle.
                 continue
@@ -68,6 +79,18 @@ object MediaUploadManager {
         }
     }
 
-    private fun sha256(bytes: ByteArray): String =
-        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+}
+
+internal suspend fun fileSha256(file: File): String = withContext(Dispatchers.IO) {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(8192)
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val size = input.read(buffer)
+            if (size < 0) break
+            digest.update(buffer, 0, size)
+        }
+    }
+    digest.digest().joinToString("") { "%02x".format(it) }
 }

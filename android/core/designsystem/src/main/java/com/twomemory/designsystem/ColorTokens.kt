@@ -14,7 +14,7 @@ object TwoMemoryColors {
     val WarmBeigeAccentSoft = Color(0xFFF3D8CD)
     val WarmBeigeSage = Color(0xFF788770)
     val WarmBeigeLine = Color(0xFFE2D5C8)
-    val WarmBeigeNav = Color(0xFFF7EFF9)
+    val WarmBeigeNav = Color(0xFFF6EFE5)
     val WarmBeigePaperShadow = Color(0x1A8B776A)
 
     val PureWhiteBackground = Color(0xFFFFFFFF)

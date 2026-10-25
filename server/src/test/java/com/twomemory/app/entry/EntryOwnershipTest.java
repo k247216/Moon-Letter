@@ -30,9 +30,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest
 class EntryOwnershipTest {
 
-    private static final String ADMIN_URL = "jdbc:postgresql://localhost:5432/postgres";
-    private static final String ADMIN_USER = "moon_letter";
-    private static final String ADMIN_PASSWORD = "moon_letter_dev_only";
+    private static final String ADMIN_URL = com.twomemory.app.TestDatabaseConfig.adminUrl();
+    private static final String ADMIN_USER = com.twomemory.app.TestDatabaseConfig.user();
+    private static final String ADMIN_PASSWORD = com.twomemory.app.TestDatabaseConfig.password();
     private static final String TEST_DB = "moon_letter_own_test";
 
     static UUID author;
@@ -46,6 +46,52 @@ class EntryOwnershipTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired private com.twomemory.app.export.ExportService exportService;
+    @Autowired private com.twomemory.app.media.MediaService mediaService;
+
+    @Test void privateDraftCannotBeReadThroughEmptyChangesOrConflictResolution() {
+        UUID entry = insertEntry(EntryMode.PERSONAL, EntryState.DRAFT, author);
+        insertTextBlock(entry, author, 0, "private-only");
+        assertThatThrownBy(() -> entryService.applyChanges(entry, partner, 0, List.of()))
+                .isInstanceOf(EntryAccessDeniedException.class);
+        assertThatThrownBy(() -> entryService.resolveConflict(entry, partner, new ResolveConflictCommand(0, List.of())))
+                .isInstanceOf(EntryAccessDeniedException.class);
+        assertThat(entryService.readEntry(entry, author).id()).isEqualTo(entry);
+    }
+
+    @Test void partnerExportExcludesPrivateDraftAndDeletedBlocks() {
+        UUID privateEntry = insertEntry(EntryMode.PERSONAL, EntryState.DRAFT, author);
+        insertTextBlock(privateEntry, author, 0, "private-only");
+        UUID shared = insertEntry(EntryMode.PERSONAL, EntryState.PUBLISHED, author);
+        insertTextBlock(shared, author, 0, "shared-text");
+        UUID deleted = insertTextBlock(shared, author, 1, "deleted-only");
+        jdbcTemplate.update("UPDATE entry_block SET deleted_at=now() WHERE id=?", deleted);
+        String exported = exportService.exportCouple(partner, couple1, null, null).toString();
+        assertThat(exported).contains("shared-text").doesNotContain("private-only", "deleted-only", privateEntry.toString());
+        assertThat(exportService.exportCouple(author, couple1, null, null).toString()).contains("private-only");
+    }
+
+    @Test void partnerMediaRequiresALiveReadableReference() {
+        UUID asset = insertMediaAsset(couple1, author, "READY");
+        assertThatThrownBy(() -> mediaService.readAsset(partner, asset)).isInstanceOf(RuntimeException.class);
+        mediaService.readAsset(author, asset);
+        UUID entry = insertEntry(EntryMode.PERSONAL, EntryState.DRAFT, author);
+        insertImageBlock(entry, author, 0, asset);
+        assertThatThrownBy(() -> mediaService.readAsset(partner, asset)).isInstanceOf(RuntimeException.class);
+        jdbcTemplate.update("UPDATE entry SET state='PUBLISHED' WHERE id=?", entry);
+        mediaService.readAsset(partner, asset);
+        jdbcTemplate.update("UPDATE entry_block SET deleted_at=now() WHERE entry_id=?", entry);
+        assertThatThrownBy(() -> mediaService.readAsset(partner, asset)).isInstanceOf(RuntimeException.class);
+        UUID album = UUID.randomUUID();
+        jdbcTemplate.update("INSERT INTO album(id,couple_id,title,created_by) VALUES (?,?,'相册',?)", album, couple1, author);
+        jdbcTemplate.update("INSERT INTO album_item(album_id,media_asset_id,order_key,added_by) VALUES (?,?,0,?)", album, asset, author);
+        mediaService.readAsset(partner, asset);
+        jdbcTemplate.update("UPDATE album SET deleted_at=now() WHERE id=?", album);
+        assertThatThrownBy(() -> mediaService.readAsset(partner, asset)).isInstanceOf(RuntimeException.class);
+        jdbcTemplate.update("UPDATE user_profile SET avatar_asset_id=? WHERE user_id=?", asset, author);
+        mediaService.readAsset(partner, asset);
+    }
 
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {

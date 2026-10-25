@@ -8,7 +8,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import java.util.List;
-import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -18,24 +17,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * The URL must be supplied explicitly via TEST_DB_URL (with TEST_DB_USER /
  * TEST_DB_PASSWORD), matching the contract used by SchemaConstraintTest.
- * When TEST_DB_URL is absent the test falls back to the local Docker
- * Compose development database documented in README.md.
+ * When TEST_DB_URL is absent the test uses the local Docker Compose database
+ * URL, while its password must still come from TEST_DB_PASSWORD.
  */
 @SpringBootTest
 class CoupleDiaryApplicationTest {
 
-    private static final String FALLBACK_URL = "jdbc:postgresql://localhost:5432/moon_letter";
-    private static final String FALLBACK_USER = "moon_letter";
-    private static final String FALLBACK_PASSWORD = "moon_letter_dev_only";
-
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {
-        String url = Objects.requireNonNullElse(System.getenv("TEST_DB_URL"), FALLBACK_URL);
-        String user = Objects.requireNonNullElse(System.getenv("TEST_DB_USER"), FALLBACK_USER);
-        String password = Objects.requireNonNullElse(System.getenv("TEST_DB_PASSWORD"), FALLBACK_PASSWORD);
-        registry.add("spring.datasource.url", () -> url);
-        registry.add("spring.datasource.username", () -> user);
-        registry.add("spring.datasource.password", () -> password);
+        registry.add("spring.datasource.url", TestDatabaseConfig::applicationUrl);
+        registry.add("spring.datasource.username", TestDatabaseConfig::user);
+        registry.add("spring.datasource.password", TestDatabaseConfig::password);
     }
 
     @Autowired

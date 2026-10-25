@@ -23,6 +23,8 @@ android {
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
 dependencies {
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
     implementation(project(":core:model"))
     implementation(project(":core:designsystem"))
     implementation(platform(libs.androidx.compose.bom))

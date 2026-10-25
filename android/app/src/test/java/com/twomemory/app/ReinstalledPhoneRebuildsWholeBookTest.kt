@@ -135,6 +135,7 @@ class ReinstalledPhoneRebuildsWholeBookTest {
         try {
             // 1. Both devices bind through the shipped screens.
             val setupA = SetupViewModel(RetrofitSessionApi.create())
+            setupA.updateMode(SetupViewModel.Mode.FIRST_DEVICE)
             setupA.updateServerUrl(BASE_URL)
             setupA.updateBootstrapSecret(BOOTSTRAP_SECRET)
             setupA.updateDisplayName("小满")
@@ -204,6 +205,7 @@ class ReinstalledPhoneRebuildsWholeBookTest {
             // 4. Bootstrap again with the SAME secret: same person, same space, and
             //    the name she already had is not re-declared back to the old one.
             val again = SetupViewModel(RetrofitSessionApi.create())
+            again.updateMode(SetupViewModel.Mode.FIRST_DEVICE)
             again.updateServerUrl(BASE_URL)
             again.updateBootstrapSecret(BOOTSTRAP_SECRET)
             again.updateDisplayName("小满")
@@ -214,7 +216,7 @@ class ReinstalledPhoneRebuildsWholeBookTest {
             assertEquals("the secret reclaims the founding member's own slot", userIdA, rebound.userId)
             assertEquals(coupleId, rebound.coupleId)
             assertEquals(
-                "both slots are taken, so the code this phone mints opens the partner's own slot",
+                "both slots are taken, so the code this phone mints restores its own identity",
                 "REJOIN", again.state.value.shownPairingTokenKind,
             )
             assertEquals(

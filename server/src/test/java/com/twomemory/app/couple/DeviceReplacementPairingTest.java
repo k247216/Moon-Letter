@@ -28,16 +28,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  * written are attributed to the member id a reinstall would otherwise lose.
  *
  * Two ways back in, both exercised here: the bootstrap secret reclaims the
- * founding member's own slot, and a token minted by the member who still has a
- * working phone is bound to the other member's slot (REJOIN) rather than
- * inviting a stranger into a full space.
+ * founding member's own slot, and an authenticated member can mint a token
+ * bound only to their own slot (REJOIN) before replacing their device.
+ * Neither route lets one member recover the other member's identity.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class DeviceReplacementPairingTest {
 
-    private static final String ADMIN_URL = "jdbc:postgresql://localhost:5432/postgres";
-    private static final String ADMIN_USER = "moon_letter";
-    private static final String ADMIN_PASSWORD = "moon_letter_dev_only";
+    private static final String ADMIN_URL = com.twomemory.app.TestDatabaseConfig.adminUrl();
+    private static final String ADMIN_USER = com.twomemory.app.TestDatabaseConfig.user();
+    private static final String ADMIN_PASSWORD = com.twomemory.app.TestDatabaseConfig.password();
     private static final String TEST_DB = "moon_letter_replace_test";
     private static final String BOOTSTRAP_SECRET = "replacement-local-bootstrap-secret";
 
@@ -93,7 +93,9 @@ class DeviceReplacementPairingTest {
         assertThat(recovered.get("userId")).isEqualTo(ownerId);
         assertThat(recovered.get("coupleId")).isEqualTo(coupleId);
         String recoveredOwnerToken = (String) recovered.get("token");
-        assertThat(recoveredOwnerToken).isNotEqualTo(ownerToken);
+        assertThat(recoveredOwnerToken.equals(ownerToken))
+                .as("bootstrap recovery rotates the owner's session without exposing token values")
+                .isFalse();
 
         // 3. The session the lost phone held stops working; the partner's is
         //    untouched, so recovering one device cannot log the other one out.
@@ -103,9 +105,9 @@ class DeviceReplacementPairingTest {
         assertThat(memberIds(readSpace(coupleId, recoveredOwnerToken)))
                 .containsExactlyInAnyOrder(ownerId, partnerId);
 
-        // 4. The partner's phone is lost too. The token the owner mints now is
-        //    bound to the partner's own slot, because the space has no free one.
-        Map<String, Object> rejoin = requestPairingToken(coupleId, recoveredOwnerToken);
+        // 4. Before replacing their phone, the partner uses their own live
+        //    session to mint a token bound only to their own member slot.
+        Map<String, Object> rejoin = requestPairingToken(coupleId, partnerToken);
         assertThat(rejoin.get("pairingTokenKind")).isEqualTo("REJOIN");
         Map<String, Object> partnerBack = pair((String) rejoin.get("pairingToken"), "阿屿");
         assertThat(partnerBack.get("userId"))
@@ -120,7 +122,7 @@ class DeviceReplacementPairingTest {
         assertThat(count("app_user")).isEqualTo(2);
 
         // 5. A rejoin token is single use, and minting a new one revokes the
-        //    outstanding one, so an old code cannot kick the partner off again.
+        //    outstanding one, so an old code cannot rotate that member again.
         String rejoinToken = (String) rejoin.get("pairingToken");
         assertThat(pairStatus(rejoinToken)).isEqualTo(409);
         assertThat(requestPairingToken(coupleId, partnerFreshToken).get("pairingTokenKind")).isEqualTo("REJOIN");
@@ -182,7 +184,7 @@ class DeviceReplacementPairingTest {
 
     private Map<String, Object> ok(ResponseEntity<Map> response) {
         assertThat(response.getStatusCode().is2xxSuccessful())
-                .as("expected success, got %s with body %s", response.getStatusCode(), response.getBody())
+                .as("expected successful HTTP status, got %s", response.getStatusCode())
                 .isTrue();
         return response.getBody();
     }

@@ -7,6 +7,7 @@ import com.twomemory.network.ChangePage
 import com.twomemory.network.CoupleDiaryApi
 import com.twomemory.network.HttpUnauthorizedException
 import com.twomemory.network.PushResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import java.time.Clock
@@ -33,10 +34,15 @@ class SyncEngine(
         var applied = 0
         var retried = 0
         var conflicts = 0
+        val rejectedEntities = mutableSetOf<UUID>()
         for (operation in store.pendingOperations(limit = 50)) {
             currentCoroutineContext().ensureActive()
+            // The pending list was loaded before this batch's rejections were
+            // persisted, so protect later operations of those records here.
+            if (operation.entityId in rejectedEntities) continue
             try {
                 val push = api.push(operation)
+                currentCoroutineContext().ensureActive()
                 when (push.status) {
                     PushResult.Status.APPLIED, PushResult.Status.DUPLICATE -> {
                         store.markApplied(operation.operationId, push.responseBody)
@@ -44,6 +50,7 @@ class SyncEngine(
                     }
                     PushResult.Status.CONFLICT -> {
                         store.markConflict(operation.operationId)
+                        rejectedEntities += operation.entityId
                         conflicts++
                     }
                     PushResult.Status.UNAUTHORIZED -> {
@@ -59,7 +66,7 @@ class SyncEngine(
                     }
                 }
             } catch (failure: Throwable) {
-                if (failure is kotlinx.coroutines.CancellationException) throw failure
+                if (failure is CancellationException) throw failure
                 scheduleRetry(operation)
                 retried++
                 return SyncResult(applied = applied, retried = retried, conflicts = conflicts)
@@ -70,10 +77,13 @@ class SyncEngine(
 
     suspend fun pullAfter(cursor: Long): SyncResult {
         return try {
+            currentCoroutineContext().ensureActive()
             val page = api.pull(coupleId, cursor, 200)
+            currentCoroutineContext().ensureActive()
             store.applyChangesAtomically(coupleId, page.changes, page.nextSequence)
             SyncResult(pulled = page.changes.size, nextSequence = page.nextSequence)
         } catch (failure: Throwable) {
+            if (failure is CancellationException) throw failure
             SyncResult(failed = failure, nextSequence = cursor, needsRePair = failure is HttpUnauthorizedException)
         }
     }
@@ -81,20 +91,25 @@ class SyncEngine(
     /** Pulls page after page until the server reports has_more=false. */
     suspend fun pullAll(): SyncResult {
         var cursor = try {
+            currentCoroutineContext().ensureActive()
             store.currentCursor(coupleId)
         } catch (failure: Throwable) {
+            if (failure is CancellationException) throw failure
             return SyncResult(failed = failure)
         }
         var pulled = 0
         var hasMore = true
         while (hasMore) {
             try {
+                currentCoroutineContext().ensureActive()
                 val page = api.pull(coupleId, cursor, 200)
+                currentCoroutineContext().ensureActive()
                 store.applyChangesAtomically(coupleId, page.changes, page.nextSequence)
                 pulled += page.changes.size
                 cursor = page.nextSequence
                 hasMore = page.hasMore
             } catch (failure: Throwable) {
+                if (failure is CancellationException) throw failure
                 return SyncResult(
                     pulled = pulled,
                     nextSequence = cursor,

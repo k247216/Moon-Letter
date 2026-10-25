@@ -8,6 +8,7 @@ enum class EntryMode { PERSONAL, COLLABORATIVE }
 enum class EntryState { DRAFT, PUBLISHED, CAPSULE_LOCKED, ARCHIVED }
 
 enum class BlockType { TEXT, IMAGE, VIDEO, AUDIO, MUSIC, LOCATION }
+enum class EntryVisibility { SHARED, PRIVATE }
 
 data class LocalEntryCommand(
     val coupleId: UUID,
@@ -18,6 +19,7 @@ data class LocalEntryCommand(
     val title: String? = null,
     val blocks: List<LocalBlockCommand> = emptyList(),
     val entryId: UUID = UUID.randomUUID(),
+    val visibility: EntryVisibility = EntryVisibility.SHARED,
 )
 
 data class LocalBlockCommand(
@@ -43,10 +45,27 @@ data class TimelineItem(
     val preview: String? = null,
     /** Where this entry's first picture lives, when it has one. */
     val photo: TimelinePhoto? = null,
-)
+    /** Non-photo blocks that deserve their own timeline treatment. */
+    val attachments: List<TimelineAttachment> = emptyList(),
+    val visibility: EntryVisibility = EntryVisibility.SHARED,
+) {
+    /** Backward-readable presentation: no new wire enum, schema or hidden text markers. */
+    val isLittleNote: Boolean get() = mode == EntryMode.PERSONAL && title == "小便签" &&
+        photo == null && attachments.isEmpty() && !preview.isNullOrBlank()
+}
 
 /** A picture address: the copy this phone kept, or the one the server holds. */
 data class TimelinePhoto(val localPath: String?, val assetId: String?)
+
+/** A compact semantic preview for location/music/audio/video blocks. */
+data class TimelineAttachment(
+    val type: BlockType,
+    val title: String? = null,
+    val detail: String? = null,
+    val url: String? = null,
+    val localPath: String? = null,
+    val assetId: String? = null,
+)
 
 data class EntryBlock(
     val id: UUID,
@@ -60,6 +79,7 @@ data class EntryBlock(
     val assetId: String? = null,
     /** Original structured payload for UI-only rendering of links/city snapshots. */
     val payload: String? = null,
+    val authorId: UUID? = null,
 )
 
 data class EntryComment(

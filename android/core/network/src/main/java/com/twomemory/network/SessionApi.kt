@@ -11,6 +11,7 @@ import retrofit2.http.Header
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.PUT
 import retrofit2.http.Query
 import java.io.IOException
 import java.util.UUID
@@ -26,7 +27,7 @@ data class BootstrapResultDto(
 
 data class CoupleViewDto(val id: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"))
 
-data class ProfileViewDto(val displayName: String = "")
+data class ProfileViewDto(val displayName: String = "", val avatarAssetId: UUID? = null)
 
 data class MemberViewDto(
     val userId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"),
@@ -51,12 +52,34 @@ data class PairingTokenResultDto(
 
 data class PairRequestDto(val token: String, val displayName: String? = null)
 
-data class UpdateProfileRequestDto(val displayName: String)
+data class UpdateProfileRequestDto(val displayName: String? = null, val avatarAssetId: UUID? = null)
 
 data class PairResultDto(
     val couple: CoupleViewDto = CoupleViewDto(),
     val deviceToken: String = "",
     val userId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+)
+
+data class AnniversaryViewDto(
+    val id: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+    val coupleId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000000"),
+    val title: String = "",
+    val calendarType: String = "GREGORIAN",
+    val month: Int = 1,
+    val day: Int = 1,
+    val lunarLeapMonth: Boolean = false,
+    val startYear: Int? = null,
+    val repeatsYearly: Boolean = true,
+)
+
+data class SaveAnniversaryRequestDto(
+    val title: String,
+    val calendarType: String,
+    val month: Int,
+    val day: Int,
+    val lunarLeapMonth: Boolean = false,
+    val startYear: Int? = null,
+    val repeatsYearly: Boolean = true,
 )
 
 /** Thrown for non-2xx answers during bootstrap/pairing setup. */
@@ -67,6 +90,8 @@ class SetupHttpException(val code: Int, message: String) : IOException("setup fa
  * anonymous by design; the space read and the rename carry a bearer token.
  */
 interface SessionApi {
+    suspend fun updateOwnAvatar(baseUrl: String, bearer: String, coupleId: UUID, userId: UUID, assetId: UUID): ProfileViewDto =
+        throw UnsupportedOperationException("Avatar API is unavailable")
     suspend fun bootstrap(baseUrl: String, secret: String, displayName: String): BootstrapResultDto
 
     /** Fetches (and rotates) the one-time pairing token for the space. */
@@ -88,6 +113,21 @@ interface SessionApi {
         userId: UUID,
         displayName: String,
     ): ProfileViewDto
+
+    /** Reads the one shared anniversary, or null when the couple has not set one. */
+    suspend fun readAnniversary(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+    ): AnniversaryViewDto?
+
+    /** Creates or replaces the one shared anniversary for the couple. */
+    suspend fun saveAnniversary(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+        request: SaveAnniversaryRequestDto,
+    ): AnniversaryViewDto
 
     /**
      * Reads the space's export JSON from the server. The server returns entries
@@ -126,6 +166,15 @@ internal interface SessionRetrofitApi {
         @Body body: UpdateProfileRequestDto,
     ): Response<ProfileViewDto>
 
+    @GET("api/v1/couple/{coupleId}/anniversary")
+    suspend fun readAnniversary(@Path("coupleId") coupleId: UUID): Response<AnniversaryViewDto>
+
+    @PUT("api/v1/couple/{coupleId}/anniversary")
+    suspend fun saveAnniversary(
+        @Path("coupleId") coupleId: UUID,
+        @Body request: SaveAnniversaryRequestDto,
+    ): Response<AnniversaryViewDto>
+
     @GET("api/v1/export")
     suspend fun exportSpace(
         @Query("coupleId") coupleId: UUID,
@@ -137,6 +186,12 @@ internal interface SessionRetrofitApi {
 class RetrofitSessionApi private constructor(
     private val bearerProvider: () -> String?,
 ) : SessionApi {
+    override suspend fun updateOwnAvatar(baseUrl: String, bearer: String, coupleId: UUID, userId: UUID, assetId: UUID): ProfileViewDto =
+        withContext(Dispatchers.IO) {
+            val response = api(baseUrl, bearer).updateOwnProfile(coupleId, userId, UpdateProfileRequestDto(avatarAssetId = assetId))
+            if (!response.isSuccessful) throw SetupHttpException(response.code(), "avatar update failed")
+            response.body() ?: throw SetupHttpException(response.code(), "empty body")
+        }
 
     override suspend fun bootstrap(baseUrl: String, secret: String, displayName: String): BootstrapResultDto =
         withContext(Dispatchers.IO) {
@@ -190,6 +245,32 @@ class RetrofitSessionApi private constructor(
             response.body() ?: throw SetupHttpException(response.code(), "empty body")
         }
 
+    override suspend fun readAnniversary(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+    ): AnniversaryViewDto? = withContext(Dispatchers.IO) {
+        val response = api(baseUrl, bearer).readAnniversary(coupleId)
+        if (response.code() == 404) return@withContext null
+        if (!response.isSuccessful) {
+            throw SetupHttpException(response.code(), response.errorBody()?.string().orEmpty().take(200))
+        }
+        response.body() ?: throw SetupHttpException(response.code(), "empty body")
+    }
+
+    override suspend fun saveAnniversary(
+        baseUrl: String,
+        bearer: String,
+        coupleId: UUID,
+        request: SaveAnniversaryRequestDto,
+    ): AnniversaryViewDto = withContext(Dispatchers.IO) {
+        val response = api(baseUrl, bearer).saveAnniversary(coupleId, request)
+        if (!response.isSuccessful) {
+            throw SetupHttpException(response.code(), response.errorBody()?.string().orEmpty().take(200))
+        }
+        response.body() ?: throw SetupHttpException(response.code(), "empty body")
+    }
+
     override suspend fun exportSpace(
         baseUrl: String,
         bearer: String,
@@ -215,8 +296,19 @@ class RetrofitSessionApi private constructor(
             })
             .create()
 
+        // Share transport resources, not credentials or HTTP response caches.
+        private val transport = okhttp3.OkHttpClient.Builder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build()
+
         private fun okHttp(bearerProvider: () -> String?): okhttp3.OkHttpClient =
-            okhttp3.OkHttpClient.Builder()
+            transport.newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)

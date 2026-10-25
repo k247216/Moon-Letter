@@ -135,8 +135,8 @@ public class CoupleService {
     /**
      * Replaces an outstanding pairing token with a fresh one and says what that
      * token is for. A space with a free slot issues an invitation; a full space
-     * has nobody left to invite, so its token reopens the other member's slot —
-     * which is exactly what a phone that was uninstalled or lost needs.
+     * has nobody left to invite, so its token reopens only the authenticated
+     * caller's own slot. A member cannot issue recovery access for their partner.
      */
     @Transactional
     public CreateSpaceResult regeneratePairingToken(UUID actorId, UUID coupleId) {
@@ -144,10 +144,7 @@ public class CoupleService {
         jdbcTemplate.queryForObject("SELECT id FROM couple_space WHERE id = ? FOR UPDATE",
                 UUID.class, coupleId);
         List<UUID> members = activeMembers(coupleId);
-        UUID rejoinTarget = members.size() < SPACE_MEMBER_CAPACITY
-                ? null
-                : members.stream().filter(member -> !member.equals(actorId)).findFirst()
-                        .orElseThrow(() -> new ConflictException("no other member to rejoin"));
+        UUID rejoinTarget = members.size() < SPACE_MEMBER_CAPACITY ? null : actorId;
         String pairingToken = issueOutstandingToken(coupleId, rejoinTarget);
         return new CreateSpaceResult(readSpace(actorId, coupleId), pairingToken,
                 rejoinTarget == null ? TOKEN_KIND_INVITE : TOKEN_KIND_REJOIN);
@@ -191,6 +188,7 @@ public class CoupleService {
             Integer ownedAsset = jdbcTemplate.queryForObject("""
                     SELECT count(*) FROM media_asset
                     WHERE id = ? AND couple_id = ? AND owner_id = ? AND deleted_at IS NULL
+                      AND status = 'READY' AND kind = 'IMAGE'
                     """, Integer.class, request.avatarAssetId(), coupleId, actorId);
             if (ownedAsset == null || ownedAsset != 1) {
                 throw new AccessDeniedException("avatar does not belong to this space");

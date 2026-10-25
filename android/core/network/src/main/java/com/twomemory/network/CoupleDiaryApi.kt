@@ -20,6 +20,7 @@ data class PushResult(
     val responseBody: String? = null,
     val replayed: Boolean = false,
 ) {
+    /** CONFLICT also parks permanent server rejections; only explicit retry requeues them. */
     enum class Status { APPLIED, DUPLICATE, CONFLICT, UNAUTHORIZED, RETRYABLE_FAILURE }
 }
 

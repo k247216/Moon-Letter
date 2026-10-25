@@ -68,7 +68,8 @@ public class SyncController {
                     sequence.set(latest);
                     return new MutationResult(200, outcome.responseBody(), false);
                 });
-        if (!result.replayed() && sequence.get() != NO_CHANGE_ROW) {
+        if (!result.replayed() && sequence.get() != NO_CHANGE_ROW
+                && !changeFeedService.isAuthorOnlyChange(request.coupleId(), sequence.get())) {
             notificationPublisher.notifySpaceChanged(request.coupleId(), sequence.get());
         }
         return ResponseEntity.status(result.status()).body(result);

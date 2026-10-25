@@ -6,7 +6,7 @@ package com.twomemory.app
 object ServerAddress {
 
     /** Development-machine convenience only; see [resolve]. */
-    const val DEV_DEFAULT_BASE_URL = "http://10.138.79.194:8080"
+    val DEV_DEFAULT_BASE_URL: String = BuildConfig.DEV_SERVER_ORIGIN
 
     /**
      * The address that was stored wins. Only a debug build may fall back to the

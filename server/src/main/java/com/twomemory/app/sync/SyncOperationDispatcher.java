@@ -8,6 +8,7 @@ import com.twomemory.app.entry.CreateEntryCommand;
 import com.twomemory.app.entry.EntryMode;
 import com.twomemory.app.entry.EntryService;
 import com.twomemory.app.entry.EntryView;
+import com.twomemory.app.entry.EntryVisibility;
 import com.twomemory.app.entry.PublishResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -130,8 +131,8 @@ public class SyncOperationDispatcher {
         List<BlockMutation> blocks = new ArrayList<>();
         for (JsonNode blockNode : root.path("blocks")) {
             String rawType = blockNode.path("type").asText("TEXT");
-            if (!"TEXT".equalsIgnoreCase(rawType) && !"IMAGE".equalsIgnoreCase(rawType)) {
-                throw new SyncValidationException("entry sync accepts TEXT or IMAGE blocks only");
+            if (!supportedBlockType(rawType)) {
+                throw new SyncValidationException("entry sync accepts TEXT, IMAGE, VIDEO, AUDIO, MUSIC or LOCATION blocks only");
             }
             long orderKey = blockNode.path("orderKey").asLong(-1);
             if (orderKey < 0) {
@@ -149,7 +150,7 @@ public class SyncOperationDispatcher {
         }
         CreateEntryCommand command = new CreateEntryCommand(
                 actorId, coupleId, mode, title, occurredAt, timezone, blocks,
-                parseOptionalUuid(root.path("entryId")));
+                parseOptionalUuid(root.path("entryId")), parseVisibility(root.path("visibility")));
         EntryView entry = entryService.createDraft(actorId, command);
         return entryOutcome(entry, "CREATE");
     }
@@ -167,8 +168,8 @@ public class SyncOperationDispatcher {
             throw new SyncValidationException("block object is required");
         }
         String rawType = blockNode.path("type").asText("TEXT");
-        if (!"TEXT".equalsIgnoreCase(rawType) && !"IMAGE".equalsIgnoreCase(rawType)) {
-            throw new SyncValidationException("block sync accepts TEXT or IMAGE only");
+        if (!supportedBlockType(rawType)) {
+            throw new SyncValidationException("block sync accepts TEXT, IMAGE, VIDEO, AUDIO, MUSIC or LOCATION only");
         }
         long orderKey = blockNode.path("orderKey").asLong(-1);
         if (orderKey < 0) {
@@ -185,7 +186,10 @@ public class SyncOperationDispatcher {
         EntryView updated = entryService
                 .applyChanges(entryId, actorId, 0, List.of(mutation))
                 .entry();
-        return entryOutcome(updated, "UPDATE");
+        try {
+            return new DispatchOutcome(updated.id(), "ENTRY", "UPDATE", objectMapper.writeValueAsString(updated),
+                    updated.privateDraft() ? ChangeRowOwnership.SUPPRESSED : ChangeRowOwnership.APPENDED_BY_MUTATION);
+        } catch (Exception exception) { throw new IllegalStateException(exception); }
     }
 
     private DispatchOutcome addComment(UUID actorId, String payload) {
@@ -212,13 +216,19 @@ public class SyncOperationDispatcher {
     }
 
     private String blockTextPayload(JsonNode blockNode, String rawType) {
-        if ("IMAGE".equalsIgnoreCase(rawType)) {
-            // IMAGE payload keeps whatever the client stored (local uri, caption).
+        if (!"TEXT".equalsIgnoreCase(rawType)) {
+            // Media and semantic blocks keep their structured payload; local paths
+            // have already been removed by the client before they leave the device.
             return blockNode.path("payload").isTextual() ? blockNode.path("payload").asText()
                     : blockNode.path("payload").toString();
         }
         return objectMapper.createObjectNode().set("text",
                 objectMapper.valueToTree(blockNode.path("text").asText(""))).toString();
+    }
+
+    private boolean supportedBlockType(String rawType) {
+        return List.of("TEXT", "IMAGE", "VIDEO", "AUDIO", "MUSIC", "LOCATION")
+                .stream().anyMatch(rawType::equalsIgnoreCase);
     }
 
     /**
@@ -237,6 +247,12 @@ public class SyncOperationDispatcher {
         } catch (Exception exception) {
             throw new IllegalStateException("could not serialize entry view", exception);
         }
+    }
+
+    private static EntryVisibility parseVisibility(JsonNode node) {
+        if (node.isMissingNode() || node.isNull()) return EntryVisibility.SHARED;
+        try { return EntryVisibility.valueOf(node.asText()); }
+        catch (IllegalArgumentException exception) { throw new SyncValidationException("invalid visibility"); }
     }
 
     private static UUID parseUuid(JsonNode node) {

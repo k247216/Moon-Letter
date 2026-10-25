@@ -1,5 +1,11 @@
 # 月笺 (Moon Letter)
 
+## 当前源码检查点：V43（2026-10-25）
+
+当前功能、测试证据及隐私配置方式见 [V43交接](docs/handoff/2026-10-25-v43-source-checkpoint.md) 和 [V43验收说明](releases/v43/README.md)。后文保留早期M1设计和历史操作背景，不应将其中旧的阶段状态当作当前进度。
+
+正式部署地址与个人化文案通过未提交的 `android/private.properties` 提供；示例见 `android/private.properties.example`。运行密钥、用户数据、日志、APK和签名私钥不放入Git。公共文档中的部署标识已匿名化。
+
 双人私密日记 Android 应用。对外中文名称已确定为「月笺」，`Moon Letter` 仅作英文工程代号；身份色、封面和措辞仍由使用者在应用内自行修改。即使另一方尚未加入，任何一方也可以独立记录、回看和保管自己的生活。
 
 ## 我们坚持的边界
@@ -51,10 +57,12 @@
 
 ## 本地基础设施
 
-推荐使用 Docker Desktop 启动本地依赖：
+推荐使用 Docker Desktop 启动本地依赖。首次使用先复制未提交的本地密钥文件并填入随机值：
 
 ```bash
-docker compose -f infra/compose.yaml up -d
+cp infra/.env.example infra/.env
+# 编辑 infra/.env，替换两个 replace-with-a-local-password
+docker compose --env-file infra/.env -f infra/compose.yaml up -d
 ```
 
 默认服务：PostgreSQL `localhost:5432`，MinIO API `localhost:9000`，MinIO Console `localhost:9001`。首个纯文字竖切只需要 PostgreSQL；图片任务开始时才需要 MinIO。
@@ -93,11 +101,14 @@ mvn test -Dtest=SchemaConstraintTest
 
 已按执行计划 Task 1 完成可复现运行配置（`application.yml` + `application-dev.yml` + actuator health）。
 
-启动本地数据库，打可执行 jar，再用环境变量注入密钥运行：
+启动本地数据库，打可执行 jar，再用环境变量注入数据库和应用密钥运行：
 
 ```bash
-docker compose -f infra/compose.yaml up -d postgres
+docker compose --env-file infra/.env -f infra/compose.yaml up -d postgres
 cd server && mvn -DskipTests package
+JDBC_DATABASE_URL='jdbc:postgresql://localhost:5432/moon_letter' \
+JDBC_DATABASE_USERNAME='moon_letter' \
+JDBC_DATABASE_PASSWORD='<与 infra/.env 中 PostgreSQL 密码一致>' \
 BOOTSTRAP_SECRET='<只放本机环境或 .env>' \
   java -jar target/moon-letter-server-0.1.0-SNAPSHOT.jar \
   --spring.profiles.active=dev --server.port=8080
@@ -107,7 +118,15 @@ BOOTSTRAP_SECRET='<只放本机环境或 .env>' \
 
 健康检查：`GET http://localhost:8080/actuator/health` 应返回 `{"status":"UP"}`。
 
-默认 profile 不提供数据库配置时将快速失败并给出缺库错误；生产部署通过 `JDBC_DATABASE_URL`、`JDBC_DATABASE_USERNAME`、`JDBC_DATABASE_PASSWORD` 提供。开发机的 `dev` profile 使用 compose 中的本地账号密码，禁止带入生产环境。
+如果 Windows/JDK 启动日志出现 `Unable to establish loopback connection`，说明 Tomcat 默认 NIO selector 无法创建 JDK 回环管道；保留同一套数据库和密钥参数，并额外加上：
+
+```bash
+--moon-letter.server.tomcat.nio2-connector=true
+```
+
+这只把连接器切换到 Tomcat NIO2，业务接口和客户端协议不变；当前开发机的可测试服务已用该开关启动，并通过 `http://127.0.0.1:8080/actuator/health` 返回 `UP`。
+
+默认 profile 不提供数据库配置时将快速失败并给出缺库错误；生产部署通过 `JDBC_DATABASE_URL`、`JDBC_DATABASE_USERNAME`、`JDBC_DATABASE_PASSWORD` 提供。开发机的 `dev` profile 也只从这些环境变量读取密码，禁止把密码写回源码、日志或 APK。
 
 注意：某些机器存在遗留环境变量 `SERVER__PORT`（例如值 63834），Spring Boot 的 relaxed binding 会读取它。如端口异常，用 `--server.port=8080` 显式覆盖。
 
@@ -138,7 +157,7 @@ java -jar target/moon-letter-server-0.1.0-SNAPSHOT.jar \
 bash scripts/verify-m1.sh   # 服务端测试 + Android JVM 测试 + 真机 connected 检查；环境缺失时以 2 退出并报 INCOMPLETE
 ```
 
-`TEST_DB_URL` 未设置时脚本会跳过 PostgreSQL 约束测试并以 `INCOMPLETE` 退出——服务端真库测试需要 compose 里的 PostgreSQL 在跑，不接受把跳过的部分当作通过。备份与恢复用 `scripts/backup.sh`、`scripts/restore.sh`。
+`TEST_DB_URL` 或 `TEST_DB_PASSWORD` 未设置时脚本会跳过 PostgreSQL 真库测试并以 `INCOMPLETE` 退出——服务端真库测试需要 compose 里的 PostgreSQL 在跑且密码必须显式注入，不接受把跳过的部分当作通过。备份与恢复用 `scripts/backup.sh`、`scripts/restore.sh`。
 
 ## Android
 
@@ -149,7 +168,7 @@ cd android
 ./gradlew :app:assembleDebug
 ```
 
-开发机已经完成 `assembleDebug` 与 JVM 单测并产出 APK，Gate A1 的“构建”部分通过。模拟器静默退出，`connectedDebugAndroidTest` 和真机 smoke 仍未完成；因此不能把构建成功解释为设备可用或 M1 完成。
+当前可安装 debug APK：[MoonLetter-responsive-v10-20261003.apk](android/app/build/outputs/apk/debug/MoonLetter-responsive-v10-20261003.apk)，`versionCode=10`，版本名 `0.1.0+two-device-responsive-v10-20261003`，37,865,769 字节，SHA-256 `17998F0F9E2B53A948AB0D19503C823642E2F09D8EBC4A8C389EE0FAEE3AC581`。V10 修复前台同步触发、头像上传互见、音频下载与缓存重播、纪念日日期选择和主页倒计时，并改版共同记录、合并通知测试入口。两台手机都需覆盖安装；前台每 3 秒检查不是后台即时推送承诺。证据和边界见 `docs/testing/2026-10-03-v10-responsive-acceptance.md`。局域网服务可用，云端尚未部署。
 
 ## 分支约定
 

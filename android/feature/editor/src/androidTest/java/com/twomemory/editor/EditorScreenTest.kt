@@ -1,6 +1,6 @@
 package com.twomemory.editor
 
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -12,6 +12,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
+import org.junit.Assert.assertEquals
 
 @RunWith(AndroidJUnit4::class)
 class EditorScreenTest {
@@ -28,15 +29,16 @@ class EditorScreenTest {
                 )
             }
         }
-        composeRule.onNodeWithText("2026年9月30日 · 20:18").assertIsDisplayed()
+        composeRule.onNodeWithText("2026年9月30日 · 12:18").assertIsDisplayed()
         listOf("图片", "视频", "语音", "音乐", "城市", "更多").forEach {
-            composeRule.onNodeWithContentDescription(it).assertIsDisplayed()
+            composeRule.onNodeWithText(it).assertIsDisplayed()
         }
         composeRule.onNodeWithText("完成").assertIsDisplayed()
+        composeRule.onNodeWithText("更多").assertIsDisplayed()
     }
 
     @Test
-    fun personalEditorExplainsLocalSaveState() {
+    fun personalEditorKeepsLocalSaveStateOutOfWritingSurface() {
         composeRule.setContent {
             TwoMemoryTheme {
                 PersonalEditorScreen(
@@ -45,7 +47,21 @@ class EditorScreenTest {
                 )
             }
         }
-        composeRule.onNodeWithText("已保存到本机").assertIsDisplayed()
+        composeRule.onNodeWithText("已保存到本机").assertDoesNotExist()
+    }
+
+    @Test
+    fun personalEditorDoesNotExposeAutomaticRetryMechanics() {
+        composeRule.setContent {
+            TwoMemoryTheme {
+                PersonalEditorScreen(
+                    state = EditorUiState(recordStatus = MoonLetterRecordStatus.RETRYING),
+                    onTitleChange = {}, onBodyChange = {}, onPublish = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("发送没成功，正在自动重试").assertDoesNotExist()
     }
 
     @Test
@@ -73,26 +89,44 @@ class EditorScreenTest {
                 )
             }
         }
-        composeRule.onNodeWithText("我").assertIsDisplayed()
+        composeRule.onAllNodesWithText("我").onLast().assertIsDisplayed()
     }
 
     @Test
-    fun mediaButtonsExplainTheirBoundaryInsteadOfBeingDead() {
+    fun mediaButtonsUseRealCallbacksInsteadOfExplanationDialogs() {
+        var videoPicked = false
+        var audioPicked = false
+        var music: Triple<String, String, String>? = null
+        var city = ""
         composeRule.setContent {
             TwoMemoryTheme {
-                PersonalEditorScreen(
-                    state = EditorUiState(),
-                    onTitleChange = {}, onBodyChange = {}, onPublish = {},
+                EditorAttachmentToolbar(
+                    onImageClick = {},
+                    onVideoClick = { videoPicked = true },
+                    onAudioClick = { audioPicked = true },
+                    onMusicAdded = { title, artist, url -> music = Triple(title, artist, url) },
+                    onCitySelected = { city = it.name },
                 )
             }
         }
-        composeRule.onNodeWithContentDescription("视频（查看说明）").performClick()
-        composeRule.onNodeWithText("视频记录").assertIsDisplayed()
-        composeRule.onNodeWithText("当前不会生成空卡片或假装已上传。").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("添加视频").performClick()
+        composeRule.onNodeWithContentDescription("添加语音").performClick()
+        composeRule.onNodeWithContentDescription("添加音乐").performClick()
+        composeRule.onNodeWithText("歌曲名称").assertIsDisplayed()
+        composeRule.onNodeWithText("取消").performClick()
+        composeRule.onNodeWithContentDescription("添加城市").performClick()
+        composeRule.onNodeWithText("在地图上选择城市").assertIsDisplayed()
+        composeRule.waitUntil(10000) { composeRule.onAllNodes(hasContentDescription("杭州，", substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNode(hasContentDescription("杭州，", substring = true)).performClick()
+        composeRule.onNodeWithText("加入这一页").performClick()
+        assertEquals(true, videoPicked)
+        assertEquals(true, audioPicked)
+        assertEquals("杭州", city)
+        assertEquals(null, music)
     }
 
     @Test
-    fun sharedEditorShowsOneRealAuthorAndPromisesThePartnerOnlyInWords() {
+    fun sharedEditorInvitesTheOtherWriterWithoutInventingTheirIdentity() {
         composeRule.setContent {
             TwoMemoryTheme {
                 SharedEditorRoute(
@@ -103,7 +137,8 @@ class EditorScreenTest {
             }
         }
         composeRule.onNodeWithText("小满呀").assertIsDisplayed()
-        composeRule.onNodeWithText("先写下你的部分，TA 可以补充自己的视角。").assertIsDisplayed()
+        composeRule.onNodeWithText("一段时光，两种心情").assertIsDisplayed()
+        composeRule.onNodeWithText("留一处给 TA").assertIsDisplayed()
         composeRule.onNodeWithText("阿屿").assertDoesNotExist()
     }
 
@@ -121,8 +156,7 @@ class EditorScreenTest {
                 )
             }
         }
-        composeRule.onNodeWithText("阿屿的视角").assertIsDisplayed()
+        composeRule.onNodeWithText("阿屿的视角 · 仅 TA 可修改").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("这是 TA 的视角").assertIsDisplayed()
-        composeRule.onNodeWithText("仅 TA 可以修改").assertIsDisplayed()
     }
 }

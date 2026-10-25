@@ -17,7 +17,9 @@ import java.util.UUID;
 @Service
 public class MediaService {
 
-    private static final long MAX_IMAGE_BYTES = 20L * 1024 * 1024;
+    private static final long MAX_IMAGE_BYTES = 64L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = 32L * 1024 * 1024;
+    private static final long MAX_AUDIO_BYTES = 16L * 1024 * 1024;
     private static final Duration UPLOAD_TICKET_LIFETIME = Duration.ofMinutes(15);
 
     private final JdbcTemplate jdbcTemplate;
@@ -43,13 +45,19 @@ public class MediaService {
                 """, this::mapAsset, command.operationId());
         if (!existing.isEmpty()) {
             MediaAssetView asset = existing.get(0);
+            if (!asset.ownerId().equals(command.ownerId()) || !asset.coupleId().equals(command.coupleId()))
+                throw new MediaAccessDeniedException("upload operation belongs to another owner or space");
+            if (asset.kind()!=command.kind() || asset.byteSize()!=command.byteSize() ||
+                !asset.mimeType().equals(command.mimeType()) || !asset.sha256().equalsIgnoreCase(command.sha256()))
+                throw new MediaValidationException("upload operation cannot be reused for different content");
             ObjectStorage.PresignedUpload presigned = objectStorage.presignPut(
-                    asset.objectKey(), asset.mimeType(), asset.byteSize(), Instant.now().plus(UPLOAD_TICKET_LIFETIME));
+                    asset.objectKey(), asset.mimeType(), asset.byteSize(), asset.sha256(),
+                    Instant.now().plus(UPLOAD_TICKET_LIFETIME));
             return new UploadTicket(asset.id(), asset.objectKey(), presigned.url(), presigned.expiresAt(), asset);
         }
 
         UUID assetId = UUID.randomUUID();
-        String objectKey = objectKey(command.coupleId(), assetId);
+        String objectKey = objectKey(command, assetId, Instant.now());
         jdbcTemplate.update("""
                 INSERT INTO media_asset(id, couple_id, owner_id, kind, status, object_key,
                                         mime_type, byte_size, sha256, width, height, duration_ms,
@@ -60,7 +68,7 @@ public class MediaService {
                 command.durationMs(), command.operationId());
         Instant expiresAt = Instant.now().plus(UPLOAD_TICKET_LIFETIME);
         ObjectStorage.PresignedUpload presigned = objectStorage.presignPut(
-                objectKey, command.mimeType(), command.byteSize(), expiresAt);
+                objectKey, command.mimeType(), command.byteSize(), command.sha256(), expiresAt);
         return new UploadTicket(assetId, objectKey, presigned.url(), presigned.expiresAt(),
                 new MediaAssetView(assetId, command.coupleId(), command.ownerId(), command.kind(),
                         MediaStatus.UPLOADING, objectKey, command.mimeType(), command.byteSize(),
@@ -86,6 +94,34 @@ public class MediaService {
                 FROM media_asset WHERE id = ? AND deleted_at IS NULL
                 """, this::mapAsset, assetId);
         accessPolicy.requireMember(userId, asset.coupleId());
+        if (!userId.equals(asset.ownerId())) {
+            Boolean readable = jdbcTemplate.queryForObject("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM entry_block b JOIN entry e ON e.id=b.entry_id
+                        WHERE b.asset_id=? AND b.deleted_at IS NULL AND e.deleted_at IS NULL
+                          AND e.couple_id=?
+                          AND (e.visibility='SHARED' OR e.author_id=?)
+                          AND (e.state <> 'DRAFT' OR e.mode='COLLABORATIVE' OR e.author_id=?)
+                        UNION ALL
+                        SELECT 1 FROM album_item i JOIN album a ON a.id=i.album_id
+                        WHERE i.media_asset_id=? AND a.couple_id=? AND a.deleted_at IS NULL AND i.deleted_at IS NULL
+                        UNION ALL
+                        SELECT 1 FROM album a WHERE a.cover_asset_id=? AND a.couple_id=? AND a.deleted_at IS NULL
+                        UNION ALL
+                        SELECT 1 FROM user_profile p JOIN couple_member m ON m.user_id=p.user_id
+                        WHERE p.avatar_asset_id=? AND m.couple_id=? AND m.left_at IS NULL AND m.deleted_at IS NULL
+                        UNION ALL
+                        SELECT 1 FROM occasion o
+                        WHERE o.photo_asset_id=? AND o.couple_id=? AND o.deleted_at IS NULL
+                          AND (o.visibility='SHARED' OR o.author_id=?)
+                          AND (o.kind IN ('BIRTHDAY','ANNIVERSARY') OR o.author_id=? OR
+                               (o.recipient_id=? AND o.date <= (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date))
+                    )
+                    """, Boolean.class, assetId, asset.coupleId(), userId, userId,
+                    assetId, asset.coupleId(), assetId, asset.coupleId(), assetId, asset.coupleId(),
+                    assetId, asset.coupleId(), userId, userId, userId);
+            if (!Boolean.TRUE.equals(readable)) throw new MediaAccessDeniedException("media is not shared");
+        }
         return asset;
     }
 
@@ -114,17 +150,30 @@ public class MediaService {
                 || command.kind() == null || command.operationId() == null) {
             throw new MediaValidationException("media owner, space, kind and operation are required");
         }
-        if (command.kind() != MediaKind.IMAGE) {
-            throw new MediaValidationException("M1 only accepts image uploads");
+        List<String> supportedMimes = switch (command.kind()) {
+            case IMAGE -> List.of("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif",
+                    "image/avif", "image/gif", "image/bmp", "image/vnd.wap.wbmp");
+            case VIDEO -> List.of("video/mp4", "video/webm", "video/quicktime");
+            case AUDIO -> List.of("audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "audio/aac");
+        };
+        if (!List.of("RECORD", "ALBUM", "AVATAR").contains(command.purpose())
+                || (!command.purpose().equals("RECORD") && command.kind() != MediaKind.IMAGE)) {
+            throw new MediaValidationException("invalid media purpose or kind for purpose");
         }
-        if (!List.of("image/jpeg", "image/png", "image/webp").contains(command.mimeType())) {
-            throw new MediaValidationException("image MIME type is not supported");
+        if (!supportedMimes.contains(command.mimeType())) {
+            throw new MediaValidationException(command.kind().name().toLowerCase() + " MIME type is not supported");
         }
-        if (command.byteSize() <= 0 || command.byteSize() > MAX_IMAGE_BYTES) {
-            throw new MediaValidationException("image must be greater than 0 and at most 20 MiB");
+        long maxBytes = switch (command.kind()) {
+            case IMAGE -> MAX_IMAGE_BYTES;
+            case VIDEO -> MAX_VIDEO_BYTES;
+            case AUDIO -> MAX_AUDIO_BYTES;
+        };
+        if (command.byteSize() <= 0 || command.byteSize() > maxBytes) {
+            throw new MediaValidationException("media must be greater than 0 and within the size limit");
         }
-        if (command.width() == null || command.height() == null
-                || command.width() <= 0 || command.height() <= 0) {
+        if (command.kind() == MediaKind.IMAGE &&
+                (command.width() == null || command.height() == null
+                        || command.width() <= 0 || command.height() <= 0)) {
             throw new MediaValidationException("image dimensions must be positive");
         }
         if (command.sha256() == null || !command.sha256().matches("[0-9a-fA-F]{64}")) {
@@ -132,8 +181,39 @@ public class MediaService {
         }
     }
 
-    static String objectKey(UUID coupleId, UUID assetId) {
-        return "couples/%s/assets/%s".formatted(coupleId, assetId);
+    static String objectKey(CreateMediaCommand command, UUID assetId, Instant createdAt) {
+        String directory = switch (command.purpose()) {
+            case "AVATAR" -> "avatars";
+            case "ALBUM" -> "albums/photos";
+            case "RECORD" -> switch (command.kind()) {
+                case IMAGE -> "records/images";
+                case AUDIO -> "records/audio";
+                case VIDEO -> "records/video";
+            };
+            default -> throw new MediaValidationException("invalid media purpose");
+        };
+        String extension = switch (command.mimeType()) {
+            case "image/jpeg" -> "jpg";
+            case "image/png" -> "png";
+            case "image/webp" -> "webp";
+            case "image/heic" -> "heic";
+            case "image/heif" -> "heif";
+            case "image/avif" -> "avif";
+            case "image/gif" -> "gif";
+            case "image/bmp" -> "bmp";
+            case "image/vnd.wap.wbmp" -> "wbmp";
+            case "video/mp4" -> "mp4";
+            case "video/webm" -> "webm";
+            case "video/quicktime" -> "mov";
+            case "audio/mpeg" -> "mp3";
+            case "audio/mp4" -> "m4a";
+            case "audio/wav" -> "wav";
+            case "audio/ogg" -> "ogg";
+            case "audio/aac" -> "aac";
+            default -> throw new MediaValidationException("unsupported media MIME type");
+        };
+        String month = java.time.YearMonth.from(createdAt.atZone(java.time.ZoneId.of("Asia/Shanghai"))).toString();
+        return "couples/%s/%s/%s/%s.%s".formatted(command.coupleId(), directory, month, assetId, extension);
     }
 
     private MediaAssetView completeUploadInternal(UUID userId, UUID assetId, String sha256) {

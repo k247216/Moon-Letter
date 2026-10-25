@@ -54,15 +54,22 @@ public class EntryService {
         accessPolicy.requireMember(command.authorId(), command.coupleId());
         List<BlockMutation> blocks = stableOrder(command.blocks() == null ? List.of() : command.blocks());
         validateTitle(command.title());
+        EntryVisibility visibility = command.visibility() == null ? EntryVisibility.SHARED : command.visibility();
+        if (visibility == EntryVisibility.PRIVATE && command.mode() != EntryMode.PERSONAL)
+            throw new EntryValidationException("only PERSONAL entries may be private");
+        for (BlockMutation block : blocks) {
+            if (!actorId.equals(block.authorId())) throw new EntryAccessDeniedException("block author must be the authenticated user");
+            if (block.assetId() != null) mediaService.readAsset(actorId, block.assetId());
+        }
         UUID entryId = command.entryId() != null ? command.entryId() : UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO entry(id, couple_id, mode, state, author_id, title,
                                   occurred_at, occurred_timezone, current_revision_no,
-                                  row_version, created_at, updated_at)
-                VALUES (?, ?, ?::entry_mode, 'DRAFT', ?, ?, ?, ?, 0, 0, now(), now())
+                                  row_version, created_at, updated_at, visibility)
+                VALUES (?, ?, ?::entry_mode, 'DRAFT', ?, ?, ?, ?, 0, 0, now(), now(), ?)
                 """, entryId, command.coupleId(), command.mode().name(), command.authorId(),
                 blankToNull(command.title()), Timestamp.from(command.occurredAt()),
-                command.occurredTimezone());
+                command.occurredTimezone(), visibility.name());
         jdbcTemplate.update("""
                 INSERT INTO entry_contributor(entry_id, user_id, contribution_role)
                 VALUES (?, ?, 'OWNER')
@@ -108,6 +115,10 @@ public class EntryService {
         EntryRow entry = lockEntry(entryId);
         accessPolicy.requireMember(actorId, entry.coupleId());
         List<BlockMutation> normalized = stableOrder(mutations == null ? List.of() : mutations);
+        if ((entry.visibility() == EntryVisibility.PRIVATE || (entry.state() == EntryState.DRAFT && entry.mode() == EntryMode.PERSONAL))
+                && !entry.authorId().equals(actorId)) {
+            throw new EntryAccessDeniedException("personal draft is private");
+        }
         if (normalized.stream().anyMatch(block -> !actorId.equals(block.authorId()))) {
             throw new EntryAccessDeniedException("block author must be the authenticated user");
         }
@@ -126,6 +137,16 @@ public class EntryService {
         }
         for (BlockMutation block : normalized) {
             validateBlock(block);
+            if (!block.deleted() && block.assetId() != null) {
+                mediaService.readAsset(actorId, block.assetId());
+                mediaService.requireReady(entry.coupleId(), List.of(block.assetId()));
+                String mediaKind = jdbcTemplate.queryForObject(
+                        "SELECT kind::text FROM media_asset WHERE id=? AND couple_id=?",
+                        String.class, block.assetId(), entry.coupleId());
+                if (!block.type().name().equals(mediaKind)) {
+                    throw new EntryValidationException("media kind must match block type");
+                }
+            }
             ensureContributor(entry, block.authorId());
             UUID existingAuthor = existingBlockAuthor(entryId, block.blockId());
             if (existingAuthor != null && !existingAuthor.equals(block.authorId())) {
@@ -157,25 +178,71 @@ public class EntryService {
         updateEntryVersion(entryId, nextRevision, entry.rowVersion() + 1, entry.state());
         UUID editedBy = normalized.isEmpty() ? entry.authorId() : normalized.get(0).authorId();
         insertRevision(entryId, nextRevision, entry.currentRevisionNo(), editedBy, "applied block changes");
-        return new ApplyChangesResult(loadEntry(entryId), baseRevision != entry.currentRevisionNo());
+        EntryView updated = loadEntry(entryId);
+        if (!updated.privateDraft()) changeFeedService.appendChange(entry.coupleId(), "ENTRY", entryId, "UPDATE", writeJson(updated));
+        return new ApplyChangesResult(updated, baseRevision != entry.currentRevisionNo());
     }
 
+    @Transactional
+    public EntryView setVisibility(UUID entryId, UUID actorId, EntryVisibility visibility, Long baseVersion) {
+        EntryRow entry = lockEntry(entryId);
+        accessPolicy.requireMember(actorId, entry.coupleId());
+        if (!entry.authorId().equals(actorId)) throw new EntryAccessDeniedException("only the author may change visibility");
+        if (visibility == null) throw new EntryValidationException("visibility is required");
+        if (visibility == EntryVisibility.PRIVATE && entry.mode() != EntryMode.PERSONAL)
+            throw new EntryValidationException("only PERSONAL entries may be private");
+        if (baseVersion != null && baseVersion != entry.rowVersion()) throw new EntryConflict(entryId, List.of());
+        if (visibility == entry.visibility()) return loadEntry(entryId);
+        if (visibility == EntryVisibility.PRIVATE) {
+            Boolean hasOtherContribution = jdbcTemplate.queryForObject("""
+                    SELECT EXISTS (SELECT 1 FROM entry_block b LEFT JOIN media_asset m ON m.id=b.asset_id
+                        WHERE b.entry_id=? AND (b.created_by<>? OR m.owner_id<>?))
+                    """, Boolean.class, entryId, actorId, actorId);
+            if (Boolean.TRUE.equals(hasOtherContribution))
+                throw new EntryValidationException("cannot hide another member's contributions");
+        }
+        jdbcTemplate.update("UPDATE entry SET visibility=?, row_version=row_version+1, updated_at=now() WHERE id=?", visibility.name(), entryId);
+        EntryView view = loadEntry(entryId);
+        if (!view.privateDraft()) changeFeedService.appendChange(entry.coupleId(), "ENTRY", entryId, "UPDATE", writeJson(view));
+        if (visibility == EntryVisibility.PRIVATE && entry.state() == EntryState.PUBLISHED) {
+            for (UUID partner : jdbcTemplate.query("SELECT user_id FROM couple_member WHERE couple_id=? AND user_id<>? AND left_at IS NULL AND deleted_at IS NULL",
+                    (rs, row) -> rs.getObject(1, UUID.class), entry.coupleId(), actorId)) {
+                changeFeedService.appendChangeFor(entry.coupleId(), "ENTRY", entryId, "DELETE",
+                        writeJson(java.util.Map.of("id", entryId, "deleted", true)), partner);
+            }
+        }
+        if (visibility == EntryVisibility.SHARED && entry.state() == EntryState.PUBLISHED) {
+            List<CommentView> currentComments = jdbcTemplate.query("""
+                    SELECT id, author_id, body, reply_to_id, created_at FROM comment
+                    WHERE entry_id=? AND deleted_at IS NULL ORDER BY created_at, id
+                    """, (rs, row) -> new CommentView(rs.getObject("id", UUID.class), entryId,
+                    rs.getObject("author_id", UUID.class), rs.getString("body"),
+                    rs.getObject("reply_to_id", UUID.class), rs.getTimestamp("created_at").toInstant()), entryId);
+            for (CommentView comment : currentComments)
+                changeFeedService.appendChange(entry.coupleId(), "COMMENT", entryId, "ADD", writeJson(comment));
+        }
+        return view;
+    }
+
+    @Transactional
     public EntryView resolveConflict(UUID entryId, UUID actorId, ResolveConflictCommand command) {
         return applyChanges(entryId, actorId, command.baseRevision(), command.mutations()).entry();
     }
 
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public EntryView readEntry(UUID entryId, UUID userId) {
         EntryRow entry = locklessEntry(entryId);
         accessPolicy.requireMember(userId, entry.coupleId());
         // Personal drafts are private to the author; collaborative drafts are
         // readable by the space (the partner contributes to them directly).
-        if (entry.state() == EntryState.DRAFT && entry.mode() == EntryMode.PERSONAL
+        if ((entry.visibility() == EntryVisibility.PRIVATE || (entry.state() == EntryState.DRAFT && entry.mode() == EntryMode.PERSONAL))
                 && !entry.authorId().equals(userId)) {
             throw new EntryAccessDeniedException("personal draft is private");
         }
         return loadEntry(entryId);
     }
 
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public TimelinePage readTimeline(UUID userId, UUID coupleId, TimelineCursor cursor, int limit) {
         accessPolicy.requireMember(userId, coupleId);
         int safeLimit = Math.max(1, Math.min(limit, 200));
@@ -184,15 +251,17 @@ public class EntryService {
             entries = jdbcTemplate.query("""
                     SELECT id FROM entry
                     WHERE couple_id = ? AND state = 'PUBLISHED' AND deleted_at IS NULL
+                      AND (visibility = 'SHARED' OR author_id = ?)
                     ORDER BY occurred_at DESC, id DESC LIMIT ?
-                    """, (rs, rowNum) -> loadEntry(rs.getObject("id", UUID.class)), coupleId, safeLimit);
+                    """, (rs, rowNum) -> loadEntry(rs.getObject("id", UUID.class)), coupleId, userId, safeLimit);
         } else {
             entries = jdbcTemplate.query("""
                     SELECT id FROM entry
                     WHERE couple_id = ? AND state = 'PUBLISHED' AND deleted_at IS NULL
+                      AND (visibility = 'SHARED' OR author_id = ?)
                       AND (occurred_at, id) < (?, ?)
                     ORDER BY occurred_at DESC, id DESC LIMIT ?
-                    """, (rs, rowNum) -> loadEntry(rs.getObject("id", UUID.class)), coupleId,
+                    """, (rs, rowNum) -> loadEntry(rs.getObject("id", UUID.class)), coupleId, userId,
                     Timestamp.from(cursor.occurredAt()), cursor.id(), safeLimit);
         }
         TimelineCursor next = entries.size() == safeLimit
@@ -261,8 +330,10 @@ public class EntryService {
                 throw new EntryValidationException("block payload must be valid JSON");
             }
         }
-        if (block.type() == BlockType.IMAGE && block.assetId() == null) {
-            throw new EntryValidationException("image block requires an asset");
+        if (block.type() == BlockType.IMAGE || block.type() == BlockType.VIDEO || block.type() == BlockType.AUDIO) {
+            if (block.assetId() == null) {
+                throw new EntryValidationException(block.type().name().toLowerCase() + " block requires an asset");
+            }
         }
         if (block.payload() == null || block.payload().isBlank()) {
             throw new EntryValidationException("block payload is required");
@@ -319,7 +390,7 @@ public class EntryService {
                 SELECT id, couple_id, mode::text AS mode, state::text AS state, author_id,
                        row_version, current_revision_no, title,
                        EXTRACT(EPOCH FROM occurred_at) * 1000 AS occurred_at_epoch_millis,
-                       occurred_timezone
+                       occurred_timezone, visibility
                 FROM entry WHERE id = ? FOR UPDATE
                 """, this::mapEntryRow, entryId);
     }
@@ -329,7 +400,7 @@ public class EntryService {
                 SELECT id, couple_id, mode::text AS mode, state::text AS state, author_id,
                        row_version, current_revision_no, title,
                        EXTRACT(EPOCH FROM occurred_at) * 1000 AS occurred_at_epoch_millis,
-                       occurred_timezone
+                       occurred_timezone, visibility
                 FROM entry WHERE id = ?
                 """, this::mapEntryRow, entryId);
     }
@@ -356,7 +427,9 @@ public class EntryService {
         EntryRow row = locklessEntry(entryId);
         List<BlockView> blocks = jdbcTemplate.query("""
                 SELECT id, type::text AS type, order_key, updated_by, block_version,
-                       payload::text AS payload, asset_id, deleted_at
+                       CASE WHEN deleted_at IS NULL THEN payload::text ELSE '{}' END AS payload,
+                       CASE WHEN deleted_at IS NULL THEN asset_id ELSE NULL END AS asset_id,
+                       deleted_at
                 FROM entry_block WHERE entry_id = ?
                 ORDER BY order_key, id
                 """, (rs, rowNum) -> new BlockView(
@@ -370,7 +443,7 @@ public class EntryService {
                 rs.getTimestamp("deleted_at") != null), entryId);
         return new EntryView(row.id(), row.coupleId(), row.mode(), row.state(), row.authorId(),
                 row.rowVersion(), row.currentRevisionNo(), row.title(),
-                row.occurredAtEpochMillis(), row.occurredTimezone(), List.copyOf(blocks));
+                row.occurredAtEpochMillis(), row.occurredTimezone(), List.copyOf(blocks), row.visibility());
     }
 
     private String writeJson(Object value) {
@@ -392,7 +465,7 @@ public class EntryService {
                 rs.getInt("current_revision_no"),
                 rs.getString("title"),
                 rs.getLong("occurred_at_epoch_millis"),
-                rs.getString("occurred_timezone"));
+                rs.getString("occurred_timezone"), EntryVisibility.valueOf(rs.getString("visibility")));
     }
 
     private Instant lastOccurredAt(UUID entryId) {
@@ -407,6 +480,6 @@ public class EntryService {
 
     private record EntryRow(UUID id, UUID coupleId, EntryMode mode, EntryState state,
                             UUID authorId, long rowVersion, int currentRevisionNo,
-                            String title, long occurredAtEpochMillis, String occurredTimezone) {
+                            String title, long occurredAtEpochMillis, String occurredTimezone, EntryVisibility visibility) {
     }
 }

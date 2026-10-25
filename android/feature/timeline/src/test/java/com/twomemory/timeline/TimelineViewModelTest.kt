@@ -18,6 +18,10 @@ import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * JVM-level evidence for the timeline contract: one local write is enough to
@@ -40,8 +44,26 @@ class TimelineViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun viewModel() = TimelineViewModel({ source }, currentUserId = me).apply {
+    private fun viewModel() = TimelineViewModel({ source }, currentUserId = me, preparationDispatcher = UnconfinedTestDispatcher()).apply {
         updateNames(own = "小满呀", partner = "阿屿")
+    }
+
+    @Test
+    fun preparingRecordDatesDoesNotReadTheArchiveOnTheUiThread() = runBlocking {
+        val uiThread = Thread.currentThread()
+        val preparingThread = AtomicReference<Thread>()
+        val record = item(EntryState.PUBLISHED, me)
+        val archive = object : AbstractList<TimelineItem>() {
+            override val size = 1
+            override fun get(index: Int): TimelineItem {
+                preparingThread.set(Thread.currentThread())
+                return record
+            }
+        }
+        val model = TimelineViewModel({ kotlinx.coroutines.flow.flowOf(archive) }, currentUserId = me)
+        val shown = withTimeout(5_000) { model.entries.first { it.isNotEmpty() } }
+        assertEquals("2026年9月30日", shown.single().dateLabel)
+        assertTrue(preparingThread.get() !== uiThread, "Archive preparation must leave the UI thread free")
     }
 
     private fun item(
@@ -61,6 +83,20 @@ class TimelineViewModelTest {
         preview = "你那边也下雨了吗",
         photo = photo,
     )
+
+    @Test
+    fun unreadUsesRecordIdentityNotItsOldOccurrenceDateAndNeverMarksOwnDrafts() {
+        val model = viewModel()
+        val other = item(EntryState.PUBLISHED, partner)
+        val own = item(EntryState.PUBLISHED, me)
+        val draft = item(EntryState.DRAFT, partner)
+        source.value = listOf(other, own, draft)
+        assertEquals(listOf(true, false, false), model.entries.value.map { it.unread })
+        model.updateReadIds(setOf(other.id.toString()))
+        assertFalse(model.entries.value.first().unread)
+        source.value = listOf(item(EntryState.PUBLISHED, partner))
+        assertTrue(model.entries.value.single().unread)
+    }
 
     @Test
     fun aSingleLocalWriteReachesTheScreenWithNoRefreshCall() {
@@ -127,11 +163,11 @@ class TimelineViewModelTest {
     }
 
     @Test
-    fun anUnnamedCoupleIsShownAsPronounsInsteadOfAnInventedPerson() {
-        val viewModel = TimelineViewModel({ source }, currentUserId = me)
+    fun missingOtherProfileUsesNeutralLabelWithoutInventingTheirIdentity() {
+        val viewModel = TimelineViewModel({ source }, currentUserId = me, preparationDispatcher = UnconfinedTestDispatcher())
         source.value = listOf(item(EntryState.PUBLISHED, me), item(EntryState.PUBLISHED, partner))
 
-        assertEquals(listOf("我", "伴侣"), viewModel.entries.value.map { it.author })
+        assertEquals(listOf("我", "对方"), viewModel.entries.value.map { it.author })
     }
 
     @Test

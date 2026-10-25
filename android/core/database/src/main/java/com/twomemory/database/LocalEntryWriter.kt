@@ -31,6 +31,7 @@ class LocalEntryWriter(private val database: AppDatabase) {
                         occurredAtEpochMillis = command.occurredAt.toEpochMilli(),
                         occurredTimezone = command.occurredTimezone,
                         title = command.title,
+                        visibility = command.visibility.name,
                     ),
                 )
                 database.entryDao().insertBlocks(command.blocks.map { block ->
@@ -97,6 +98,15 @@ class LocalEntryWriter(private val database: AppDatabase) {
         block: com.twomemory.model.LocalBlockCommand,
     ): Unit = withContext(Dispatchers.IO) {
         database.withTransaction {
+            val entry = requireNotNull(database.entryDao().findEntry(entryId.toString())) { "记录不存在" }
+            require(entry.coupleId == coupleId.toString() && !entry.deleted) { "记录不属于当前空间" }
+            val previous = database.entryDao().findBlock(block.id.toString())
+            if (previous != null) {
+                require(previous.entryId == entryId.toString() && previous.authorId == block.authorId.toString() &&
+                    previous.type == block.type.name && previous.orderKey == block.orderKey && previous.payload == block.payload &&
+                    previous.assetId == block.assetId?.toString() && !previous.deleted) { "不能覆盖已有内容块" }
+                return@withTransaction
+            }
             database.entryDao().insertBlocks(listOf(
                 EntryBlockEntity(
                     id = block.id.toString(),
@@ -140,7 +150,7 @@ class LocalEntryWriter(private val database: AppDatabase) {
 
     private suspend fun releaseEntry(entryId: String) {
         val gated = database.outboxDao().mediaPendingForEntity(entryId)
-        if (gated.isEmpty() || database.entryDao().imagesWithoutAsset(entryId) > 0) return
+        if (gated.isEmpty() || database.entryDao().mediaWithoutAsset(entryId) > 0) return
         val assetsByBlock = database.entryDao().blocks(entryId)
             .mapNotNull { block -> block.assetId?.let { block.id to it } }
             .toMap()
@@ -218,6 +228,7 @@ class LocalEntryWriter(private val database: AppDatabase) {
         return org.json.JSONObject().apply {
             put("entryId", command.entryId.toString())
             put("authorId", command.authorId.toString())
+            put("visibility", command.visibility.name)
             put("title", command.title ?: org.json.JSONObject.NULL)
             put("occurredAt", command.occurredAt.toString())
             put("occurredTimezone", command.occurredTimezone)
@@ -251,12 +262,16 @@ class LocalEntryWriter(private val database: AppDatabase) {
      * would only ever travel further than the photo it points at.
      */
     private fun wirePayload(block: com.twomemory.model.LocalBlockCommand): String =
-        if (block.type != com.twomemory.model.BlockType.IMAGE) {
+        if (block.type != com.twomemory.model.BlockType.IMAGE &&
+            block.type != com.twomemory.model.BlockType.VIDEO &&
+            block.type != com.twomemory.model.BlockType.AUDIO) {
             block.payload
         } else {
-            org.json.JSONObject()
-                .put("mime", mimeTypeOf(block.payload))
-                .toString()
+            val source = runCatching { org.json.JSONObject(block.payload) }.getOrNull()
+            org.json.JSONObject().apply {
+                put("mime", mimeTypeOf(block.payload))
+                source?.optString("title")?.takeIf { it.isNotBlank() }?.let { put("title", it) }
+            }.toString()
         }
 
     private fun mimeTypeOf(payload: String): String = try {
@@ -270,6 +285,7 @@ class LocalEntryWriter(private val database: AppDatabase) {
 /** Outbox rows in this state are invisible to the sync engine until their pictures land. */
 private const val MEDIA_PENDING = "MEDIA_PENDING"
 
-private fun LocalBlockCommand.awaitsAsset(): Boolean = type == BlockType.IMAGE && assetId == null
+private fun LocalBlockCommand.awaitsAsset(): Boolean =
+    type in setOf(BlockType.IMAGE, BlockType.VIDEO, BlockType.AUDIO) && assetId == null
 
 private fun List<LocalBlockCommand>.awaitsAsset(): Boolean = any { it.awaitsAsset() }

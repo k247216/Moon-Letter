@@ -1,7 +1,20 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+// Deployment identities and personal copy are local inputs, never repository defaults.
+val moonletterPrivate = Properties().apply {
+    val source = rootProject.file("private.properties")
+    if (source.isFile) source.reader(Charsets.UTF_8).use { load(it) }
+}
+fun moonletterSetting(name: String, fallback: String): String =
+    providers.gradleProperty(name).orNull ?: providers.environmentVariable(name).orNull
+        ?: moonletterPrivate.getProperty(name) ?: fallback
+fun moonletterLiteral(value: String): String = "\"" + value.replace("\\", "\\\\")
+    .replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r") + "\""
 
 /**
  * versionName carries the commit this build came from: two phones can otherwise be
@@ -31,8 +44,14 @@ android {
         applicationId = "com.twomemory.app"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0+" + gitDescriptor(rootDir)
+        // Every externally testable behavior change gets a new package identity.
+        // V8: compact journal, city search, gallery export and identity-first setup.
+        versionCode = 43
+        versionName = "0.1.0+paper-interactions-v43-20261025"
+        buildConfigField("String", "PUBLIC_API_ORIGIN", moonletterLiteral(moonletterSetting("MOONLETTER_PUBLIC_ORIGIN", "https://api.example.invalid")))
+        buildConfigField("String", "DEV_SERVER_ORIGIN", moonletterLiteral(moonletterSetting("MOONLETTER_DEV_ORIGIN", "http://10.0.2.2:8080")))
+        buildConfigField("String", "FIRST_MEMBER_WELCOME", moonletterLiteral(moonletterSetting("MOONLETTER_FIRST_WELCOME", "记录彼此想念的每一天")))
+        buildConfigField("String", "OSS_HOST", moonletterLiteral(moonletterSetting("MOONLETTER_OSS_HOST", "bucket.example.invalid")))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -40,6 +59,7 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions { unitTests.isIncludeAndroidResources = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -54,6 +74,8 @@ kotlin {
 }
 
 dependencies {
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
     implementation(project(":core:database"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:model"))
@@ -82,6 +104,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.16")
     testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.test:runner:1.7.0")
+    testImplementation("androidx.test.espresso:espresso-core:3.7.0")
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp)
     testImplementation("org.postgresql:postgresql:42.7.4")

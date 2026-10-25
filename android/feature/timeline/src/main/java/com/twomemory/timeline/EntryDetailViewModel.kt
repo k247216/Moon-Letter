@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -24,6 +25,8 @@ data class EntryBlockUi(
     val assetId: String?,
     val author: String? = null,
     val payload: String? = null,
+    val mine: Boolean = false,
+    val authorId: UUID? = null,
 )
 
 data class EntryCommentUi(
@@ -42,7 +45,10 @@ data class EntryDetailUi(
     val sending: Boolean = false,
     val error: String? = null,
     val status: MoonLetterRecordStatus = MoonLetterRecordStatus.SYNCED,
-)
+) {
+    /** Only attributed content blocks count; replies and the entry creator do not. */
+    val contributorIds: Set<UUID> get() = blocks.mapNotNull { it.authorId }.toSet()
+}
 
 /**
  * One record as a page: everything written in it, its pictures, and the
@@ -53,17 +59,20 @@ class EntryDetailViewModel(
     observer: () -> Flow<EntryDetail?>,
     private val addComment: suspend (String, String) -> Unit,
     private val currentUserId: UUID?,
+    private val syncComment: suspend () -> Unit = {},
 ) : ViewModel() {
 
     private val names = MutableStateFlow("" to "")
+    private val delivery = MutableStateFlow<MoonLetterRecordStatus?>(null)
+    private var draftRevision = 0L
 
     private val mutableState = MutableStateFlow<EntryDetailUi?>(null)
     val state: StateFlow<EntryDetailUi?> = mutableState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            combine(observer(), names) { detail, (own, partner) ->
-                detail?.toUi(own, partner)
+            combine(observer(), names, delivery) { detail, labels, queueStatus ->
+                detail?.toUi(labels.first, labels.second, queueStatus)
             }.collect { mutableState.value = it }
         }
     }
@@ -73,24 +82,53 @@ class EntryDetailViewModel(
     }
 
     fun updateDraft(draft: String) {
+        draftRevision++
         mutableState.value = mutableState.value?.copy(draft = draft, error = null)
+    }
+
+    /** The caller supplies observed outbox state, never an inferred publish intent. */
+    fun updateDelivery(status: MoonLetterRecordStatus?) {
+        delivery.value = status
     }
 
     /** One comment, one explicit send: the text never reaches storage by itself. */
     fun sendComment() {
         val current = mutableState.value ?: return
         val body = current.draft.trim()
-        if (body.isEmpty() || current.sending) return
+        if (body.isEmpty() || current.sending || current.status == MoonLetterRecordStatus.DRAFT ||
+            current.status == MoonLetterRecordStatus.LOCAL_WRITE_FAILED) return
+        val sendingRevision = draftRevision
+        // Claim the send before dispatch; queued coroutines must not replace newer input.
+        mutableState.value = current.copy(sending = true, error = null)
         viewModelScope.launch {
-            mutableState.value = current.copy(sending = true, error = null)
             try {
                 addComment(current.header.id, body)
-                mutableState.value = mutableState.value?.copy(sending = false, draft = "")
+                val latest = mutableState.value
+                if (latest?.header?.id == current.header.id) {
+                    mutableState.value = latest.copy(sending = false,
+                        draft = if (draftRevision == sendingRevision) "" else latest.draft)
+                }
+                // The reply is already durable. Transport must not hold the composer busy,
+                // restore a sent draft, or report a local-save failure after that commit.
+                viewModelScope.launch {
+                    try { syncComment() }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { /* The persisted outbox is retried independently. */ }
+                }
+            } catch (cancelled: CancellationException) {
+                val latest = mutableState.value
+                if (latest?.header?.id == current.header.id) {
+                    mutableState.value = latest.copy(sending = false)
+                }
+                throw cancelled
             } catch (failure: Exception) {
-                mutableState.value = mutableState.value?.copy(
-                    sending = false,
-                    error = "这句回应没能存下来：${failure.message ?: "请重试"}",
-                )
+                val latest = mutableState.value
+                if (latest?.header?.id == current.header.id) {
+                    mutableState.value = latest.copy(
+                        sending = false,
+                        error = "这句回应没能存下来：${failure.message ?: "请重试"}",
+                    )
+                }
             }
         }
     }
@@ -99,8 +137,8 @@ class EntryDetailViewModel(
      * What is already on the page survives a new emission: her half-typed reply,
      * the in-flight send, and the error she has not edited away yet.
      */
-    private fun EntryDetail.toUi(ownName: String, partnerName: String): EntryDetailUi {
-        val onScreen = mutableState.value
+    private fun EntryDetail.toUi(ownName: String, partnerName: String, queueStatus: MoonLetterRecordStatus?): EntryDetailUi {
+        val onScreen = mutableState.value?.takeIf { it.header.id == entry.id.toString() }
         val zone = runCatching { ZoneId.of(entry.occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
         val timeFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm", Locale.CHINA)
         return EntryDetailUi(
@@ -114,6 +152,14 @@ class EntryDetailViewModel(
                         localPath = block.localPath,
                         assetId = block.assetId,
                         payload = block.payload,
+                        mine = currentUserId != null && block.authorId == currentUserId,
+                        authorId = block.authorId,
+                        author = when {
+                            block.authorId == null -> null
+                            currentUserId == null -> "成员"
+                            block.authorId == currentUserId -> ownName.ifBlank { "我" }
+                            else -> partnerName.ifBlank { "对方" }
+                        },
                     )
                 },
             comments = comments.map { comment ->
@@ -121,8 +167,9 @@ class EntryDetailViewModel(
                 EntryCommentUi(
                     id = comment.id.toString(),
                     author = when {
+                        comment.authorId == null || currentUserId == null -> "成员"
                         mine -> ownName.ifBlank { "我" }
-                        else -> partnerName.ifBlank { "伴侣" }
+                        else -> partnerName.ifBlank { "对方" }
                     },
                     body = comment.body,
                     timeLabel = comment.createdAt.atZone(zone).format(timeFormatter),
@@ -132,7 +179,11 @@ class EntryDetailViewModel(
             draft = onScreen?.draft.orEmpty(),
             sending = onScreen?.sending == true,
             error = onScreen?.error,
-            status = if (entry.state == com.twomemory.model.EntryState.DRAFT) MoonLetterRecordStatus.DRAFT else MoonLetterRecordStatus.SYNCED,
+            status = when (entry.state) {
+                com.twomemory.model.EntryState.DRAFT -> queueStatus ?: MoonLetterRecordStatus.DRAFT
+                com.twomemory.model.EntryState.PUBLISHED -> queueStatus ?: MoonLetterRecordStatus.SYNCED
+                else -> MoonLetterRecordStatus.DRAFT
+            },
         )
     }
 }

@@ -14,17 +14,18 @@ interface OutboxDao {
     /**
      * What the engine may send next, in the order the space must see it.
      *
-     * A rejected operation stays in this table, so without the guard the same
-     * record's later operations would overtake the row that failed and be refused
-     * for a reason that has nothing to do with them. One rejection therefore holds
-     * back its own record and nothing else.
+     * An earlier rejection, missing media, or retry backoff holds back later
+     * operations for the same record. Due operations can share a batch in rowid
+     * insertion order; a held record does not block any other record.
      */
     @Query(
         "SELECT * FROM outbox_operations AS o " +
             "WHERE o.state = 'PENDING' AND o.nextAttemptAtEpochMillis <= :now " +
             "AND NOT EXISTS (" +
             "SELECT 1 FROM outbox_operations AS c " +
-            "WHERE c.entityId = o.entityId AND c.state = 'CONFLICT' AND c.rowid < o.rowid" +
+            "WHERE c.entityId = o.entityId AND c.rowid < o.rowid " +
+            "AND (c.state IN ('CONFLICT', 'MEDIA_PENDING') " +
+            "OR (c.state = 'PENDING' AND c.nextAttemptAtEpochMillis > :now))" +
             ") " +
             "ORDER BY o.rowid LIMIT :limit",
     )

@@ -26,24 +26,31 @@ public class ExportService {
         this.accessPolicy = accessPolicy;
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true,
+            isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public Map<String, Object> exportCouple(UUID actorId, UUID coupleId,
                                             java.time.Instant from, java.time.Instant to) {
         accessPolicy.requireMember(actorId, coupleId);
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new com.twomemory.app.entry.EntryValidationException("开始日期不能晚于结束日期");
+        }
         List<Map<String, Object>> entries = jdbcTemplate.query("""
                 SELECT e.id::text AS id, e.mode::text AS mode, e.state::text AS state,
-                       e.author_id::text AS author_id, e.title,
+                       e.author_id::text AS author_id, e.title, e.visibility,
                        EXTRACT(EPOCH FROM e.occurred_at) * 1000 AS occurred_at_epoch_millis,
                        e.occurred_timezone, e.current_revision_no, e.created_at, e.updated_at
                 FROM entry e
                 WHERE e.couple_id = ? AND e.deleted_at IS NULL
-                  AND e.occurred_at >= COALESCE(?::timestamptz, to_timestamp(0))
-                  AND e.occurred_at <= COALESCE(?::timestamptz, now())
+                  AND ((e.visibility='SHARED' AND (e.state <> 'DRAFT' OR e.mode = 'COLLABORATIVE')) OR e.author_id = ?)
+                  AND (?::timestamptz IS NULL OR e.occurred_at >= ?::timestamptz)
+                  AND (?::timestamptz IS NULL OR e.occurred_at <= ?::timestamptz)
                 ORDER BY e.occurred_at DESC, e.id
                 """, (rs, rowNum) -> {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("id", rs.getString("id"));
             entry.put("mode", rs.getString("mode"));
             entry.put("state", rs.getString("state"));
+            entry.put("visibility", rs.getString("visibility"));
             entry.put("authorId", rs.getString("author_id"));
             entry.put("title", rs.getString("title"));
             entry.put("occurredAtEpochMillis", rs.getLong("occurred_at_epoch_millis"));
@@ -51,7 +58,7 @@ public class ExportService {
             entry.put("blocks", blocksOf(UUID.fromString(rs.getString("id"))));
             entry.put("comments", commentsOf(UUID.fromString(rs.getString("id"))));
             return entry;
-        }, queryParams(coupleId, from, to));
+        }, queryParams(coupleId, actorId, from, to));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("coupleId", coupleId.toString());
@@ -61,10 +68,13 @@ public class ExportService {
         return result;
     }
 
-    private Object[] queryParams(UUID coupleId, java.time.Instant from, java.time.Instant to) {
+    private Object[] queryParams(UUID coupleId, UUID actorId, java.time.Instant from, java.time.Instant to) {
         List<Object> params = new ArrayList<>();
         params.add(coupleId);
+        params.add(actorId);
         params.add(from == null ? null : java.sql.Timestamp.from(from));
+        params.add(from == null ? null : java.sql.Timestamp.from(from));
+        params.add(to == null ? null : java.sql.Timestamp.from(to));
         params.add(to == null ? null : java.sql.Timestamp.from(to));
         return params.toArray();
     }
@@ -73,7 +83,7 @@ public class ExportService {
         return jdbcTemplate.query("""
                 SELECT id::text AS id, type::text AS type, order_key, created_by::text AS author_id,
                        payload::text AS payload, asset_id::text AS asset_id, deleted_at
-                FROM entry_block WHERE entry_id = ? ORDER BY order_key, id
+                FROM entry_block WHERE entry_id = ? AND deleted_at IS NULL ORDER BY order_key, id
                 """, (rs, rowNum) -> {
             Map<String, Object> block = new LinkedHashMap<>();
             block.put("id", rs.getString("id"));

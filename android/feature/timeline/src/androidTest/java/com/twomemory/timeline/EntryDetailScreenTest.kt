@@ -1,6 +1,7 @@
 package com.twomemory.timeline
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -38,7 +39,7 @@ class EntryDetailScreenTest {
         }
         composeRule.onNodeWithText("完整的正文应该可以一直读到结尾").assertIsDisplayed()
         composeRule.onNodeWithText("小满").assertIsDisplayed()
-        composeRule.onNodeWithText("等待同步").assertIsDisplayed()
+        composeRule.onNodeWithText("已保存到本机 · 等待确认").assertDoesNotExist()
         composeRule.onNodeWithText("阿屿的视角").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("返回时间线").performClick()
         assertEquals(true, wentBack)
@@ -77,5 +78,48 @@ class EntryDetailScreenTest {
             }
         }
         composeRule.onNodeWithText("📍 杭州").assertIsDisplayed()
+    }
+
+    @Test
+    fun detailOpensPhotoViewerAndMovesAcrossPhotos() {
+        val state = EntryDetailUi(
+            header = TimelineEntryUi("entry-photo", "2026年10月1日", "22:07", "小满", "照片", body = "", shared = false, mine = true),
+            blocks = listOf(
+                EntryBlockUi("image-1", BlockType.IMAGE, null, "/tmp/photo-1.jpg", null, "小满"),
+                EntryBlockUi("image-2", BlockType.IMAGE, null, "/tmp/photo-2.jpg", null, "小满"),
+            ),
+            comments = emptyList(),
+        )
+        composeRule.setContent {
+            TwoMemoryTheme {
+                EntryDetailScreen(state, onBack = {}, onDraftChange = {}, onSend = {})
+            }
+        }
+
+        composeRule.onAllNodesWithContentDescription("查看第1张图片")[0].performClick()
+        composeRule.onNodeWithText("图片 1 / 2").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("下一张图片").performClick()
+        composeRule.onNodeWithText("图片 2 / 2").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("关闭图片浏览").performClick()
+        composeRule.onNodeWithContentDescription("关闭图片浏览").assertDoesNotExist()
+    }
+
+    @Test
+    fun rejectedDeliveryKeepsResendInsideMoreActions() {
+        val state = EntryDetailUi(
+            header = TimelineEntryUi("entry-rejected", "2026年10月1日", "22:07", "小满", "被拒收", body = "", shared = false, mine = true),
+            blocks = emptyList(),
+            comments = emptyList(),
+            status = MoonLetterRecordStatus.REJECTED,
+        )
+        composeRule.setContent {
+            TwoMemoryTheme {
+                EntryDetailScreen(state, onBack = {}, onDraftChange = {}, onSend = {})
+            }
+        }
+
+        composeRule.onNodeWithText("重新发送").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("更多操作").performClick()
+        composeRule.onNodeWithText("重新发送").assertIsDisplayed()
     }
 }

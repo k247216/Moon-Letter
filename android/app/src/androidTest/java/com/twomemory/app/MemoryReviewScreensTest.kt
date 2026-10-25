@@ -31,7 +31,7 @@ class MemoryReviewScreensTest {
     }
 
     @Test
-    fun weeklySummaryExplainsItsDeterministicSources() {
+    fun handbookShowsRealWritingInsteadOfSourceExplanations() {
         composeRule.setContent {
             TwoMemoryTheme {
                 MemoryReviewScreen(
@@ -42,8 +42,7 @@ class MemoryReviewScreensTest {
                 )
             }
         }
-        composeRule.onNodeWithText("本周小结").assertIsDisplayed()
-        composeRule.onNodeWithText("不调用 AI", substring = true).assertIsDisplayed()
-        composeRule.onNodeWithText("杭州").assertIsDisplayed()
+        composeRule.onNodeWithText("翻翻我们的回忆").assertIsDisplayed()
+        composeRule.onNodeWithText("今天读完了一章").assertIsDisplayed()
     }
 }

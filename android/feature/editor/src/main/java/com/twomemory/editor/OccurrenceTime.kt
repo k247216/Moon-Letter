@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,7 +77,7 @@ fun OccurrenceTime(
     editable: Boolean,
     onChange: (Instant) -> Unit,
 ) {
-    var picking by remember { mutableStateOf(false) }
+    var picking by rememberSaveable { mutableStateOf(false) }
     val label = occurrenceLabel(occurrenceTime, timezone)
     val tapTarget = if (editable) {
         Modifier.semantics { contentDescription = "发生时间 $label，点开修改" }
@@ -87,7 +88,7 @@ fun OccurrenceTime(
     }
     Text(
         label,
-        style = TwoMemoryTypography.body,
+        style = TwoMemoryTypography.caption,
         modifier = tapTarget.padding(horizontal = 8.dp, vertical = 4.dp),
     )
     if (picking) {
@@ -110,41 +111,8 @@ private fun OccurrencePicker(
     onDismiss: () -> Unit,
     onPick: (Instant) -> Unit,
 ) {
-    val dateState: DatePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = written.toLocalDate().asUtcDayMillis(),
-    )
-    val timeState = rememberTimePickerState(
-        initialHour = written.hour,
-        initialMinute = written.minute,
-        is24Hour = true,
-    )
-    val zone = written.zone
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                enabled = dateState.selectedDateMillis != null,
-                onClick = {
-                    dateState.selectedDateMillis?.let { picked ->
-                        onPick(pickedOccurrence(picked, timeState.hour, timeState.minute, zone))
-                    }
-                },
-            ) { Text("好") }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { onPick(Instant.now()) }) { Text("就是现在") }
-                TextButton(onClick = onDismiss) { Text("先不改") }
-            }
-        },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                DatePicker(state = dateState)
-                TimePicker(state = timeState)
-            }
-        },
-    )
+    com.twomemory.designsystem.PaperDateTimePickerDialog(written.toLocalDate(), written.toLocalTime(), onDismiss,
+        onNow = { onPick(Instant.now()) }) { date, time ->
+        onPick(date.atTime(time ?: written.toLocalTime()).atZone(written.zone).toInstant())
+    }
 }

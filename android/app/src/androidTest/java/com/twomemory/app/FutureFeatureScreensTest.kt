@@ -3,6 +3,7 @@ package com.twomemory.app
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -29,6 +30,7 @@ class FutureFeatureScreensTest {
             }
         }
         composeRule.onNodeWithText("共同相册").assertIsDisplayed()
+        composeRule.onNodeWithText("新建相册").assertIsDisplayed()
         composeRule.onNodeWithText("2026年10月").assertIsDisplayed()
         composeRule.onNodeWithText("2026年10月1日").assertIsDisplayed()
     }
@@ -43,21 +45,22 @@ class FutureFeatureScreensTest {
             }
         }
         composeRule.onNodeWithText("我们的城市").assertIsDisplayed()
-        composeRule.onNodeWithText("杭州").assertIsDisplayed()
+        composeRule.onNodeWithText("杭州的故事").assertIsDisplayed()
         composeRule.onNodeWithText("散步回来的路上").assertIsDisplayed()
     }
 
     @Test
-    fun mapCanCreateOneManualCitySnapshotWithoutRealtimeLocation() {
+    fun mapStartsACityStoryWithoutCreatingASnapshot() {
         var savedCity = ""
         composeRule.setContent {
             TwoMemoryTheme {
-                CityMapPreviewScreen(onSaveCitySnapshot = { savedCity = it })
+                CityMapPreviewScreen(onCreateInCity = { savedCity = it.name })
             }
         }
-        composeRule.onNodeWithText("记录城市").performClick()
-        composeRule.onNodeWithText("城市名称").performTextInput("杭州")
-        composeRule.onNodeWithText("保存快照").performClick()
+        composeRule.onNodeWithContentDescription("搜索城市").performClick()
+        composeRule.onNodeWithContentDescription("城市名称或省份").performTextInput("杭州")
+        composeRule.onNode(androidx.compose.ui.test.hasText("杭州") and !androidx.compose.ui.test.hasSetTextAction()).performClick()
+        composeRule.onNodeWithText("写故事").performClick()
         assertEquals("杭州", savedCity)
     }
 }

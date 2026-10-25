@@ -34,8 +34,8 @@ public class ExportController {
             @RequestParam UUID coupleId,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) throws Exception {
-        Instant fromInstant = from == null || from.isBlank() ? null : Instant.parse(from);
-        Instant toInstant = to == null || to.isBlank() ? null : Instant.parse(to);
+        Instant fromInstant = parseBound(from);
+        Instant toInstant = parseBound(to);
         Map<String, Object> payload = exportService.exportCouple(actor.userId(), coupleId, fromInstant, toInstant);
         String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
         return ResponseEntity.ok()
@@ -43,5 +43,14 @@ public class ExportController {
                         "attachment; filename=moon-letter-export-" + coupleId + ".json")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(json);
+    }
+
+    private Instant parseBound(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Instant.parse(value);
+        } catch (java.time.format.DateTimeParseException invalid) {
+            throw new com.twomemory.app.entry.EntryValidationException("导出日期需要有效的 ISO 时间格式");
+        }
     }
 }

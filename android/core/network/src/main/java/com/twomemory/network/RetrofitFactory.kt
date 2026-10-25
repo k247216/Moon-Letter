@@ -103,7 +103,10 @@ class RetrofitCoupleDiaryApi private constructor(
                 )
             }
             response.code() == 401 -> PushResult(operation.operationId, PushResult.Status.UNAUTHORIZED)
-            response.code() == 409 -> PushResult(operation.operationId, PushResult.Status.CONFLICT)
+            // Park permanent client rejections until an explicit user retry.
+            // Timeouts and rate limits retain the existing retry/backoff policy.
+            response.code() in 400..499 && response.code() != 408 && response.code() != 429 ->
+                PushResult(operation.operationId, PushResult.Status.CONFLICT)
             else -> PushResult(operation.operationId, PushResult.Status.RETRYABLE_FAILURE)
         }
     }
@@ -134,6 +137,12 @@ class RetrofitCoupleDiaryApi private constructor(
         }
 
     companion object {
+        private val transport = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build()
+
         private val uuidGson: com.google.gson.Gson = com.google.gson.GsonBuilder()
             .registerTypeAdapter(UUID::class.java, com.google.gson.JsonSerializer<UUID> { src, _, _ ->
                 com.google.gson.JsonPrimitive(src.toString())
@@ -144,7 +153,7 @@ class RetrofitCoupleDiaryApi private constructor(
             .create()
 
         fun create(baseUrl: String, tokenProvider: () -> String?): RetrofitCoupleDiaryApi {
-            val client = okhttp3.OkHttpClient.Builder()
+            val client = transport.newBuilder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
                 .writeTimeout(15, TimeUnit.SECONDS)

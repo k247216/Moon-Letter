@@ -11,6 +11,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.time.Instant
 import java.util.UUID
+import java.io.File
 
 /**
  * SyncStore backed by Room: the outbox drives pushes, pulled changes plus the
@@ -18,6 +19,9 @@ import java.util.UUID
  * leaves both the data and the cursor untouched.
  */
 class RoomSyncStore(private val database: AppDatabase) : SyncStore {
+    suspend fun mergeConfirmedEntry(payload: String) = withContext(Dispatchers.IO) {
+        database.withTransaction { mergeEntrySnapshot(payload) }
+    }
 
     override suspend fun pendingOperations(limit: Int): List<PendingOperation> =
         withContext(Dispatchers.IO) {
@@ -80,8 +84,15 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
     }
 
     /** A feed change is part of a page: malformed JSON fails the page, cursor included. */
-    private suspend fun applyEntryChange(change: RemoteChange) =
-        upsertEntry(JSONObject(change.payload), change.entityId.toString())
+    private suspend fun applyEntryChange(change: RemoteChange) {
+        val payload = JSONObject(change.payload)
+        if (change.operation == "DELETE" || payload.optBoolean("deleted", false)) {
+            val id = change.entityId.toString()
+            database.entryDao().withdraw(id)
+            database.entryDao().removeProjectionBlocks(id)
+            database.entryDao().removeProjectionComments(id)
+        } else upsertEntry(payload, change.entityId.toString())
+    }
 
     /**
      * A push response carries the entry as the space now holds it. For a personal
@@ -118,17 +129,26 @@ class RoomSyncStore(private val database: AppDatabase) : SyncStore {
                 title = if (payload.isNull("title")) null else payload.optString("title"),
                 currentRevision = payload.optInt("currentRevisionNo", 0),
                 rowVersion = payload.optLong("rowVersion", 0L),
+                visibility = payload.optString("visibility", "SHARED"),
             ),
         )
         database.entryDao().insertBlocks((0 until blocks.length()).map { index ->
             val block = blocks.getJSONObject(index)
+            val old = database.entryDao().findBlock(block.getString("id"))
+            val incoming = JSONObject(block.optString("payload", "{}"))
+            val oldPath = old?.let { parseObjectOrNull(it.payload)?.optString("localPath") }
+            // Server projections omit device paths. Keep this phone's original
+            // only for the same media block and asset, never another phone's path.
+            val newAsset = if (block.isNull("assetId")) null else block.optString("assetId")
+            if (old?.type == block.getString("type") && (old.assetId == null || old.assetId == newAsset) &&
+                !oldPath.isNullOrBlank() && File(oldPath).isFile) incoming.put("localPath", oldPath)
             EntryBlockEntity(
                 id = block.getString("id"),
                 entryId = entryId,
                 type = block.getString("type"),
                 orderKey = block.optLong("orderKey", index.toLong()),
                 authorId = block.optString("updatedBy", payload.optString("authorId")),
-                payload = block.optString("payload", "{}"),
+                payload = incoming.toString(),
                 assetId = if (block.isNull("assetId")) null else block.optString("assetId"),
                 blockVersion = block.optLong("blockVersion", 0L),
                 deleted = block.optBoolean("deleted", false),

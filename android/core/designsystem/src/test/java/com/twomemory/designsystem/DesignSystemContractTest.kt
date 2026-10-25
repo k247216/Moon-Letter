@@ -19,11 +19,11 @@ class DesignSystemContractTest {
             MoonLetterTabs.map { it.label },
             MoonLetterTabs.map { it.contentDescription },
         )
-        assertEquals(TwoMemoryIcons.Image, MoonLetterTabs[0].icon)
-        assertEquals(TwoMemoryIcons.Camera, MoonLetterTabs[1].icon)
+        assertEquals(TwoMemoryIcons.Home, MoonLetterTabs[0].icon)
+        assertEquals(TwoMemoryIcons.Album, MoonLetterTabs[1].icon)
         assertEquals(TwoMemoryIcons.Add, MoonLetterTabs[2].icon)
         assertEquals(TwoMemoryIcons.Location, MoonLetterTabs[3].icon)
-        assertEquals(TwoMemoryIcons.Music, MoonLetterTabs[4].icon)
+        assertEquals(TwoMemoryIcons.Couple, MoonLetterTabs[4].icon)
     }
 
     @Test
@@ -32,9 +32,9 @@ class DesignSystemContractTest {
             listOf(
                 "草稿",
                 "已保存到本机",
-                "等待同步",
+                "已保存到本机 · 等待确认",
                 "照片还在上传",
-                "发送没成功，正在自动重试",
+                "已保存到本机",
                 "服务器拒收了这条",
                 "服务器已收下",
                 "这条还没存进手机",

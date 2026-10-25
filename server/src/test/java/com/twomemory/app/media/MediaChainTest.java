@@ -34,9 +34,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class MediaChainTest {
 
-    private static final String ADMIN_URL = "jdbc:postgresql://localhost:5432/postgres";
-    private static final String ADMIN_USER = "moon_letter";
-    private static final String ADMIN_PASSWORD = "moon_letter_dev_only";
+    private static final String ADMIN_URL = com.twomemory.app.TestDatabaseConfig.adminUrl();
+    private static final String ADMIN_USER = com.twomemory.app.TestDatabaseConfig.user();
+    private static final String ADMIN_PASSWORD = com.twomemory.app.TestDatabaseConfig.password();
     private static final String TEST_DB = "moon_letter_media_test";
     private static final String TOKEN_A = "media-test-token-a";
     private static final String TOKEN_B = "media-test-token-b";
@@ -53,6 +53,7 @@ class MediaChainTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired private ObjectStorage storage;
 
     @DynamicPropertySource
     static void datasource(DynamicPropertyRegistry registry) {
@@ -108,6 +109,7 @@ class MediaChainTest {
                 .as("ticket body: %s", ticket.getBody())
                 .isEqualTo(HttpStatus.CREATED);
         UUID assetId = UUID.fromString(ticket.getBody().get("assetId").toString());
+        assertThat(ticket.getBody().get("objectKey").toString()).startsWith("couples/" + coupleId + "/records/images/").endsWith(".png");
 
         // 2. A uploads the raw bytes; the asset becomes READY.
         HttpHeaders dataHeaders = new HttpHeaders();
@@ -120,13 +122,36 @@ class MediaChainTest {
                 .isEqualTo(HttpStatus.OK);
         assertThat(uploaded.getBody().get("id")).isEqualTo(assetId.toString());
 
-        // 3. The partner downloads the exact same bytes.
+        // 3. Uploading alone must not expose an unshared original to the partner.
         HttpHeaders getHeaders = new HttpHeaders();
         getHeaders.setBearerAuth(tokenB);
+        assertThat(restTemplate.exchange("/api/v1/media/" + assetId + "/data", HttpMethod.GET,
+                new HttpEntity<>(getHeaders), byte[].class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        ResponseEntity<Map> draft = exchangeWithBearer("/api/v1/entries", tokenA, HttpMethod.POST, Map.of(
+                "authorId", userA.toString(), "coupleId", coupleId.toString(), "mode", "PERSONAL",
+                "title", "照片回忆", "occurredAt", "2026-10-01T12:00:00Z", "occurredTimezone", "Asia/Shanghai",
+                "blocks", java.util.List.of(Map.of("blockId", UUID.randomUUID().toString(), "type", "IMAGE",
+                        "orderKey", 0, "authorId", userA.toString(), "payload", "{}", "assetId", assetId.toString(), "deleted", false))));
+        assertThat(draft.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(exchangeWithBearer("/api/v1/entries/" + draft.getBody().get("id") + "/publish", tokenA,
+                HttpMethod.POST, Map.of("baseVersion", 0)).getStatusCode()).isEqualTo(HttpStatus.OK);
+        // A published record exposes exactly the original bytes.
         ResponseEntity<byte[]> downloaded = restTemplate.exchange("/api/v1/media/" + assetId + "/data",
                 HttpMethod.GET, new HttpEntity<>(getHeaders), byte[].class);
         assertThat(downloaded.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(downloaded.getBody()).isEqualTo(imageBytes);
+
+        // An already stored legacy path remains the source of truth after upgrade.
+        String legacyKey = "couples/" + coupleId + "/assets/" + assetId;
+        ((LocalObjectStorage) storage).put(legacyKey, imageBytes);
+        jdbcTemplate.update("UPDATE media_asset SET object_key=? WHERE id=?", legacyKey, assetId);
+        ResponseEntity<Map> repeated = exchangeWithBearer("/api/v1/media/uploads", tokenA, HttpMethod.POST, createCommand);
+        assertThat(repeated.getBody().get("assetId")).isEqualTo(assetId.toString());
+        assertThat(repeated.getBody().get("objectKey")).isEqualTo(legacyKey);
+        ResponseEntity<byte[]> legacyDownload = restTemplate.exchange("/api/v1/media/" + assetId + "/data",
+                HttpMethod.GET, new HttpEntity<>(getHeaders), byte[].class);
+        assertThat(legacyDownload.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(legacyDownload.getBody()).isEqualTo(imageBytes);
 
         // 4. A third member outside the space is rejected.
         // (covered by requireMember: skipped here, tested in Task 4 tests)

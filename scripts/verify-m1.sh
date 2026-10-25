@@ -6,12 +6,12 @@ cd "$repo_root"
 incomplete=0
 
 echo "== server tests =="
-if [[ -n "${TEST_DB_URL:-}" ]]; then
+if [[ -n "${TEST_DB_URL:-}" && -n "${TEST_DB_PASSWORD:-}" ]]; then
   (cd server && mvn test)
 else
-  echo "INCOMPLETE: TEST_DB_URL is not set; PostgreSQL integration tests were not run."
+  echo "INCOMPLETE: TEST_DB_URL and TEST_DB_PASSWORD are required; PostgreSQL integration tests were not run."
   incomplete=1
-  (cd server && mvn test -Dtest='!*SchemaConstraintTest')
+  (cd server && mvn test -Dtest=RepositoryCredentialHygieneTest)
 fi
 
 echo "== Android JVM tests =="

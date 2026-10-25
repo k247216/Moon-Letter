@@ -8,6 +8,15 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 abstract class EntryDao {
+    @Query("UPDATE entries SET deleted = 1, title = NULL WHERE id = :entryId")
+    abstract suspend fun withdraw(entryId: String)
+
+    @Query("DELETE FROM entry_blocks WHERE entryId = :entryId")
+    abstract suspend fun removeProjectionBlocks(entryId: String)
+
+    @Query("DELETE FROM comments WHERE entryId = :entryId")
+    abstract suspend fun removeProjectionComments(entryId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun insertEntry(entry: EntryEntity)
 
@@ -44,6 +53,12 @@ abstract class EntryDao {
     )
     abstract suspend fun imageBlocksWithoutAsset(): List<EntryBlockEntity>
 
+    @Query(
+        "SELECT * FROM entry_blocks WHERE type IN ('IMAGE', 'VIDEO', 'AUDIO') " +
+            "AND assetId IS NULL AND deleted = 0",
+    )
+    abstract suspend fun mediaBlocksWithoutAsset(): List<EntryBlockEntity>
+
     /**
      * Published records only: the weekly re-encounter must never surface a draft
      * that was written but deliberately not shared.
@@ -66,6 +81,11 @@ abstract class EntryDao {
     )
     abstract suspend fun latestArrivedPublishedByOther(notAuthorId: String): EntryEntity?
 
+    /** Identity-only arrival snapshot: no bodies, drafts, foreign spaces or hidden partner records. */
+    @Query("SELECT id FROM entries WHERE coupleId = :coupleId AND authorId != :ownId " +
+        "AND deleted = 0 AND state = 'PUBLISHED' AND visibility = 'SHARED' ORDER BY rowid")
+    abstract suspend fun noticeEntryIds(coupleId: String, ownId: String): List<String>
+
     @Query("SELECT * FROM entry_blocks WHERE id = :blockId LIMIT 1")
     abstract suspend fun findBlock(blockId: String): EntryBlockEntity?
 
@@ -74,4 +94,10 @@ abstract class EntryDao {
             "AND assetId IS NULL AND deleted = 0",
     )
     abstract suspend fun imagesWithoutAsset(entryId: String): Int
+
+    @Query(
+        "SELECT COUNT(*) FROM entry_blocks WHERE entryId = :entryId " +
+            "AND type IN ('IMAGE', 'VIDEO', 'AUDIO') AND assetId IS NULL AND deleted = 0",
+    )
+    abstract suspend fun mediaWithoutAsset(entryId: String): Int
 }

@@ -82,6 +82,37 @@ class RoomSyncStoreTest {
         assertEquals(1, databaseA.outboxDao().pending(Long.MAX_VALUE, 10).size)
     }
 
+    @Test fun withdrawnPrivateRecordRemovesItsLocalProjectionAndComments() = runBlocking {
+        val command = command()
+        val id = LocalEntryWriter(databaseB).save(command)
+        databaseB.commentDao().insert(CommentEntity("comment", id.toString(), "partner", "reply", null, 0L))
+        RoomSyncStore(databaseB).applyChangesAtomically(coupleId, listOf(RemoteChange(
+            1, "ENTRY", id, "DELETE", "{\"id\":\"$id\",\"deleted\":true}")), 1)
+        assertTrue(databaseB.entryDao().findEntry(id.toString())?.deleted != false)
+        assertTrue(databaseB.entryDao().blocks(id.toString()).isEmpty())
+        assertTrue(databaseB.commentDao().commentsForEntry(id.toString()).isEmpty())
+        assertEquals(1L, RoomSyncStore(databaseB).currentCursor(coupleId))
+    }
+
+    @Test fun serverEchoKeepsTheSameDevicesRecordingOriginal() = runBlocking {
+        val original = File.createTempFile("recording-echo-", ".m4a", context.filesDir)
+        try {
+            original.writeBytes(byteArrayOf(1, 2, 3))
+            val blockId = UUID.randomUUID()
+            val author = UUID.randomUUID()
+            val entryId = LocalEntryWriter(databaseA).save(command().copy(blocks = listOf(LocalBlockCommand(
+                id = blockId, type = BlockType.AUDIO, orderKey = 0,
+                payload = org.json.JSONObject().put("localPath", original.absolutePath).put("mime", "audio/mp4").toString(), authorId = author))))
+            val asset = UUID.randomUUID()
+            val snapshot = org.json.JSONObject().put("id", entryId).put("coupleId", coupleId).put("authorId", author)
+                .put("state", "PUBLISHED").put("blocks", org.json.JSONArray().put(org.json.JSONObject()
+                    .put("id", blockId).put("type", "AUDIO").put("assetId", asset).put("payload", "{\"mime\":\"audio/mp4\"}")))
+            RoomSyncStore(databaseA).applyChangesAtomically(coupleId,
+                listOf(RemoteChange(1, "ENTRY", entryId, "PUBLISH", snapshot.toString())), 1)
+            assertEquals(original.absolutePath, org.json.JSONObject(databaseA.entryDao().findBlock(blockId.toString())!!.payload).getString("localPath"))
+        } finally { original.delete() }
+    }
+
     @Test
     fun pendingOperationsSurviveKillAndReopen() = runBlocking {
         val entryId = LocalEntryWriter(databaseA).save(command())

@@ -11,12 +11,18 @@ import java.util.UUID;
 public record EntryView(UUID id, UUID coupleId, EntryMode mode, EntryState state, UUID authorId,
                         long rowVersion, int currentRevisionNo, String title,
                         long occurredAtEpochMillis, String occurredTimezone,
-                        List<BlockView> blocks) {
+                        List<BlockView> blocks, EntryVisibility visibility) {
+
+    public EntryView(UUID id, UUID coupleId, EntryMode mode, EntryState state, UUID authorId,
+                     long rowVersion, int currentRevisionNo, String title,
+                     long occurredAtEpochMillis, String occurredTimezone, List<BlockView> blocks) {
+        this(id, coupleId, mode, state, authorId, rowVersion, currentRevisionNo, title,
+                occurredAtEpochMillis, occurredTimezone, blocks, EntryVisibility.SHARED);
+    }
 
     /**
-     * A personal draft is visible only to its author. The change feed is ordered
-     * per couple, not per member, so the only way to keep it private is to not
-     * write its rows there in the first place.
+     * Drafts remain local to the author. Published PRIVATE records use the
+     * actor-specific cloud feed, so they must not be suppressed as drafts.
      */
     public boolean privateDraft() {
         return mode == EntryMode.PERSONAL && state == EntryState.DRAFT;

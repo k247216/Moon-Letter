@@ -1,43 +1,11 @@
 package com.twomemory.editor
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import com.twomemory.designsystem.TwoMemoryIcons
-import com.twomemory.designsystem.TwoMemoryColors
 import com.twomemory.designsystem.MoonLetterRecordStatus
-import com.twomemory.designsystem.TwoMemoryTypography
-import com.twomemory.designsystem.paperTexture
 import com.twomemory.model.EntryMode
 import java.time.Instant
 
+/** Both modes use one writing surface; the partner's contribution remains read-only. */
 @Composable
 fun SharedEditorRoute(
     state: EditorUiState,
@@ -47,189 +15,34 @@ fun SharedEditorRoute(
     onClose: () -> Unit = {},
     onModeChange: (EntryMode) -> Unit = {},
     photoActions: EditorPhotoActions? = null,
+    attachmentActions: EditorAttachmentActions? = null,
     ownName: String = "",
     partnerName: String? = state.partnerName,
     partnerBody: String? = state.partnerBody,
-    /** Real queue state of the record just published; null until something is published. */
     delivery: MoonLetterRecordStatus? = null,
     onRetryDelivery: () -> Unit = {},
-    /** When the story happened; the writer's answer, not the clock's. */
     onOccurrenceChange: (Instant) -> Unit = {},
+    onSaveDraft: (() -> Unit)? = null,
+    onImportAudio: (() -> Unit)? = null,
+    titleReadOnly: Boolean = state.appendingPerspective,
+    ownPublishedBody: String? = state.ownPublishedBody,
+    ownAvatar: androidx.compose.ui.graphics.ImageBitmap? = null,
+    partnerAvatar: androidx.compose.ui.graphics.ImageBitmap? = null,
+    currentUserId: java.util.UUID? = null,
+    contributorIds: Set<java.util.UUID> = emptySet(),
+    referenceBlocks: List<EditorReferenceBlock>? = null,
 ) {
-    val author = ownName.ifBlank { "我" }
-    Scaffold(
-        bottomBar = {
-            Column(
-                modifier = Modifier.fillMaxWidth().background(TwoMemoryColors.WarmBeigeNav)
-                    .navigationBarsPadding().imePadding().padding(horizontal = 12.dp, vertical = 8.dp),
-            ) { EditorAttachmentToolbar(onImageClick = photoActions?.pick) }
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().paperTexture(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState()).padding(padding)
-                .padding(horizontal = 22.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            SharedTopBar(state, onClose, onPublish, onOccurrenceChange)
-            RecordModeSwitch(EntryMode.COLLABORATIVE, onModeChange)
-            EditorStatus(delivery ?: state.recordStatus, onRetryDelivery)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AuthorMark(author, 48.dp, MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(12.dp))
-                Text("先写下你的部分，TA 可以补充自己的视角。", style = TwoMemoryTypography.caption,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
-            }
-            BasicTextField(
-                value = state.title,
-                onValueChange = onTitleChange,
-                modifier = Modifier.fillMaxWidth(),
-                textStyle = TwoMemoryTypography.display.copy(color = MaterialTheme.colorScheme.onSurface),
-                singleLine = true,
-                decorationBox = { inner ->
-                    Box {
-                        if (state.title.isBlank()) Text("这段回忆叫什么", style = TwoMemoryTypography.display,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f))
-                        inner()
-                    }
-                },
-            )
-            AuthorBlock(
-                name = author,
-                accent = MaterialTheme.colorScheme.primary,
-                moment = if (state.occurrenceEdited) {
-                    occurrenceLabel(state.occurrenceTime, state.timezone)
-                } else {
-                    "此刻"
-                },
-            ) {
-                BasicTextField(
-                    value = state.body,
-                    onValueChange = onBodyChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = TwoMemoryTypography.body.copy(color = MaterialTheme.colorScheme.onSurface),
-                    minLines = 6,
-                    decorationBox = { inner ->
-                        Box {
-                            if (state.body.isBlank()) Text("从你的视角写下这一刻……", style = TwoMemoryTypography.body,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.34f))
-                            inner()
-                        }
-                },
-            )
-            if (!partnerName.isNullOrBlank() && !partnerBody.isNullOrBlank()) {
-                ReadOnlyAuthorBlock(partnerName, partnerBody)
-            }
-            }
-            EditorPhotoStrip(
-                photos = state.photos,
-                photoError = state.photoError,
-                onRemove = { photoActions?.remove?.invoke(it) },
-            )
-            state.error?.let {
-                Text(it, style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.error)
-            }
-            Spacer(Modifier.size(96.dp))
-        }
-    }
-}
-
-@Composable
-private fun EditorStatus(status: MoonLetterRecordStatus, onRetry: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            status.label,
-            style = TwoMemoryTypography.caption,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = .10f))
-                .padding(horizontal = 10.dp, vertical = 5.dp),
-        )
-        if (status == MoonLetterRecordStatus.REJECTED) {
-            Spacer(Modifier.width(6.dp))
-            TextButton(onClick = onRetry) { Text("重新发送") }
-        }
-    }
-}
-
-@Composable
-private fun ReadOnlyAuthorBlock(name: String, body: String) {
-    Column(
-        modifier = Modifier.fillMaxWidth().background(Color(0x146F8268), androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            AuthorMark(name, 34.dp, Color(0xFF6F8268))
-            Spacer(Modifier.width(8.dp))
-            Text("${name}的视角", style = TwoMemoryTypography.caption, color = Color(0xFF6F8268))
-        }
-        Text(body, style = TwoMemoryTypography.body)
-        Text("仅 TA 可以修改", style = TwoMemoryTypography.caption, color = MaterialTheme.colorScheme.onSurface.copy(alpha = .52f))
-    }
-}
-
-@Composable
-private fun SharedTopBar(
-    state: EditorUiState,
-    onClose: () -> Unit,
-    onPublish: () -> Unit,
-    onOccurrenceChange: (Instant) -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) {
-            Icon(TwoMemoryIcons.Close, contentDescription = "关闭编辑器")
-        }
-        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center) {
-            Icon(TwoMemoryIcons.Time, contentDescription = null, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(7.dp))
-            OccurrenceTime(
-                occurrenceTime = state.occurrenceTime,
-                timezone = state.timezone,
-                editable = !state.saved && !state.saving,
-                onChange = onOccurrenceChange,
-            )
-        }
-        val actionEnabled = state.saved || (!state.saving && state.hasContent)
-        TextButton(
-            onClick = if (state.saved) onClose else onPublish,
-            enabled = actionEnabled,
-            modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
-                .background(if (actionEnabled) TwoMemoryColors.WarmBeigeAccent else TwoMemoryColors.WarmBeigeLine)
-                .padding(horizontal = 4.dp),
-        ) {
-            Text(
-                if (state.saving) "发布中" else if (state.saved) "返回时间轴" else "发布",
-                color = if (actionEnabled) Color.White else TwoMemoryColors.WarmBeigeMuted,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
-@Composable
-private fun AuthorBlock(
-    name: String,
-    accent: Color,
-    moment: String,
-    content: @Composable () -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Box(
-            modifier = Modifier.padding(top = 4.dp).size(10.dp).clip(CircleShape).background(accent),
-        )
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AuthorMark(name, 34.dp, accent)
-                Spacer(Modifier.width(8.dp))
-                Text(name, style = TwoMemoryTypography.caption, color = accent)
-                Spacer(Modifier.width(8.dp))
-                Text(moment, style = TwoMemoryTypography.caption,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.42f))
-            }
-            content()
-        }
-    }
+    PersonalEditorScreen(
+        state = state, onTitleChange = onTitleChange, onBodyChange = onBodyChange,
+        onPublish = onPublish, onClose = onClose, mode = EntryMode.COLLABORATIVE,
+        onModeChange = onModeChange, photoActions = photoActions,
+        attachmentActions = attachmentActions, ownName = ownName, delivery = delivery,
+        onRetryDelivery = onRetryDelivery, onOccurrenceChange = onOccurrenceChange,
+        partnerName = partnerName, partnerBody = partnerBody,
+        onSaveDraft = onSaveDraft, onImportAudio = onImportAudio,
+        titleReadOnly = titleReadOnly, ownPublishedBody = ownPublishedBody,
+        ownAvatar = ownAvatar, partnerAvatar = partnerAvatar,
+        currentUserId = currentUserId, contributorIds = contributorIds,
+        referenceBlocks = referenceBlocks,
+    )
 }
