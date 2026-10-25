@@ -11,7 +11,7 @@ android/.gradle/
 android/local.properties
 android/**/build/
 android/**/.cxx/
-android/.kotlin/errors/
+android/.kotlin/
 android/**/hs_err_pid*.log
 .gradle-tmp/
 .gradle-user/
