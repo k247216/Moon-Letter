@@ -29,6 +29,16 @@ import java.util.concurrent.atomic.AtomicReference
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimelineViewModelTest {
+    @Test fun signerColourDoesNotSwapWhenTheOtherMemberReadsTheSameRecord() {
+        val written = item(EntryState.PUBLISHED, me)
+        val mine = TimelineViewModel({ source }, me, UnconfinedTestDispatcher())
+        val theirs = TimelineViewModel({ source }, partner, UnconfinedTestDispatcher())
+        mine.updateNames("我", "你", coralSignerId = me)
+        theirs.updateNames("你", "我", coralSignerId = me)
+        source.value = listOf(written)
+        assertEquals(true, mine.entries.value.single().signatureCoral)
+        assertEquals(true, theirs.entries.value.single().signatureCoral)
+    }
 
     private val me = UUID.randomUUID()
     private val partner = UUID.randomUUID()

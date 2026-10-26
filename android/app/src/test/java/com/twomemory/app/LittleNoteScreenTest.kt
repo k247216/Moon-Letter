@@ -102,7 +102,7 @@ class LittleNoteScreenTest {
         saveCapture(name)
     }
     private fun saveCapture(name: String) {
-        val file = java.io.File("../../releases/v44/$name").also { it.parentFile.mkdirs() }
+        val file = java.io.File("../../releases/v45/$name").also { it.parentFile.mkdirs() }
         val bitmap = compose.onRoot().captureToImage().let { it.asAndroidBitmap() }
         file.outputStream().use { assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
     }

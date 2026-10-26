@@ -603,7 +603,7 @@ fun AppNavigation(
             if (key == null || key == "coupleId" || key == "userId") {
                 cityScope = SyncSession.load(context)?.let { it.coupleId to it.userId }
             }
-            if (key == null || key == "ownName" || key == "partnerName") {
+            if (key == null || key == "ownName" || key == "partnerName" || key.startsWith("coralSigner_")) {
                 cachedNames = SyncSession.loadNames(context)
             }
         }
@@ -731,7 +731,7 @@ fun AppNavigation(
         cachedNames = SyncSession.loadNames(context)
     }
     LaunchedEffect(cachedNames) {
-        timelineViewModel.updateNames(own = cachedNames.own, partner = cachedNames.partner)
+        timelineViewModel.updateNames(own = cachedNames.own, partner = cachedNames.partner, coralSignerId = cachedNames.coralSignerId)
     }
     LaunchedEffect(readIds) { timelineViewModel.updateReadIds(readIds) }
     // A parked rejection is invisible to the sync engine from now on, so the queue
@@ -987,7 +987,7 @@ fun AppNavigation(
             )
         }
         LaunchedEffect(cachedNames) {
-            detailViewModel.updateNames(cachedNames.own, cachedNames.partner)
+            detailViewModel.updateNames(cachedNames.own, cachedNames.partner, cachedNames.coralSignerId)
         }
         val openUuid = remember(entryId) { runCatching { java.util.UUID.fromString(entryId) }.getOrNull() }
         val detailRows by remember(entryId) { database.outboxDao().observeForEntity(entryId) }
@@ -1286,6 +1286,7 @@ fun AppNavigation(
                         timelineViewModel.updateNames(
                             own = cachedNames.own.ifBlank { saved },
                             partner = cachedNames.partner,
+                            coralSignerId = cachedNames.coralSignerId,
                         )
                         saved
                     },

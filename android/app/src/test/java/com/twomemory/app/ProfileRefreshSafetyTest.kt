@@ -116,6 +116,14 @@ class ProfileRefreshSafetyTest {
             SyncSession.refreshNames(context)
             assertEquals("Remote own", sessionPrefs.getString("ownName", null))
             assertEquals("Remote partner", sessionPrefs.getString("partnerName", null))
+            val signer = SyncSession.loadNames(context).coralSignerId
+            assertNotNull(signer)
+            val first = SyncSession.loadNames(context)
+            val bound = requireNotNull(SyncSession.load(context))
+            SyncSession.save(context, "synthetic-other-space", UUID.randomUUID(), UUID.randomUUID(), bound.baseUrl)
+            assertNull(SyncSession.loadNames(context).coralSignerId)
+            SyncSession.save(context, bound.token, bound.coupleId, bound.userId, bound.baseUrl)
+            assertEquals(first.coralSignerId, SyncSession.loadNames(context).coralSignerId)
         }
     }
 

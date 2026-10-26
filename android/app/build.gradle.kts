@@ -46,8 +46,8 @@ android {
         targetSdk = 37
         // Every externally testable behavior change gets a new package identity.
         // V8: compact journal, city search, gallery export and identity-first setup.
-        versionCode = 44
-        versionName = "0.1.0+note-stationery-v44-20261026"
+        versionCode = 45
+        versionName = "0.1.0+journal-notes-v45-20261026"
         buildConfigField("String", "PUBLIC_API_ORIGIN", moonletterLiteral(moonletterSetting("MOONLETTER_PUBLIC_ORIGIN", "https://api.example.invalid")))
         buildConfigField("String", "DEV_SERVER_ORIGIN", moonletterLiteral(moonletterSetting("MOONLETTER_DEV_ORIGIN", "http://10.0.2.2:8080")))
         buildConfigField("String", "FIRST_MEMBER_WELCOME", moonletterLiteral(moonletterSetting("MOONLETTER_FIRST_WELCOME", "记录彼此想念的每一天")))

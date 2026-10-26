@@ -37,6 +37,7 @@ data class TimelineEntryUi(
     val privateRecord: Boolean = false,
     val littleNote: Boolean = false,
     val notePaper: com.twomemory.model.NotePaperAppearance = com.twomemory.model.NotePaperAppearance(),
+    val signatureCoral: Boolean = mine,
 )
 
 data class TimelineAttachmentUi(
@@ -59,7 +60,7 @@ class TimelineViewModel(
     preparationDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
-    private val names = MutableStateFlow("" to "")
+    private val names = MutableStateFlow(Triple("", "", null as UUID?))
     private val rejectedIds = MutableStateFlow<Set<String>>(emptySet())
     private val readIds = MutableStateFlow<Set<String>>(emptySet())
 
@@ -70,8 +71,8 @@ class TimelineViewModel(
 
     init {
         viewModelScope.launch {
-            combine(observer(), names, rejectedIds, readIds) { items, (own, partner), rejected, read ->
-                items.map { item -> item.toEntryUi(own, partner, currentUserId, item.id.toString() in rejected)
+            combine(observer(), names, rejectedIds, readIds) { items, (own, partner, coral), rejected, read ->
+                items.map { item -> item.toEntryUi(own, partner, currentUserId, item.id.toString() in rejected, coral)
                     .copy(unread = currentUserId != null && item.authorId != currentUserId &&
                         item.state == com.twomemory.model.EntryState.PUBLISHED && item.id.toString() !in read) }
             }.flowOn(preparationDispatcher).collect {
@@ -81,8 +82,8 @@ class TimelineViewModel(
         }
     }
 
-    fun updateNames(own: String, partner: String) {
-        names.value = own.trim() to partner.trim()
+    fun updateNames(own: String, partner: String, coralSignerId: UUID? = null) {
+        names.value = Triple(own.trim(), partner.trim(), coralSignerId)
     }
 
     /** Records this phone still owes the server an operation it refused. */
@@ -98,6 +99,7 @@ internal fun TimelineItem.toEntryUi(
     partnerName: String,
     currentUserId: UUID?,
     rejected: Boolean = false,
+    coralSignerId: UUID? = null,
 ): TimelineEntryUi {
     val zone = runCatching { ZoneId.of(occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
     val local = occurredAt.atZone(zone)
@@ -121,6 +123,7 @@ internal fun TimelineItem.toEntryUi(
         privateRecord = visibility == com.twomemory.model.EntryVisibility.PRIVATE,
         littleNote = isLittleNote,
         notePaper = notePaper,
+        signatureCoral = coralSignerId?.let { authorId == it } ?: mine,
         attachments = attachments.map { TimelineAttachmentUi(it.type, it.title, it.detail, it.url, it.localPath, it.assetId) },
     )
 }

@@ -149,7 +149,10 @@ object SyncSession {
         load(context)?.let { block(it) }
     }
 
-    data class Names(val own: String, val partner: String)
+    data class Names(val own: String, val partner: String, val coralSignerId: UUID? = null)
+
+    private fun signerPreferenceKey(prefs: SharedPreferences) = "coralSigner_" + recordingScopeKey(
+        "${prefs.getString("storageOrigin", "")}|${prefs.getString("coupleId", "")}")
 
     /** The file [loadNames] reads: a page showing those names listens here. */
     fun sessionPrefs(context: Context): SharedPreferences =
@@ -161,6 +164,7 @@ object SyncSession {
         return Names(
             own = prefs.getString("ownName", null).orEmpty(),
             partner = prefs.getString("partnerName", null).orEmpty(),
+            coralSignerId = prefs.getString(signerPreferenceKey(prefs), null)?.let { runCatching { UUID.fromString(it) }.getOrNull() },
         )
     }
 
@@ -174,6 +178,7 @@ object SyncSession {
                 .readSpace(session.baseUrl, session.token, session.coupleId)
             val own = space.members.firstOrNull { it.userId == session.userId }?.profile?.displayName.orEmpty()
             val partner = space.members.firstOrNull { it.userId != session.userId }?.profile?.displayName.orEmpty()
+            val coralSigner = space.members.map { it.userId }.distinct().takeIf { it.size == 2 }?.minByOrNull { it.toString() }
             // A name the space does not have yet stays unknown rather than blanking
             // the one this device already shows.
             val job = currentCoroutineContext()
@@ -184,6 +189,7 @@ object SyncSession {
                 val editor = sessionPrefs(context).edit()
                 if (own.isNotBlank()) editor.putString("ownName", own)
                 if (partner.isNotBlank()) editor.putString("partnerName", partner)
+                coralSigner?.let { editor.putString(signerPreferenceKey(sessionPrefs(context)), it.toString()) }
                 editor.apply()
             }
             ProfileMediaSync.refresh(context, binding, space)

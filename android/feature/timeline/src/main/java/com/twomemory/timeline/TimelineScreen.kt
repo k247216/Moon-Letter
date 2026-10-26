@@ -136,7 +136,7 @@ private fun TimelineHeader(coverBitmap: ImageBitmap?, onChangeCover: () -> Unit)
     }
 }
 
-private fun Modifier.journalRail() = drawWithCache {
+internal fun Modifier.journalRail() = drawWithCache {
     val x = 24.dp.toPx()
     val sway = 5.dp.toPx()
     val loops = kotlin.math.ceil(size.height / 96.dp.toPx()).toInt().coerceAtLeast(1)
@@ -174,24 +174,7 @@ private fun DayStitchHeader(day: String) {
 fun JournalEntryCard(entry: TimelineEntryUi, onOpen: (String) -> Unit,
     ownAvatar: ImageBitmap? = null, alternate: Boolean = false, partnerAvatar: ImageBitmap? = null) {
     if (entry.littleNote) {
-        Box(Modifier.fillMaxWidth().journalRail()) {
-            Box(Modifier.padding(start = 19.dp, top = 30.dp).size(8.dp).clip(CircleShape)
-                .background(if (entry.mine) TwoMemoryColors.WarmBeigeAccent else TwoMemoryColors.WarmBeigeSage))
-            StickyNotePaper(Modifier.padding(start = if (alternate) 49.dp else 42.dp,
-                end = if (alternate) 16.dp else 23.dp, bottom = 18.dp).fillMaxWidth()
-                .semantics { contentDescription = "打开小便签" }.clickable { onOpen(entry.id) },
-                appearance = entry.notePaper, compact = true) {
-                Text(entry.body, style = TwoMemoryTypography.body, color = TwoMemoryColors.WarmBeigeInk,
-                    maxLines = 7, overflow = TextOverflow.Ellipsis)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${entry.author} · ${entry.timeLabel}", style = TwoMemoryTypography.metadata,
-                        color = TwoMemoryColors.WarmBeigeMuted, modifier = Modifier.weight(1f))
-                    if (entry.privateRecord) Text("仅自己", style = TwoMemoryTypography.metadata,
-                        color = TwoMemoryColors.WarmBeigeMuted)
-                    if (entry.unread) UnreadLetterIndicator(TwoMemoryColors.WarmBeigeSage)
-                }
-            }
-        }
+        JournalNoteCard(entry, onOpen)
         return
     }
     val accent = if (entry.mine) TwoMemoryColors.WarmBeigeAccent else TwoMemoryColors.WarmBeigeSage
@@ -272,7 +255,7 @@ fun JournalEntryCard(entry: TimelineEntryUi, onOpen: (String) -> Unit,
 }
 
 @Composable
-private fun UnreadLetterIndicator(accent: Color) {
+internal fun UnreadLetterIndicator(accent: Color) {
     Canvas(Modifier.size(width = 22.dp, height = 18.dp)
         .background(accent.copy(alpha = .065f), RoundedCornerShape(6.dp))
         .semantics { contentDescription = "这封小笺还没看过" }) {

@@ -1,4 +1,4 @@
-param([switch]$Tablet)
+param([switch]$Tablet, [switch]$JournalReading)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskAdb = 'E:/Android/Sdk/platform-tools/adb.exe'
@@ -21,7 +21,9 @@ if ($Tablet) {
     & $taskAdb -s $taskSerial shell wm density 420
 }
 $taskLayout = if ($Tablet) { 'tablet' } else { 'phone' }
-$taskLog = Join-Path $taskRoot "infra/local-runtime/note-v44-device-$taskLayout.log"
-& $taskAdb -s $taskSerial shell am instrument -w -r -e expectedLayout $taskLayout -e class com.twomemory.app.LittleNoteDeviceTest com.twomemory.app.test/androidx.test.runner.AndroidJUnitRunner *> $taskLog
+$taskRound = if ($JournalReading) { 'v45' } else { 'v44' }
+$taskClass = if ($JournalReading) { 'com.twomemory.app.JournalNoteDeviceTest' } else { 'com.twomemory.app.LittleNoteDeviceTest' }
+$taskLog = Join-Path $taskRoot "infra/local-runtime/note-$taskRound-device-$taskLayout.log"
+& $taskAdb -s $taskSerial shell am instrument -w -r -e expectedLayout $taskLayout -e class $taskClass com.twomemory.app.test/androidx.test.runner.AndroidJUnitRunner *> $taskLog
 Get-Content -LiteralPath $taskLog -Tail 25
-if ($LASTEXITCODE -ne 0 -or -not (Select-String -LiteralPath $taskLog -Pattern 'OK \(2 tests\)' -Quiet)) { throw 'V44 device checks failed.' }
+if ($LASTEXITCODE -ne 0 -or -not (Select-String -LiteralPath $taskLog -Pattern 'OK \(2 tests\)' -Quiet)) { throw "$taskRound device checks failed." }

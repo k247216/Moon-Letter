@@ -252,7 +252,9 @@ class ReinstalledPhoneRebuildsWholeBookTest {
                 databaseA.commentDao().commentsForEntry(entry3.toString()).single().body,
             )
             SyncSession.refreshNames(context)
-            assertEquals(SyncSession.Names("小满呀", "阿屿"), SyncSession.loadNames(context))
+            assertEquals("小满呀", SyncSession.loadNames(context).own)
+            assertEquals("阿屿", SyncSession.loadNames(context).partner)
+            assertNotNull(SyncSession.loadNames(context).coralSignerId)
 
             // 7. And the reclaimed phone can write again: the partner sees the new
             //    record without re-pairing anything on its own side.

@@ -120,7 +120,7 @@ fun EntryDetailScreen(
                     Icon(TwoMemoryIcons.Close, contentDescription = "返回时间线")
                 }
                 Text(
-                    state?.header?.let { if (it.shared) "共同手帐" else "${it.dateLabel} · ${it.timeLabel}" } ?: "记录详情",
+                    state?.header?.let { if (it.shared) "共同手帐" else if (it.littleNote) it.dateLabel else "${it.dateLabel} · ${it.timeLabel}" } ?: "记录详情",
                     style = TwoMemoryTypography.caption,
                     color = TwoMemoryColors.WarmBeigeMuted,
                 )
@@ -167,16 +167,13 @@ fun EntryDetailScreen(
                 .padding(horizontal = 24.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(15.dp),
         ) {
-            RecordHeader(currentState.header, effectiveStatus, if (currentState.header.mine) ownAvatar else partnerAvatar,
-                currentState.blocks, ownAvatar, partnerAvatar)
-            PaperRule()
             if (currentState.header.littleNote) {
-                com.twomemory.designsystem.StickyNotePaper(appearance = currentState.header.notePaper) {
-                    currentState.blocks.filter { it.type == BlockType.TEXT }.forEach { block ->
-                        Text(block.text.orEmpty(), style = TwoMemoryTypography.body, color = TwoMemoryColors.WarmBeigeInk)
-                    }
-                }
-            } else currentState.blocks.forEachIndexed { index, block -> key(block.id) {
+                JournalNoteReading(currentState.copy(status = effectiveStatus))
+            } else {
+                RecordHeader(currentState.header, effectiveStatus, if (currentState.header.mine) ownAvatar else partnerAvatar,
+                    currentState.blocks, ownAvatar, partnerAvatar)
+                PaperRule()
+                currentState.blocks.forEachIndexed { index, block -> key(block.id) {
                 val imageIndex = imageBlocks.indexOfFirst { it.id == block.id }
                 // Keep block order, but sign a continuous contribution once.
                 val previous = currentState.blocks.getOrNull(index - 1)
@@ -185,13 +182,15 @@ fun EntryDetailScreen(
                 DetailBlock(block, imageIndex = imageIndex.takeIf { it >= 0 }, showAuthor = showAuthor) {
                     if (imageIndex >= 0) viewerIndex = imageIndex
                 }
-            } }
+                } }
+            }
             if (currentState.header.shared && onAddPerspective != null &&
                 effectiveStatus != MoonLetterRecordStatus.DRAFT && effectiveStatus != MoonLetterRecordStatus.LOCAL_WRITE_FAILED) {
                 TextButton(onClick = onAddPerspective, modifier = Modifier.fillMaxWidth()) { Text("补写我的视角") }
             }
-            Comments(currentState, canRespond = effectiveStatus != MoonLetterRecordStatus.DRAFT &&
-                effectiveStatus != MoonLetterRecordStatus.LOCAL_WRITE_FAILED)
+            val canRespond = effectiveStatus != MoonLetterRecordStatus.DRAFT && effectiveStatus != MoonLetterRecordStatus.LOCAL_WRITE_FAILED
+            if (currentState.header.littleNote) JournalNoteReplies(currentState, canRespond)
+            else Comments(currentState, canRespond)
             Spacer(Modifier.height(16.dp))
         }
         }

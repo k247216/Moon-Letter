@@ -35,6 +35,7 @@ data class EntryCommentUi(
     val body: String,
     val timeLabel: String,
     val mine: Boolean,
+    val signatureCoral: Boolean = mine,
 )
 
 data class EntryDetailUi(
@@ -62,7 +63,7 @@ class EntryDetailViewModel(
     private val syncComment: suspend () -> Unit = {},
 ) : ViewModel() {
 
-    private val names = MutableStateFlow("" to "")
+    private val names = MutableStateFlow(Triple("", "", null as UUID?))
     private val delivery = MutableStateFlow<MoonLetterRecordStatus?>(null)
     private var draftRevision = 0L
 
@@ -72,13 +73,13 @@ class EntryDetailViewModel(
     init {
         viewModelScope.launch {
             combine(observer(), names, delivery) { detail, labels, queueStatus ->
-                detail?.toUi(labels.first, labels.second, queueStatus)
+                detail?.toUi(labels.first, labels.second, queueStatus, labels.third)
             }.collect { mutableState.value = it }
         }
     }
 
-    fun updateNames(own: String, partner: String) {
-        names.value = own.trim() to partner.trim()
+    fun updateNames(own: String, partner: String, coralSignerId: UUID? = null) {
+        names.value = Triple(own.trim(), partner.trim(), coralSignerId)
     }
 
     fun updateDraft(draft: String) {
@@ -137,12 +138,12 @@ class EntryDetailViewModel(
      * What is already on the page survives a new emission: her half-typed reply,
      * the in-flight send, and the error she has not edited away yet.
      */
-    private fun EntryDetail.toUi(ownName: String, partnerName: String, queueStatus: MoonLetterRecordStatus?): EntryDetailUi {
+    private fun EntryDetail.toUi(ownName: String, partnerName: String, queueStatus: MoonLetterRecordStatus?, coralSignerId: UUID?): EntryDetailUi {
         val onScreen = mutableState.value?.takeIf { it.header.id == entry.id.toString() }
         val zone = runCatching { ZoneId.of(entry.occurredTimezone) }.getOrElse { ZoneId.of("UTC") }
         val timeFormatter = DateTimeFormatter.ofPattern("M月d日 HH:mm", Locale.CHINA)
         return EntryDetailUi(
-            header = entry.toEntryUi(ownName, partnerName, currentUserId),
+            header = entry.toEntryUi(ownName, partnerName, currentUserId, coralSignerId = coralSignerId),
             blocks = blocks.sortedBy { it.orderKey }
                 .map { block ->
                     EntryBlockUi(
@@ -174,6 +175,7 @@ class EntryDetailViewModel(
                     body = comment.body,
                     timeLabel = comment.createdAt.atZone(zone).format(timeFormatter),
                     mine = mine,
+                    signatureCoral = coralSignerId?.let { comment.authorId == it } ?: mine,
                 )
             },
             draft = onScreen?.draft.orEmpty(),
