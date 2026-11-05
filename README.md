@@ -1,175 +1,141 @@
-# 月笺 (Moon Letter)
+<div align="center">
 
-## 当前源码检查点：V45（2026-10-26）
+<img src="docs/design/brand/moonjian-app-icon.png" width="88" alt="月笺应用图标" />
 
-V45 把便签融入时间轴：按内容适配的小纸条、纸外落款、稳定的轻装饰、简洁阅读页与回应纸片，保留 V44 的纸样与颜色选择。更新顺序与测试证据见 [V45验收说明](releases/v45/README.md)，隐私配置与此前源码整理见 [V43交接](docs/handoff/2026-10-25-v43-source-checkpoint.md)。后文保留早期M1设计和历史操作背景，不应将其中旧的阶段状态当作当前进度。
+# 月笺 · Moon Letter
 
-正式部署地址与个人化文案通过未提交的 `android/private.properties` 提供；示例见 `android/private.properties.example`。运行密钥、用户数据、日志、APK和签名私钥不放入Git。公共文档中的部署标识已匿名化。
+**同一段回忆，两个视角。**
 
-双人私密日记 Android 应用。对外中文名称已确定为「月笺」，`Moon Letter` 仅作英文工程代号；身份色、封面和措辞仍由使用者在应用内自行修改。即使另一方尚未加入，任何一方也可以独立记录、回看和保管自己的生活。
+一个给两个人使用的私密日记 Android 应用。写下当下，回应彼此，也为以后留下一次重新看见的机会。
 
-## 我们坚持的边界
+![Android](https://img.shields.io/badge/Android_8.0+-252329?style=flat-square&logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-7f52ff?style=flat-square&logo=kotlin&logoColor=white)
+![Compose](https://img.shields.io/badge/Jetpack_Compose-4285f4?style=flat-square&logo=jetpackcompose&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-6db33f?style=flat-square&logo=springboot&logoColor=white)
+![Status](https://img.shields.io/badge/Status-In_Development-b66a77?style=flat-square)
 
-- 不监控位置，不保存实时轨迹；
-- 不做打卡、连续天数或关系压力机制；
-- 不让 AI 代写回忆；
-- 数据可以完整备份、恢复和导出；
-- 记录成本优先于功能数量——错过的一天无法补写；
-- 不做关系记分牌：单次信号可以有，条数、字数、活跃与间隔天数的统计和排名不能有；
-- 连续性优先于完整性：换机、丢机或重装之后仍要能自己接上，不依赖维护者在场；
-- 桌面名称已确定为「月笺」；身份色、封面和措辞由使用者决定，参考图与规格在此让位——但体现为"随时能在应用内改"，不是"使用前必须先选"；默认值必须开箱可用。
+[产品想法](#为什么是月笺) · [技术与运行](#开发与运行) · [版本记录](releases/v45/README.md) · [反馈问题](https://github.com/k247216/Moon-Letter/issues)
 
-取舍顺序见 `docs/human-scale-principles.md`。
+</div>
 
-## 当前项目状态
+## 为什么是月笺
 
-**M1 NOT VERIFIED。** 服务端 S1–S5、Android A1–A3 的开发机证据已经本机静态复核接受，Robolectric 夹具已贯通 `Room → HTTP → PostgreSQL → Change Feed → 第二个 Room`。台账 70/118。
+聊天适合即时交流，许多值得留住的细节却会很快被刷走。月笺希望为这些片段留一个安静的位置：一句话、一张照片、一段声音，或者同一件事各自不同的记忆。
 
-复核列出的阻塞项已在代码里闭合：H4 本地会话恢复命令与真库测试、outbox 严格 FIFO 与协程取消传播、WorkManager 重试结果、Keystore 密封的会话令牌、损坏会话回绑定页、响应式时间线与 Scaffold 遮挡。仍未完成的是必须用设备才能证明的部分：真机互见（E1）、故障恢复演练（E2/H4 真机侧）、记录成本计时与通知到点（H1/H3）、备份导出恢复（D）、视觉对照（U）。**JVM 证据不代表产品可交付**，不能因为链路变绿就宣布 M1 完成。
+任何一方都可以独立记录、回看和保管自己的生活；共同记录里的两份表达保留各自的作者与视角。
 
-当前权威资料：
+## 想保留下来的体验
 
-- `docs/human-scale-principles.md`（长期取舍顺序，跨里程碑有效）
-- `docs/superpowers/specs/2026-10-01-self-use-m1-design.md`
-- `docs/superpowers/plans/2026-10-01-self-use-m1-implementation.md`
-- `docs/handoff/2026-09-30-cross-machine-m1-handoff.md`
-- `docs/superpowers/specs/2026-10-01-guided-ui-and-feature-completion-design.md`
-- `docs/superpowers/plans/2026-10-01-core-guided-ui.md`
-- `docs/testing/m1-acceptance.md`
-- `docs/testing/open-day-runbook.md`（开档当天的操作顺序与真机门清单）
-- `docs/testing/feature-checklist.md`（逐项功能验证清单：每条单独判过没过）
-- `docs/testing/real-use-log.md`（真机使用日志：APK 指纹、设备、计时数字与真实结果记在这里）
-- `docs/reviews/2026-10-01-m1-round-review.md`
-- `docs/design/reference/`
-- `docs/design/brand/`
+- **轻一点地记录**：从一句短便签到完整图文，记录的长度由当下决定。
+- **留住彼此的视角**：个人记录、共同记忆与回应各有归属，避免互相覆盖。
+- **有纸张温度的时间线**：用纸片、落款和克制的装饰承载内容。
+- **以后还能找回来**：围绕时间线、相册与自愿的位置快照组织回看入口。
+- **数据属于使用者**：把同步、恢复、备份和导出作为持续建设的基础。
 
-2026-09-30 的规格和计划仅保留为历史参考，不再作为 M1 执行依据。
+### 视觉方向
 
-## 等待使用者决定的事项
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/design/reference/home-timeline.png" width="100%" alt="时间线设计参考" /></td>
+    <td align="center" width="33%"><img src="docs/design/reference/personal-entry-editor.png" width="100%" alt="记录编辑设计参考" /></td>
+    <td align="center" width="33%"><img src="docs/design/reference/shared-album.png" width="100%" alt="共同相册设计参考" /></td>
+  </tr>
+  <tr><td align="center">记录与时间线</td><td align="center">写下一个瞬间</td><td align="center">一起回看</td></tr>
+</table>
 
-执行计划 Task 0 只提前索取**单向门**——一旦有真实内容或已打包就很难改的东西：
+以上图片来自仓库的设计参考目录，用于说明视觉方向，**不是当前版本运行截图**。V45 的实际改动与已有验证记录见[版本说明](releases/v45/README.md)。
 
-- 开始真实使用的日期与每周可投入时间上限——卡住 Task 11a，不能默认；
+## 一些坚持
 
-主数据表示已确定为 PostgreSQL 权威（方案 A），Android 桌面名称已确定为「月笺」。
+不做关系记分牌，不用打卡或连续天数制造压力；不做后台位置追踪，不让 AI 代写回忆。位置只在使用者主动选择时成为一条记录的快照。
 
-称呼、身份色、封面和措辞**不再提前索取**。它们由计划 Task 12b 交付为应用内可改项：默认值开箱可用，使用者在任意一个下午想改成"自己的"都能改，不需要重新构建也不需要找人。空白不算所有权，能改才算。
+我们更关心：想写的时候能不能轻松留下，网络恢复后能不能继续同步，换机之后能不能接上自己的记录。
 
-## 本地基础设施
+## 技术结构
 
-推荐使用 Docker Desktop 启动本地依赖。首次使用先复制未提交的本地密钥文件并填入随机值：
+```text
+Android / Jetpack Compose
+        ↓
+Room 本地数据 + Outbox 待同步操作
+        ↓
+HTTP API / Spring Boot
+        ↓
+PostgreSQL + S3 兼容对象存储
+        ↓
+增量同步 → 另一端的本地数据与时间线
+```
+
+| 部分 | 技术与职责 |
+| :--- | :--- |
+| Android | Kotlin、Jetpack Compose，记录、阅读与个人设置 |
+| 本地与同步 | Room、WorkManager、Outbox、增量 Change Feed |
+| 服务端 | Java 21、Spring Boot、PostgreSQL、Flyway |
+| 媒体 | S3 兼容对象存储；本地开发可使用 MinIO |
+| 验证 | JUnit、Robolectric、PostgreSQL 集成测试、Android 设备测试 |
+
+## 当前状态
+
+当前公开源码检查点为 **V45 / `0.1.0+journal-notes-v45-20261026`**。项目处于开发验证阶段，尚未发布 GitHub Release 形式的通用安装包。
+
+V45 聚焦便签与时间线的融合：按内容适配的纸片、纸外落款、阅读页和回应体验。该版本记录了 JVM 与隔离模拟器验证，但仍明确保留真实跨地域设备验收的边界。完整产品验收状态以[验收清单](docs/testing/m1-acceptance.md)和[实际使用记录](docs/testing/real-use-log.md)为准。
+
+`releases/` 内是版本说明与校验资料；说明中提到的本地安装包，不应被视为已上传的公开下载文件。
+
+## 开发与运行
+
+当前开发分支为 `m1-stable-recording-loop`。准备 **JDK 21、Maven、Android SDK 37、Docker**。
 
 ```bash
+git clone --branch m1-stable-recording-loop https://github.com/k247216/Moon-Letter.git
+cd Moon-Letter
+
+# 填写本地数据库等配置；不要提交实际密钥
 cp infra/.env.example infra/.env
-# 编辑 infra/.env，替换两个 replace-with-a-local-password
 docker compose --env-file infra/.env -f infra/compose.yaml up -d
 ```
 
-默认服务：PostgreSQL `localhost:5432`，MinIO API `localhost:9000`，MinIO Console `localhost:9001`。首个纯文字竖切只需要 PostgreSQL；图片任务开始时才需要 MinIO。
-Compose 中的账号和密码只用于本地开发，禁止带入生产环境。
-
-如果 Docker daemon 尚未启动，服务端约束测试也可以使用本机 PostgreSQL：
+### 服务端
 
 ```bash
-brew services start postgresql@18
 cd server
-TEST_DB_URL=jdbc:postgresql://localhost:5432/postgres \
-TEST_DB_USER="$USER" TEST_DB_PASSWORD="" \
-mvn test -Dtest=SchemaConstraintTest
+mvn -DskipTests package
 ```
 
-测试会在 `moon_letter_test` 独立 schema 中清理和迁移，不会清理默认数据库中的其他 schema。
-
-## 环境与云端配置边界
-
-本地 M1 验证不需要购买云端账号。开发机当前需要 JDK 21、Maven、Android SDK 37、PostgreSQL 和一个本地 `BOOTSTRAP_SECRET`。**不存在 `RECOVERY_SECRET`**：规格 §5.4 允许的两条恢复路径里选了前一条——`BOOTSTRAP_SECRET` 可以重复使用并找回创始成员自己的槽位（卸载、丢机或恢复备份后仍属于同一空间和同一身份），加上只在服务端本机执行、关闭 web 的 `SessionAdminCommand`。代价是 `BOOTSTRAP_SECRET` 属于长期凭据，泄露即等于第一位成员的槽位被接管，因此服务端端口不得公网可达，密钥只留在服务端本机环境或未提交的 `.env`。
-
-连续性语义还有两处：配对令牌由服务端判定类型，`INVITE` 让新成员加入，`REJOIN` 让已存在但重装的成员回到自己的槽位；还没有会话的那台设备，可以由另一台在「我们」页直接生成配对码。通知全部是本机通知，未接 FCM，也不含正文与条数。
-
-双端闭环的主要证明手段是 JVM 上的 Robolectric 夹具（两个真实 Room 数据库 + 真实 Retrofit 打到真实 Spring Boot），因此不再把「两个独立 Android 数据目录」列为前置条件；一台具名真机或 API 37 模拟器只用于冒烟测试和 Task 14 录像。图片阶段再启用 S3 兼容对象存储。
-
-后续正式部署前需要准备：
-
-- PostgreSQL 生产实例：`JDBC_DATABASE_URL`、`JDBC_DATABASE_USERNAME`、`JDBC_DATABASE_PASSWORD`；
-- S3 兼容对象存储（生产可选云厂商，开发使用 MinIO）：`S3_ENDPOINT`、`S3_REGION`、`S3_BUCKET`、`S3_ACCESS_KEY`、`S3_SECRET_KEY`；
-- 推送通知（FCM）：非 M1 正确性依赖，后续只在接入通知优化时配置；
-- Android 本地构建：JDK 21、Android SDK 37、Gradle 9.8。SDK 命令行工具的 Google 许可需要开发者在本机明确接受，项目不会自动代签。
-
-所有密钥只放在未提交的 `.env` 或 CI secret 中，不写入源码、迁移文件和 APK。
-
-## 服务端
-
-已按执行计划 Task 1 完成可复现运行配置（`application.yml` + `application-dev.yml` + actuator health）。
-
-启动本地数据库，打可执行 jar，再用环境变量注入数据库和应用密钥运行：
+配置 `JDBC_DATABASE_URL`、`JDBC_DATABASE_USERNAME`、`JDBC_DATABASE_PASSWORD` 和本地 `BOOTSTRAP_SECRET` 后，运行：
 
 ```bash
-docker compose --env-file infra/.env -f infra/compose.yaml up -d postgres
-cd server && mvn -DskipTests package
-JDBC_DATABASE_URL='jdbc:postgresql://localhost:5432/moon_letter' \
-JDBC_DATABASE_USERNAME='moon_letter' \
-JDBC_DATABASE_PASSWORD='<与 infra/.env 中 PostgreSQL 密码一致>' \
-BOOTSTRAP_SECRET='<只放本机环境或 .env>' \
-  java -jar target/moon-letter-server-0.1.0-SNAPSHOT.jar \
+java -jar target/moon-letter-server-0.1.0-SNAPSHOT.jar \
   --spring.profiles.active=dev --server.port=8080
 ```
 
-**不要**用 `mvn spring-boot:run --moon-letter.bootstrap.secret=...`：跟在 `spring-boot:run` 后面的属性不会传进应用，密钥会静默为空，真机上表现为绑定页 403 而不是配置错误。这是 2026-10-01 真机排查出的实际根因，写死在这里避免重复。
+健康检查：`GET http://localhost:8080/actuator/health`。本地实验请使用受限网络环境；正式部署、会话恢复和备份操作先阅读[开发运行说明](docs/development-setup.md)。
 
-健康检查：`GET http://localhost:8080/actuator/health` 应返回 `{"status":"UP"}`。
+### Android
 
-如果 Windows/JDK 启动日志出现 `Unable to establish loopback connection`，说明 Tomcat 默认 NIO selector 无法创建 JDK 回环管道；保留同一套数据库和密钥参数，并额外加上：
-
-```bash
---moon-letter.server.tomcat.nio2-connector=true
-```
-
-这只把连接器切换到 Tomcat NIO2，业务接口和客户端协议不变；当前开发机的可测试服务已用该开关启动，并通过 `http://127.0.0.1:8080/actuator/health` 返回 `UP`。
-
-默认 profile 不提供数据库配置时将快速失败并给出缺库错误；生产部署通过 `JDBC_DATABASE_URL`、`JDBC_DATABASE_USERNAME`、`JDBC_DATABASE_PASSWORD` 提供。开发机的 `dev` profile 也只从这些环境变量读取密码，禁止把密码写回源码、日志或 APK。
-
-注意：某些机器存在遗留环境变量 `SERVER__PORT`（例如值 63834），Spring Boot 的 relaxed binding 会读取它。如端口异常，用 `--server.port=8080` 显式覆盖。
-
-## 会话恢复（H4）
-
-两台设备同时丢会话时，在**服务端所在机器上**执行本地管理命令；它显式关闭 web，因此不可能与正在提供 HTTP 的进程并行运行：
-
-```bash
-java -jar target/moon-letter-server-0.1.0-SNAPSHOT.jar \
-  --spring.main.web-application-type=none \
-  --moon-letter.admin.mode=revoke-all --moon-letter.admin.user-id=<UUID>
-
-java -jar target/moon-letter-server-0.1.0-SNAPSHOT.jar \
-  --spring.main.web-application-type=none \
-  --moon-letter.admin.mode=issue --moon-letter.admin.user-id=<UUID>
-```
-
-签发的那一个令牌只打印到 stdout 一次；`session_admin_audit` 记录动作与目标用户，**从不保存令牌材料**。coupleId 由成员归属反查，不需要手填。
-
-- **它作用在你给的那个库上**：想练手就克隆一份——`CREATE DATABASE moon_letter_drill TEMPLATE moon_letter;`，把 `--spring.datasource.url` 指过去，练完 `DROP DATABASE`。对着手机正在用的库跑 `revoke-all`，两台手机会在几秒内掉线，只能靠 `issue` 出来的新令牌回去。
-- `issue` 走的是「先吊销再签发」，旧令牌当场失效；拿到新令牌后要在应用里重新填一次服务器地址与它，旧设备上那份复制粘贴不来的令牌不会再有用。
-
-更常见的场景不需要这条命令：重装但密钥还在时，重新 bootstrap 会找回创始成员自己的槽位；只是伴侣那台掉线时，还能用的那台在「我们」页生成配对码，对方用它以 `REJOIN` 回到原来的成员位。完整顺序见 `docs/testing/open-day-runbook.md`。
-
-## 验证入口
-
-```bash
-bash scripts/verify-m1.sh   # 服务端测试 + Android JVM 测试 + 真机 connected 检查；环境缺失时以 2 退出并报 INCOMPLETE
-```
-
-`TEST_DB_URL` 或 `TEST_DB_PASSWORD` 未设置时脚本会跳过 PostgreSQL 真库测试并以 `INCOMPLETE` 退出——服务端真库测试需要 compose 里的 PostgreSQL 在跑且密码必须显式注入，不接受把跳过的部分当作通过。备份与恢复用 `scripts/backup.sh`、`scripts/restore.sh`。
-
-## Android
-
-Android SDK 37 和 Java 21 是构建前置条件：
+在 Android Studio 中配置 SDK，并按 `android/private.properties.example` 设置自己的部署参数。项目默认占位地址不提供公共服务。
 
 ```bash
 cd android
 ./gradlew :app:assembleDebug
 ```
 
-当前可安装 debug APK：[MoonLetter-responsive-v10-20261003.apk](android/app/build/outputs/apk/debug/MoonLetter-responsive-v10-20261003.apk)，`versionCode=10`，版本名 `0.1.0+two-device-responsive-v10-20261003`，37,865,769 字节，SHA-256 `17998F0F9E2B53A948AB0D19503C823642E2F09D8EBC4A8C389EE0FAEE3AC581`。V10 修复前台同步触发、头像上传互见、音频下载与缓存重播、纪念日日期选择和主页倒计时，并改版共同记录、合并通知测试入口。两台手机都需覆盖安装；前台每 3 秒检查不是后台即时推送承诺。证据和边界见 `docs/testing/2026-10-03-v10-responsive-acceptance.md`。局域网服务可用，云端尚未部署。
+### 验证
 
-## 分支约定
+```bash
+# 仓库根目录
+bash scripts/verify-m1.sh
+```
 
-实现工作在 `m1-stable-recording-loop` 分支完成。另一台开发机按执行计划逐任务提交；本机负责范围、证据和 UI 一致性复核。
+该脚本需要数据库测试配置、Android SDK 和设备／模拟器。必要环境缺失时返回 `INCOMPLETE`，不能将跳过检查当作通过；具体测试范围见脚本与验收文档。
+
+## 文档入口
+
+- [长期产品原则](docs/human-scale-principles.md)
+- [开发运行与历史排错说明](docs/development-setup.md)
+- [V45 版本说明](releases/v45/README.md)
+- [M1 验收清单](docs/testing/m1-acceptance.md)
+- [实际使用记录](docs/testing/real-use-log.md)
+- [开档与恢复演练](docs/testing/open-day-runbook.md)
+- [备份脚本](scripts/backup.sh) · [恢复脚本](scripts/restore.sh)
+
+欢迎通过 [Issue](https://github.com/k247216/Moon-Letter/issues) 反馈问题。请使用测试记录和脱敏截图，避免公开真实日记、空间凭据和部署密钥。
